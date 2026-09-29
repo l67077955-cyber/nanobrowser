@@ -300,9 +300,33 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
     try {
       const candidate = typeof args === 'string' ? JSON.parse(repairJsonString(args)) : args;
       const result = this.modelOutputSchema.safeParse(candidate);
-      return result.success ? result.data : undefined;
+      if (result.success) {
+        return result.data;
+      }
+      const patched = fillMissingStrings(candidate, result.error);
+      if (!patched) {
+        return undefined;
+      }
+      const retry = this.modelOutputSchema.safeParse(patched);
+      if (retry.success) {
+        logger.warning(`[${this.modelName}] Filled null/missing string fields in tool call args`);
+        return retry.data;
+      }
+      return undefined;
     } catch (error) {
       return undefined;
+    }
+  }
+
+  // Schema transforms may throw instead of reporting an issue, so safeParse is guarded here
+  private describeSchemaIssues(args: unknown): string {
+    try {
+      const result = this.modelOutputSchema.safeParse(args);
+      return result.success
+        ? ''
+        : ` schema: ${result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join(', ')}`;
+    } catch (error) {
+      return ` schema: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
 
@@ -312,7 +336,7 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
       return 'no raw response';
     }
     const rawWithToolCalls = raw as BaseMessage & {
-      tool_calls?: Array<{ name?: string }>;
+      tool_calls?: Array<{ name?: string; args?: unknown }>;
       invalid_tool_calls?: Array<{ name?: string; args?: unknown; error?: string }>;
     };
     const parts: string[] = [];
@@ -320,7 +344,14 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
       parts.push(`content=${raw.content.slice(0, 500)}`);
     }
     if (rawWithToolCalls.tool_calls?.length) {
-      parts.push(`tool_calls=${rawWithToolCalls.tool_calls.map(toolCall => toolCall.name ?? 'unknown').join(',')}`);
+      parts.push(
+        `tool_calls=${rawWithToolCalls.tool_calls
+          .map(toolCall => {
+            const issues = this.describeSchemaIssues(toolCall.args);
+            return `${toolCall.name ?? 'unknown'}: ${JSON.stringify(toolCall.args)?.slice(0, 300)}${issues}`;
+          })
+          .join('; ')}`,
+      );
     }
     if (rawWithToolCalls.invalid_tool_calls?.length) {
       parts.push(
@@ -334,4 +365,26 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
     }
     return parts.length > 0 ? parts.join(' | ') : 'empty response';
   }
+}
+
+// Models often send null or omit top-level text fields that are empty for the current step
+// (e.g. the planner's final_answer before the task is done). Replace those with '' so the args validate.
+function fillMissingStrings(candidate: unknown, error: z.ZodError): Record<string, unknown> | undefined {
+  if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
+    return undefined;
+  }
+  const patched: Record<string, unknown> = { ...(candidate as Record<string, unknown>) };
+  let changed = false;
+  for (const issue of error.issues) {
+    if (
+      issue.code === 'invalid_type' &&
+      issue.expected === 'string' &&
+      (issue.received === 'null' || issue.received === 'undefined') &&
+      issue.path.length === 1
+    ) {
+      patched[issue.path[0]] = '';
+      changed = true;
+    }
+  }
+  return changed ? patched : undefined;
 }

@@ -59,13 +59,13 @@ const choice = (picked: string, ids: string[], confidence = 0.95) => ({
 const OPS = ['CLICK', 'TYPE_TEXT', 'SELECT', 'SCROLL_DOWN', 'SCROLL_UP', 'WAIT', 'DONE', 'BLOCKED'];
 
 function engineWith(answers: Record<string, unknown>, llmReply = '{"text": "a@b.com"}') {
-  const fetchImpl = vi.fn(async (..._args: unknown[]) => new Response(JSON.stringify({ answers }), { status: 200 }));
+  const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ answers }), { status: 200 }));
   const textLLM = { invoke: vi.fn(async () => ({ content: llmReply })) } as unknown as BaseChatModel;
   const engine = new JevDecisionEngine({
     apiKey: 'sk-or-test',
     textLLM,
     getGoal: () => 'Sign up with a@b.com from France',
-    fetchImpl: fetchImpl as unknown as typeof fetch,
+    fetchImpl,
   });
   return { engine, fetchImpl, textLLM };
 }
@@ -161,12 +161,12 @@ describe('JevDecisionEngine', () => {
   });
 
   it('throws on HTTP errors so the navigator can fall back', async () => {
-    const fetchImpl = vi.fn(async (..._args: unknown[]) => new Response('nope', { status: 401 }));
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response('nope', { status: 401 }));
     const engine = new JevDecisionEngine({
       apiKey: 'ts-key',
       textLLM: {} as BaseChatModel,
       getGoal: () => 'goal',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
+      fetchImpl,
     });
     await expect(engine.decide(signupPage(), signal)).rejects.toThrow('HTTP 401');
     expect(fetchImpl.mock.calls[0][0]).toBe('https://api.typesafe.ai/v1/systemone');
