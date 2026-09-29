@@ -277,6 +277,9 @@ export function createChatModel(providerConfig: ProviderConfig, modelConfig: Mod
         apiKey: providerConfig.apiKey,
         temperature,
         topP,
+        modelKwargs: {
+          thinking: { type: 'disabled' },
+        },
       };
       return new ChatDeepSeek(args) as BaseChatModel;
     }

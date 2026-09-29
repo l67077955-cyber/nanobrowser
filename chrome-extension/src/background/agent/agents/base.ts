@@ -6,6 +6,7 @@ import type { BaseMessage } from '@langchain/core/messages';
 import { createLogger } from '@src/background/log';
 import type { Action } from '../actions/builder';
 import { convertInputMessages, extractJsonFromModelOutput, removeThinkTags } from '../messages/utils';
+import { repairJsonString } from '@src/background/utils';
 import { isAbortedError, ResponseParseError } from './errors';
 import { ProviderTypeEnum } from '@extension/storage';
 
@@ -150,8 +151,17 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
           logger.debug(`[${this.modelName}] Successfully parsed structured output`);
           return response.parsed;
         }
+
+        const recovered = this.parseRawStructuredResponse(response.raw);
+        if (recovered) {
+          logger.warning(`[${this.modelName}] Recovered structured output from raw response`);
+          return recovered;
+        }
+
         logger.error('Failed to parse response', response);
-        throw new Error('Could not parse response with structured output');
+        throw new Error(
+          `Could not parse response with structured output (${this.getRawResponseDebugInfo(response.raw)})`,
+        );
       } catch (error) {
         if (isAbortedError(error)) {
           throw error;
@@ -169,6 +179,15 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
             return parsed;
           }
         }
+
+        const recovered = this.parseRawStructuredResponse(response?.raw);
+        if (recovered) {
+          logger.warning(
+            `[${this.modelName}] Recovered structured output from raw response after error: ${errorMessage}`,
+          );
+          return recovered;
+        }
+
         logger.error(`[${this.modelName}] LLM call failed with error: \n${errorMessage}`);
         throw new Error(`Failed to invoke ${this.modelName} with structured output: \n${errorMessage}`);
       }
@@ -223,5 +242,96 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
       logger.warning('manuallyParseResponse failed', error);
       return undefined;
     }
+  }
+
+  // Helper method to recover structured output from the raw message when the structured parser returns nothing
+  protected parseRawStructuredResponse(raw: BaseMessage | undefined): this['ModelOutput'] | undefined {
+    if (!raw) {
+      return undefined;
+    }
+
+    if (typeof raw.content === 'string') {
+      if (raw.content.trim().length > 0) {
+        const parsed = this.manuallyParseResponse(raw.content);
+        if (parsed) {
+          return parsed;
+        }
+      }
+    } else if (Array.isArray(raw.content)) {
+      const text = raw.content
+        .map(item =>
+          typeof item === 'object' && item !== null && 'text' in item ? ((item as { text?: string }).text ?? '') : '',
+        )
+        .join('');
+      if (text.trim().length > 0) {
+        const parsed = this.manuallyParseResponse(text);
+        if (parsed) {
+          return parsed;
+        }
+      }
+    }
+
+    const rawWithToolCalls = raw as BaseMessage & {
+      tool_calls?: Array<{ args?: unknown }>;
+      invalid_tool_calls?: Array<{ args?: unknown }>;
+    };
+
+    for (const toolCall of rawWithToolCalls.tool_calls ?? []) {
+      const parsed = this.tryParseToolCallArgs(toolCall.args);
+      if (parsed) {
+        return parsed;
+      }
+    }
+
+    for (const toolCall of rawWithToolCalls.invalid_tool_calls ?? []) {
+      const parsed = this.tryParseToolCallArgs(toolCall.args);
+      if (parsed) {
+        return parsed;
+      }
+    }
+
+    return undefined;
+  }
+
+  private tryParseToolCallArgs(args: unknown): this['ModelOutput'] | undefined {
+    if (args === undefined || args === null) {
+      return undefined;
+    }
+    try {
+      const candidate = typeof args === 'string' ? JSON.parse(repairJsonString(args)) : args;
+      const result = this.modelOutputSchema.safeParse(candidate);
+      return result.success ? result.data : undefined;
+    } catch (error) {
+      return undefined;
+    }
+  }
+
+  // Helper method to describe the raw message for error reporting
+  protected getRawResponseDebugInfo(raw: BaseMessage | undefined): string {
+    if (!raw) {
+      return 'no raw response';
+    }
+    const rawWithToolCalls = raw as BaseMessage & {
+      tool_calls?: Array<{ name?: string }>;
+      invalid_tool_calls?: Array<{ name?: string; args?: unknown; error?: string }>;
+    };
+    const parts: string[] = [];
+    if (typeof raw.content === 'string' && raw.content.trim().length > 0) {
+      parts.push(`content=${raw.content.slice(0, 500)}`);
+    }
+    if (rawWithToolCalls.tool_calls?.length) {
+      parts.push(`tool_calls=${rawWithToolCalls.tool_calls.map(toolCall => toolCall.name ?? 'unknown').join(',')}`);
+    }
+    if (rawWithToolCalls.invalid_tool_calls?.length) {
+      parts.push(
+        `invalid_tool_calls=${rawWithToolCalls.invalid_tool_calls
+          .map(toolCall => {
+            const argsText = typeof toolCall.args === 'string' ? toolCall.args : JSON.stringify(toolCall.args);
+            return `${toolCall.name ?? 'unknown'}: ${argsText?.slice(0, 300)} (${toolCall.error ?? ''})`;
+          })
+          .join('; ')}`,
+      );
+    }
+    return parts.length > 0 ? parts.join(' | ') : 'empty response';
   }
 }

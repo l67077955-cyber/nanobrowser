@@ -212,6 +212,16 @@ function ensureBackwardCompatibility(providerId: string, config: ProviderConfig)
     }
   }
 
+  if (
+    updatedConfig.type === ProviderTypeEnum.DeepSeek &&
+    Array.isArray(updatedConfig.modelNames) &&
+    updatedConfig.modelNames.length === 2 &&
+    updatedConfig.modelNames[0] === 'deepseek-chat' &&
+    updatedConfig.modelNames[1] === 'deepseek-reasoner'
+  ) {
+    updatedConfig.modelNames = [...(llmProviderModelNames[ProviderTypeEnum.DeepSeek] || [])];
+  }
+
   // Ensure createdAt exists
   if (!updatedConfig.createdAt) {
     updatedConfig.createdAt = new Date('03/04/2025').getTime();

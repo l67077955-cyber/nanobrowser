@@ -125,30 +125,26 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
             return parsed;
           }
         }
+
+        const recovered = this.parseRawStructuredResponse(response?.raw);
+        if (recovered) {
+          logger.warning(
+            `[${this.modelName}] Recovered navigator output from raw response after error: ${errorMessage}`,
+          );
+          return recovered;
+        }
         throw new Error(`Failed to invoke ${this.modelName} with structured output: \n${errorMessage}`);
       }
 
-      // Use type assertion to access the properties
-      const rawResponse = response.raw as BaseMessage & {
-        tool_calls?: Array<{
-          args: {
-            currentState: typeof agentBrainSchema._type;
-            action: z.infer<ReturnType<typeof buildDynamicActionSchema>>;
-          };
-        }>;
-      };
-
-      // sometimes LLM returns an empty content, but with one or more tool calls, so we need to check the tool calls
-      if (rawResponse.tool_calls && rawResponse.tool_calls.length > 0) {
-        logger.info('Navigator structuredLlm tool call with empty content', rawResponse.tool_calls);
-        // only use the first tool call
-        const toolCall = rawResponse.tool_calls[0];
-        return {
-          current_state: toolCall.args.currentState,
-          action: [...toolCall.args.action],
-        };
+      const recovered = this.parseRawStructuredResponse(response?.raw);
+      if (recovered) {
+        logger.warning(`[${this.modelName}] Recovered navigator output from raw response`);
+        return recovered;
       }
-      throw new ResponseParseError('Could not parse navigator response');
+
+      throw new ResponseParseError(
+        `Could not parse navigator response (${this.getRawResponseDebugInfo(response?.raw)})`,
+      );
     }
 
     // Fallback to parent class manual JSON extraction for models without structured output support
