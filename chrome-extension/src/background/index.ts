@@ -100,6 +100,8 @@ chrome.runtime.onConnect.addListener(port => {
             if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
 
             logger.info('new_task', message.tabId, message.task);
+            // Otherwise the previous executor keeps running unreachable and both fight over the same tab
+            await currentExecutor?.cancel();
             currentExecutor = await setupExecutor(message.taskId, message.task, browserContext);
             subscribeToExecutorEvents(currentExecutor);
 
@@ -228,6 +230,7 @@ chrome.runtime.onConnect.addListener(port => {
               // Switch to the specified tab
               await browserContext.switchTab(message.tabId);
               // Setup executor with the new taskId and a dummy task description
+              await currentExecutor?.cancel();
               currentExecutor = await setupExecutor(message.taskId, message.task, browserContext);
               subscribeToExecutorEvents(currentExecutor);
 

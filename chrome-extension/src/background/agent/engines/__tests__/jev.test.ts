@@ -82,6 +82,18 @@ describe('Jev action space', () => {
     expect(space.targets.SELECT!['2:2'].optionText).toBe('France');
   });
 
+  it('skips unlabeled clickables but keeps unlabeled text fields', () => {
+    const wrapper = el('div', {}, 0);
+    const field = el('input', { type: 'text' }, 5);
+    const space = buildActionSpace(
+      new Map([
+        [0, wrapper],
+        [5, field],
+      ]),
+    );
+    expect(space.elements.map(e => e.index)).toEqual(['5']);
+  });
+
   it('builds one question per operation plus the operation question', () => {
     const state = signupPage();
     const body = buildJevRequest(state, buildActionSpace(state.selectorMap), 'goal', [], 'm');
@@ -151,6 +163,8 @@ describe('JevDecisionEngine', () => {
     expect(await engineWith({ operation: choice('DONE', OPS) }).engine.decide(signupPage(), signal)).toBeNull();
     const lowConfidence = { operation: choice('CLICK', OPS, 0.3), click_target: choice('3', ['1', '3']) };
     expect(await engineWith(lowConfidence).engine.decide(signupPage(), signal)).toBeNull();
+    const lowTarget = { operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3'], 0.51) };
+    expect(await engineWith(lowTarget).engine.decide(signupPage(), signal)).toBeNull();
   });
 
   it('defers after the same decision repeats three times', async () => {

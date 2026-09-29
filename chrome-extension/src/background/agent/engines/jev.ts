@@ -16,7 +16,8 @@ const TYPESAFE_MODEL = 'jev-latest';
 
 const REQUEST_TIMEOUT_MS = 15000;
 const MIN_OPERATION_CONFIDENCE = 0.5;
-const MIN_TARGET_CONFIDENCE = 0.4;
+// Wrong picks seen in practice scored ~0.5 on the target head; correct ones 0.67+
+const MIN_TARGET_CONFIDENCE = 0.6;
 const MAX_ELEMENTS = 250;
 const MAX_LABEL_LENGTH = 100;
 const MAX_PAGE_TEXT = 4000;
@@ -190,6 +191,8 @@ export function buildActionSpace(selectorMap: Map<number, DOMElementNode>): JevA
     const index = String(highlightIndex);
     const role = elementRole(node);
     const label = elementLabel(node);
+    // An unlabeled clickable (e.g. a wrapper div) cannot be told apart by Jev and gets picked by mistake
+    if (!label && !isTextEditable(node) && (node.tagName ?? '').toLowerCase() !== 'select') continue;
     const element: JevElement = { index, role, label, operations: [] };
     if (attrs.value !== undefined && attrs.value !== '') element.value = collapse(attrs.value, MAX_LABEL_LENGTH);
     if (attrs['aria-checked'] ?? attrs.checked) element.checked = attrs['aria-checked'] ?? 'true';

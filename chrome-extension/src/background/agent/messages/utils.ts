@@ -154,6 +154,28 @@ export function convertInputMessages(inputMessages: BaseMessage[], modelName: st
 }
 
 /**
+ * The planner must not see the navigator's AgentOutput tool calls as tool calls: some models (DeepSeek)
+ * imitate the history and answer with an AgentOutput call instead of the planner schema.
+ */
+export function convertMessagesForPlanner(inputMessages: BaseMessage[]): BaseMessage[] {
+  const outputMessages: BaseMessage[] = [];
+  for (const message of inputMessages) {
+    if (message instanceof ToolMessage) {
+      // only placeholders answering the tool calls below
+      continue;
+    }
+    if (message instanceof AIMessage && message.tool_calls?.length) {
+      // new message objects: the originals are shared with the navigator's history
+      const outputs = message.tool_calls.map(toolCall => JSON.stringify(toolCall.args));
+      outputMessages.push(new AIMessage({ content: `Navigator output: ${outputs.join('\n')}` }));
+      continue;
+    }
+    outputMessages.push(message);
+  }
+  return outputMessages;
+}
+
+/**
  * Convert messages for non-function-calling models
  * @param inputMessages - List of messages to convert
  * @returns Converted list of messages

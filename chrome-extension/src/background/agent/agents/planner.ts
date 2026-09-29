@@ -15,7 +15,7 @@ import {
   LLM_FORBIDDEN_ERROR_MESSAGE,
   RequestCancelledError,
 } from './errors';
-import { filterExternalContent } from '../messages/utils';
+import { convertMessagesForPlanner, filterExternalContent } from '../messages/utils';
 const logger = createLogger('PlannerAgent');
 
 // Define Zod schema for planner output
@@ -77,7 +77,7 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
         plannerMessages[plannerMessages.length - 1] = new HumanMessage(newMsg);
       }
 
-      const modelOutput = await this.invoke(plannerMessages);
+      const modelOutput = await this.invoke(convertMessagesForPlanner(plannerMessages));
       if (!modelOutput) {
         throw new Error('Failed to validate planner output');
       }
