@@ -25,6 +25,7 @@ import { chatHistoryStore } from '@extension/storage/lib/chat';
 import type { AgentStepHistory } from './history';
 import type { GeneralSettingsConfig } from '@extension/storage';
 import { analytics } from '../services/analytics';
+import { JevDecisionEngine } from './engines/jev';
 
 const logger = createLogger('Executor');
 
@@ -43,6 +44,7 @@ export class Executor {
   private readonly navigatorPrompt: NavigatorPrompt;
   private readonly generalSettings: GeneralSettingsConfig | undefined;
   private tasks: string[] = [];
+  private latestNextSteps: string | null = null;
   constructor(
     task: string,
     taskId: string,
@@ -78,6 +80,16 @@ export class Executor {
       prompt: this.navigatorPrompt,
     });
 
+    if (this.generalSettings?.fastMode && this.generalSettings.fastModeApiKey) {
+      this.navigator.setDecisionEngine(
+        new JevDecisionEngine({
+          apiKey: this.generalSettings.fastModeApiKey,
+          textLLM: navigatorLLM,
+          getGoal: () => this.decisionGoal(),
+        }),
+      );
+    }
+
     this.planner = new PlannerAgent({
       chatLLM: plannerLLM,
       context: context,
@@ -104,6 +116,11 @@ export class Executor {
 
     // need to reset previous action results that are not included in memory
     this.context.actionResults = this.context.actionResults.filter(result => result.includeInMemory);
+  }
+
+  private decisionGoal(): string {
+    const goal = this.tasks.join('\n');
+    return this.latestNextSteps ? `${goal}\nCurrent plan: ${this.latestNextSteps}` : goal;
   }
 
   /**
@@ -248,6 +265,7 @@ export class Executor {
       const planOutput = await this.planner.execute();
       if (planOutput.result) {
         this.context.messageManager.addPlan(JSON.stringify(planOutput.result), positionForPlan);
+        this.latestNextSteps = planOutput.result.next_steps || null;
       }
       return planOutput;
     } catch (error) {

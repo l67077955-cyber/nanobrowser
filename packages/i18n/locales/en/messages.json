@@ -262,6 +262,15 @@
   "options_general_replayHistoricalTasks_desc": {
     "message": "Enable storing and replaying of agent step history (experimental, may have issues)"
   },
+  "options_general_fastMode": {
+    "message": "Fast Mode (experimental)"
+  },
+  "options_general_fastMode_desc": {
+    "message": "Let the Jev decision model pick clicks, typing and dropdown choices in about 0.5s per step. Falls back to the Navigator model when unsure. Page text and element labels are sent to OpenRouter/TypeSafe."
+  },
+  "options_general_fastModeApiKey": {
+    "message": "OpenRouter or TypeSafe API Key"
+  },
 
   "options_models_providers_header": {
     "message": "LLM Providers"

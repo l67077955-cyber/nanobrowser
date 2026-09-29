@@ -262,6 +262,15 @@
   "options_general_replayHistoricalTasks_desc": {
     "message": "啟用儲存與重播代理程式的步驟歷史紀錄 (此為實驗性功能，可能存在問題)"
   },
+  "options_general_fastMode": {
+    "message": "快速模式（實驗性）"
+  },
+  "options_general_fastMode_desc": {
+    "message": "由 Jev 決策模型選擇點擊、輸入與下拉選項，每步約 0.5 秒；不確定時退回導航模型。頁面文字與元素標籤會傳送至 OpenRouter/TypeSafe。"
+  },
+  "options_general_fastModeApiKey": {
+    "message": "OpenRouter 或 TypeSafe API 金鑰"
+  },
   "options_models_providers_header": {
     "message": "LLM 提供者"
   },

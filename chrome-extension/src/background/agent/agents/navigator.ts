@@ -28,6 +28,7 @@ import { convertZodToJsonSchema, repairJsonString } from '@src/background/utils'
 import { HistoryTreeProcessor } from '@src/background/browser/dom/history/service';
 import { AgentStepRecord } from '../history';
 import { type DOMHistoryElement } from '@src/background/browser/dom/history/view';
+import type { NavigatorDecisionEngine } from '../engines/types';
 
 const logger = createLogger('NavigatorAgent');
 
@@ -76,6 +77,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   private actionRegistry: NavigatorActionRegistry;
   private jsonSchema: Record<string, unknown>;
   private _stateHistory: BrowserStateHistory | null = null;
+  private decisionEngine: NavigatorDecisionEngine | null = null;
 
   constructor(
     actionRegistry: NavigatorActionRegistry,
@@ -180,7 +182,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       const inputMessages = messageManager.getMessages();
       // logger.info('Navigator input message', inputMessages[inputMessages.length - 1]);
 
-      const modelOutput = await this.invoke(inputMessages);
+      const modelOutput = (await this.decideWithEngine(currentState)) ?? (await this.invoke(inputMessages));
 
       // check if the task is paused or stopped
       if (this.context.paused || this.context.stopped) {
@@ -198,6 +200,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
       // take the actions
       actionResults = await this.doMultiAction(actions);
+      this.decisionEngine?.observeStep(actions, actionResults);
       // logger.info('Action results', JSON.stringify(actionResults, null, 2));
 
       this.context.actionResults = actionResults;
@@ -262,6 +265,24 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
         // logger.info('All history', JSON.stringify(this.context.history, null, 2));
       }
+    }
+  }
+
+  setDecisionEngine(engine: NavigatorDecisionEngine | null): void {
+    this.decisionEngine = engine;
+  }
+
+  /**
+   * Ask the fast decision engine first; null means this step goes to the LLM
+   */
+  private async decideWithEngine(state: BrowserState): Promise<this['ModelOutput'] | null> {
+    if (!this.decisionEngine) return null;
+    try {
+      return await this.decisionEngine.decide(state, this.context.controller.signal);
+    } catch (error) {
+      if (this.context.controller.signal.aborted) throw error;
+      logger.warning(`[${this.decisionEngine.name}] decision failed, falling back to LLM`, error);
+      return null;
     }
   }
 

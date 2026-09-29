@@ -262,6 +262,15 @@
   "options_general_replayHistoricalTasks_desc": {
     "message": "Ativar o armazenamento e a reprodução do histórico de passos do agente (experimental, pode ter problemas)"
   },
+  "options_general_fastMode": {
+    "message": "Modo Rápido (experimental)"
+  },
+  "options_general_fastMode_desc": {
+    "message": "O modelo de decisão Jev escolhe cliques, digitação e opções de menus em cerca de 0,5s por passo. Usa o modelo Navegador quando não tem certeza. Texto da página e rótulos de elementos são enviados para OpenRouter/TypeSafe."
+  },
+  "options_general_fastModeApiKey": {
+    "message": "Chave de API OpenRouter ou TypeSafe"
+  },
   "options_models_providers_header": {
     "message": "Provedores de LLM"
   },
