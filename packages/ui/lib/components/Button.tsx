@@ -6,8 +6,8 @@ export type ButtonProps = {
   disabled?: boolean;
 } & ComponentPropsWithoutRef<'button'>;
 
-// Colors come from the --nb-* tokens (see pages/options/src/Options.css), so light/dark follows the system
-// scheme without a theme prop. The consuming page's Tailwind config must define the `nb` palette.
+// Colors come from the --nb-* tokens (packages/tailwind-config), so light/dark follows the system
+// scheme without a theme prop.
 export function Button({ variant = 'primary', className, disabled, children, ...props }: ButtonProps) {
   return (
     <button

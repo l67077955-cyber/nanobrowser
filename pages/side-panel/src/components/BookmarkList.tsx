@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
 import { useState, useRef, useEffect } from 'react';
-import { FaTrash, FaPen, FaCheck, FaTimes } from 'react-icons/fa';
+import { FiTrash2, FiEdit2, FiCheck, FiX } from 'react-icons/fi';
 import { t } from '@extension/i18n';
 
 interface Bookmark {
@@ -15,7 +15,6 @@ interface BookmarkListProps {
   onBookmarkUpdateTitle?: (id: number, title: string) => void;
   onBookmarkDelete?: (id: number) => void;
   onBookmarkReorder?: (draggedId: number, targetId: number) => void;
-  isDarkMode?: boolean;
 }
 
 const BookmarkList: React.FC<BookmarkListProps> = ({
@@ -24,7 +23,6 @@ const BookmarkList: React.FC<BookmarkListProps> = ({
   onBookmarkUpdateTitle,
   onBookmarkDelete,
   onBookmarkReorder,
-  isDarkMode = false,
 }) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState<string>('');
@@ -80,97 +78,69 @@ const BookmarkList: React.FC<BookmarkListProps> = ({
     }
   }, [editingId]);
 
+  const actionButton = 'rounded-md p-1.5 text-nb-muted transition hover:bg-nb-tile-2';
+
   return (
     <div className="p-2">
-      <h3 className={`mb-3 text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-        {t('chat_bookmarks_header')}
-      </h3>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <h3 className="nb-label px-2 pb-2 pt-1">{t('chat_bookmarks_header')}</h3>
+      <ul className="flex flex-col gap-0.5">
         {bookmarks.map(bookmark => (
-          <div
+          <li
             key={bookmark.id}
             draggable={editingId !== bookmark.id}
             onDragStart={e => handleDragStart(e, bookmark.id)}
             onDragEnd={handleDragEnd}
             onDragOver={handleDragOver}
             onDrop={e => handleDrop(e, bookmark.id)}
-            className={`group relative rounded-lg p-3 ${
-              isDarkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-sky-50'
-            } border ${isDarkMode ? 'border-slate-700' : 'border-sky-100'}`}>
+            className="group flex items-center gap-1 rounded-lg hover:bg-nb-tile">
             {editingId === bookmark.id ? (
-              <div className="flex items-center">
+              <div className="flex flex-1 items-center gap-1 p-1">
                 <input
                   ref={inputRef}
                   type="text"
                   value={editTitle}
                   onChange={e => setEditTitle(e.target.value)}
-                  className={`mr-2 grow rounded px-2 py-1 text-sm ${
-                    isDarkMode ? 'border-slate-600 bg-slate-700 text-gray-200' : 'border-sky-100 bg-white text-gray-700'
-                  } border`}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleSaveEdit(bookmark.id);
+                    if (e.key === 'Escape') handleCancelEdit();
+                  }}
+                  className="min-w-0 grow rounded-md border border-nb-llm bg-nb-tile px-2 py-1 text-[13px] text-nb-ink focus:outline-none"
                 />
                 <button
                   onClick={() => handleSaveEdit(bookmark.id)}
-                  className={`rounded p-1 ${
-                    isDarkMode
-                      ? 'bg-slate-700 text-green-400 hover:bg-slate-600'
-                      : 'bg-white text-green-500 hover:bg-gray-100'
-                  }`}
+                  className={`${actionButton} hover:text-nb-good`}
                   aria-label={t('chat_bookmarks_saveEdit')}
                   type="button">
-                  <FaCheck size={14} />
+                  <FiCheck size={14} />
                 </button>
                 <button
                   onClick={handleCancelEdit}
-                  className={`ml-1 rounded p-1 ${
-                    isDarkMode
-                      ? 'bg-slate-700 text-red-400 hover:bg-slate-600'
-                      : 'bg-white text-red-500 hover:bg-gray-100'
-                  }`}
+                  className={`${actionButton} hover:text-nb-ink`}
                   aria-label={t('chat_bookmarks_cancelEdit')}
                   type="button">
-                  <FaTimes size={14} />
+                  <FiX size={14} />
                 </button>
               </div>
             ) : (
               <>
-                <div className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => onBookmarkSelect(bookmark.content)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        onBookmarkSelect(bookmark.content);
-                      }
-                    }}
-                    className="w-full text-left">
-                    <div
-                      className={`truncate pr-10 text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                      {bookmark.title}
-                    </div>
-                  </button>
-                </div>
-              </>
-            )}
-
-            {editingId !== bookmark.id && (
-              <>
-                {/* Edit button - top right */}
+                <button
+                  type="button"
+                  onClick={() => onBookmarkSelect(bookmark.content)}
+                  title={bookmark.content}
+                  className="min-w-0 flex-1 truncate rounded-lg p-2 text-left text-[13px] text-nb-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-nb-llm">
+                  {bookmark.title}
+                </button>
                 <button
                   onClick={e => {
                     e.stopPropagation();
                     handleEditClick(bookmark);
                   }}
-                  className={`absolute right-[28px] top-1/2 z-10 -translate-y-1/2 rounded p-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 ${
-                    isDarkMode
-                      ? 'bg-slate-700 text-sky-400 hover:bg-slate-600'
-                      : 'bg-white text-sky-500 hover:bg-gray-100'
-                  }`}
+                  className={`${actionButton} opacity-0 hover:text-nb-ink focus-visible:opacity-100 group-hover:opacity-100`}
                   aria-label={t('chat_bookmarks_edit')}
+                  title={t('chat_bookmarks_edit')}
                   type="button">
-                  <FaPen size={14} />
+                  <FiEdit2 size={13} />
                 </button>
-
-                {/* Delete button - bottom right */}
                 <button
                   onClick={e => {
                     e.stopPropagation();
@@ -178,20 +148,17 @@ const BookmarkList: React.FC<BookmarkListProps> = ({
                       onBookmarkDelete(bookmark.id);
                     }
                   }}
-                  className={`absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded p-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 ${
-                    isDarkMode
-                      ? 'bg-slate-700 text-gray-400 hover:bg-slate-600'
-                      : 'bg-white text-gray-500 hover:bg-gray-100'
-                  }`}
+                  className={`${actionButton} mr-1 opacity-0 hover:text-nb-critical focus-visible:opacity-100 group-hover:opacity-100`}
                   aria-label={t('chat_bookmarks_delete')}
+                  title={t('chat_bookmarks_delete')}
                   type="button">
-                  <FaTrash size={14} />
+                  <FiTrash2 size={13} />
                 </button>
               </>
             )}
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 };

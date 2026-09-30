@@ -43,7 +43,6 @@
 .nb-panel {
   background: var(--nb-page);
   color: var(--nb-ink);
-  border: 1px solid var(--nb-line);
   font-family:
     Inter,
     system-ui,

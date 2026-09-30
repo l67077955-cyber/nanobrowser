@@ -1,9 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { RxDiscordLogo } from 'react-icons/rx';
-import { FiSettings } from 'react-icons/fi';
-import { PiPlusBold } from 'react-icons/pi';
-import { GrHistory } from 'react-icons/gr';
+import { FiSettings, FiPlus, FiClock, FiChevronLeft } from 'react-icons/fi';
 import { type Message, Actors, chatHistoryStore, agentModelStore, generalSettingsStore } from '@extension/storage';
 import favoritesStorage, { type FavoritePrompt } from '@extension/storage/lib/prompt/favorites';
 import { t } from '@extension/i18n';
@@ -33,7 +31,6 @@ const SidePanel = () => {
   const [chatSessions, setChatSessions] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
   const [isFollowUpMode, setIsFollowUpMode] = useState(false);
   const [isHistoricalSession, setIsHistoricalSession] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
   const [favoritePrompts, setFavoritePrompts] = useState<FavoritePrompt[]>([]);
   const [hasConfiguredModels, setHasConfiguredModels] = useState<boolean | null>(null); // null = loading, false = no models, true = has models
   const [isRecording, setIsRecording] = useState(false);
@@ -49,19 +46,6 @@ const SidePanel = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
-
-  // Check for dark mode preference
-  useEffect(() => {
-    const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    setIsDarkMode(darkModeMediaQuery.matches);
-
-    const handleChange = (e: MediaQueryListEvent) => {
-      setIsDarkMode(e.matches);
-    };
-
-    darkModeMediaQuery.addEventListener('change', handleChange);
-    return () => darkModeMediaQuery.removeEventListener('change', handleChange);
-  }, []);
 
   // Check if models are configured
   const checkModelConfiguration = useCallback(async () => {
@@ -1012,208 +996,188 @@ const SidePanel = () => {
     }
   };
 
+  const chatInput = (
+    <div className="border-t border-nb-line p-2">
+      {pendingConfirmation !== null && (
+        <div
+          role="alertdialog"
+          aria-label={pendingConfirmation}
+          className="mb-2 flex items-center gap-2 rounded-xl border border-l-[3px] border-nb-line border-l-nb-warning bg-nb-tile p-2 pl-3 text-[12.5px] text-nb-ink shadow-nb">
+          <span className="min-w-0 flex-1 break-words">{pendingConfirmation}</span>
+          <button
+            type="button"
+            onClick={() => handleConfirmAction(false)}
+            className="rounded-lg border border-nb-line bg-nb-tile-2 px-2.5 py-1 font-medium text-nb-ink-2 transition-colors hover:text-nb-ink">
+            {t('chat_confirm_decline')}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleConfirmAction(true)}
+            className="rounded-lg bg-nb-warning px-2.5 py-1 font-medium text-white transition-opacity hover:opacity-90">
+            {t('chat_confirm_approve')}
+          </button>
+        </div>
+      )}
+      <ChatInput
+        onSendMessage={handleSendMessage}
+        onStopTask={handleStopTask}
+        onMicClick={handleMicClick}
+        isRecording={isRecording}
+        isProcessingSpeech={isProcessingSpeech}
+        disabled={!inputEnabled || isHistoricalSession}
+        showStopButton={showStopButton}
+        setContent={setter => {
+          setInputTextRef.current = setter;
+        }}
+        historicalSessionId={isHistoricalSession && replayEnabled ? currentSessionId : null}
+        onReplay={handleReplay}
+      />
+    </div>
+  );
+
   return (
-    <div>
-      <div className="nb-panel flex h-screen flex-col overflow-hidden rounded-2xl">
-        <header className="header relative">
-          <div className="header-logo">
-            {showHistory ? (
-              <button
-                type="button"
-                onClick={() => handleBackToChat(false)}
-                className={`${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'} cursor-pointer`}
-                aria-label={t('nav_back_a11y')}>
-                {t('nav_back')}
-              </button>
-            ) : (
-              <img src="/icon-128.png" alt="Extension Logo" className="size-6" />
-            )}
-          </div>
-          <div className="header-icons">
-            {!showHistory && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleNewChat}
-                  onKeyDown={e => e.key === 'Enter' && handleNewChat()}
-                  className={'header-icon cursor-pointer'}
-                  aria-label={t('nav_newChat_a11y')}
-                  tabIndex={0}>
-                  <PiPlusBold size={20} />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLoadHistory}
-                  onKeyDown={e => e.key === 'Enter' && handleLoadHistory()}
-                  className={'header-icon cursor-pointer'}
-                  aria-label={t('nav_loadHistory_a11y')}
-                  tabIndex={0}>
-                  <GrHistory size={20} />
-                </button>
-              </>
-            )}
-            <a href="https://discord.gg/NN3ABHggMK" target="_blank" rel="noopener noreferrer" className={'header-icon'}>
-              <RxDiscordLogo size={20} />
-            </a>
+    <div className="nb-panel flex h-screen flex-col overflow-hidden">
+      <header className="header relative">
+        <div className="header-logo">
+          {showHistory ? (
             <button
               type="button"
-              onClick={() => chrome.runtime.openOptionsPage()}
-              onKeyDown={e => e.key === 'Enter' && chrome.runtime.openOptionsPage()}
-              className={'header-icon cursor-pointer'}
-              aria-label={t('nav_settings_a11y')}
-              tabIndex={0}>
-              <FiSettings size={20} />
+              onClick={() => handleBackToChat(false)}
+              className="header-icon gap-1 text-sm font-medium"
+              aria-label={t('nav_back_a11y')}>
+              <FiChevronLeft size={16} />
+              {t('nav_back')}
             </button>
-          </div>
-        </header>
-        {showHistory ? (
-          <div className="flex-1 overflow-hidden">
-            <ChatHistoryList
-              sessions={chatSessions}
-              onSessionSelect={handleSessionSelect}
-              onSessionDelete={handleSessionDelete}
-              onSessionBookmark={handleSessionBookmark}
-              visible={true}
-              isDarkMode={isDarkMode}
-            />
-          </div>
-        ) : (
-          <>
-            {/* Show loading state while checking model configuration */}
-            {hasConfiguredModels === null && (
-              <div
-                className={`flex flex-1 items-center justify-center p-8 ${isDarkMode ? 'text-sky-300' : 'text-sky-600'}`}>
-                <div className="text-center">
-                  <div className="mx-auto mb-4 size-8 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"></div>
-                  <p>{t('status_checkingConfig')}</p>
-                </div>
-              </div>
-            )}
+          ) : (
+            <img src="/icon-128.png" alt="Nanobrowser" className="size-5" />
+          )}
+        </div>
+        <div className="header-icons">
+          {!showHistory && (
+            <>
+              <button
+                type="button"
+                onClick={handleNewChat}
+                className="header-icon"
+                aria-label={t('nav_newChat_a11y')}
+                title={t('nav_newChat_a11y')}>
+                <FiPlus size={17} />
+              </button>
+              <button
+                type="button"
+                onClick={handleLoadHistory}
+                className="header-icon"
+                aria-label={t('nav_loadHistory_a11y')}
+                title={t('nav_loadHistory_a11y')}>
+                <FiClock size={17} />
+              </button>
+            </>
+          )}
+          <a
+            href="https://discord.gg/NN3ABHggMK"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="header-icon"
+            aria-label="Discord"
+            title="Discord">
+            <RxDiscordLogo size={17} />
+          </a>
+          <button
+            type="button"
+            onClick={() => chrome.runtime.openOptionsPage()}
+            className="header-icon"
+            aria-label={t('nav_settings_a11y')}
+            title={t('nav_settings_a11y')}>
+            <FiSettings size={17} />
+          </button>
+        </div>
+      </header>
+      {showHistory ? (
+        <div className="flex-1 overflow-hidden">
+          <ChatHistoryList
+            sessions={chatSessions}
+            onSessionSelect={handleSessionSelect}
+            onSessionDelete={handleSessionDelete}
+            onSessionBookmark={handleSessionBookmark}
+            visible={true}
+          />
+        </div>
+      ) : (
+        <>
+          {/* Show loading state while checking model configuration */}
+          {hasConfiguredModels === null && (
+            <div className="flex flex-1 items-center justify-center gap-2 p-8 text-sm text-nb-muted">
+              <div className="size-4 animate-spin rounded-full border-2 border-nb-track border-t-nb-llm" />
+              <p>{t('status_checkingConfig')}</p>
+            </div>
+          )}
 
-            {/* Show setup message when no models are configured */}
-            {hasConfiguredModels === false && (
-              <div
-                className={`flex flex-1 items-center justify-center p-8 ${isDarkMode ? 'text-sky-300' : 'text-sky-600'}`}>
-                <div className="max-w-md text-center">
-                  <img src="/icon-128.png" alt="Nanobrowser Logo" className="mx-auto mb-4 size-12" />
-                  <h3 className={`mb-2 text-lg font-semibold ${isDarkMode ? 'text-sky-200' : 'text-sky-700'}`}>
-                    {t('welcome_title')}
-                  </h3>
-                  <p className="mb-4">{t('welcome_instruction')}</p>
-                  <button
-                    onClick={() => chrome.runtime.openOptionsPage()}
-                    className={`my-4 rounded-lg px-4 py-2 font-medium transition-colors ${
-                      isDarkMode ? 'bg-sky-600 text-white hover:bg-sky-700' : 'bg-sky-500 text-white hover:bg-sky-600'
-                    }`}>
-                    {t('welcome_openSettings')}
-                  </button>
-                  <div className="mt-4 text-sm opacity-75">
-                    <a
-                      href="https://github.com/nanobrowser/nanobrowser?tab=readme-ov-file#-quick-start"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-700 hover:text-sky-600'}`}>
-                      {t('welcome_quickStart')}
-                    </a>
-                    <span className="mx-2">•</span>
-                    <a
-                      href="https://discord.gg/NN3ABHggMK"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-700 hover:text-sky-600'}`}>
-                      {t('welcome_joinCommunity')}
-                    </a>
-                  </div>
+          {/* Show setup message when no models are configured */}
+          {hasConfiguredModels === false && (
+            <div className="flex flex-1 flex-col justify-center p-4">
+              <div className="rounded-xl border border-nb-line bg-nb-tile p-4 text-left shadow-nb">
+                <div className="mb-3 flex items-center gap-2">
+                  <img src="/icon-128.png" alt="" className="size-5" />
+                  <span className="nb-label">Nanobrowser</span>
                 </div>
+                <h3 className="mb-1 text-[15px] font-semibold tracking-tight">{t('welcome_title')}</h3>
+                <p className="mb-4 text-[13px] leading-relaxed text-nb-ink-2">{t('welcome_instruction')}</p>
+                <button
+                  type="button"
+                  onClick={() => chrome.runtime.openOptionsPage()}
+                  className="rounded-lg bg-nb-llm px-3 py-1.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90">
+                  {t('welcome_openSettings')}
+                </button>
               </div>
-            )}
+              <div className="mt-3 flex gap-4 px-1 text-xs text-nb-muted">
+                <a
+                  href="https://github.com/nanobrowser/nanobrowser?tab=readme-ov-file#-quick-start"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-nb-ink">
+                  {t('welcome_quickStart')} ↗
+                </a>
+                <a
+                  href="https://discord.gg/NN3ABHggMK"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-nb-ink">
+                  {t('welcome_joinCommunity')} ↗
+                </a>
+              </div>
+            </div>
+          )}
 
-            {/* Show normal chat interface when models are configured */}
-            {hasConfiguredModels === true && (
-              <>
-                {messages.length === 0 && (
-                  <>
-                    <div
-                      className={`border-t ${isDarkMode ? 'border-sky-900' : 'border-sky-100'} mb-2 p-2 shadow-sm backdrop-blur-sm`}>
-                      <ChatInput
-                        onSendMessage={handleSendMessage}
-                        onStopTask={handleStopTask}
-                        onMicClick={handleMicClick}
-                        isRecording={isRecording}
-                        isProcessingSpeech={isProcessingSpeech}
-                        disabled={!inputEnabled || isHistoricalSession}
-                        showStopButton={showStopButton}
-                        setContent={setter => {
-                          setInputTextRef.current = setter;
-                        }}
-                        isDarkMode={isDarkMode}
-                        historicalSessionId={isHistoricalSession && replayEnabled ? currentSessionId : null}
-                        onReplay={handleReplay}
-                      />
-                    </div>
-                    <div className="flex-1 overflow-y-auto">
-                      <BookmarkList
-                        bookmarks={favoritePrompts}
-                        onBookmarkSelect={handleBookmarkSelect}
-                        onBookmarkUpdateTitle={handleBookmarkUpdateTitle}
-                        onBookmarkDelete={handleBookmarkDelete}
-                        onBookmarkReorder={handleBookmarkReorder}
-                        isDarkMode={isDarkMode}
-                      />
-                    </div>
-                  </>
-                )}
-                {messages.length > 0 && (
-                  <div className="scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll scroll-smooth p-2">
-                    <MessageList messages={messages} isDarkMode={isDarkMode} />
-                    <div ref={messagesEndRef} />
-                  </div>
-                )}
-                {messages.length > 0 && (
-                  <div
-                    className={`border-t ${isDarkMode ? 'border-sky-900' : 'border-sky-100'} p-2 shadow-sm backdrop-blur-sm`}>
-                    {pendingConfirmation !== null && (
-                      <div
-                        role="alertdialog"
-                        aria-label={pendingConfirmation}
-                        className={`mb-2 flex items-center gap-2 rounded-lg border p-2 text-sm ${isDarkMode ? 'border-amber-700 bg-slate-800 text-gray-200' : 'border-amber-300 bg-amber-50 text-gray-800'}`}>
-                        <span className="min-w-0 flex-1 break-words">{pendingConfirmation}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmAction(false)}
-                          className={`rounded-md px-3 py-1 ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-200 hover:bg-gray-300'}`}>
-                          {t('chat_confirm_decline')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleConfirmAction(true)}
-                          className="rounded-md bg-amber-600 px-3 py-1 text-white hover:bg-amber-700">
-                          {t('chat_confirm_approve')}
-                        </button>
-                      </div>
-                    )}
-                    <ChatInput
-                      onSendMessage={handleSendMessage}
-                      onStopTask={handleStopTask}
-                      onMicClick={handleMicClick}
-                      isRecording={isRecording}
-                      isProcessingSpeech={isProcessingSpeech}
-                      disabled={!inputEnabled || isHistoricalSession}
-                      showStopButton={showStopButton}
-                      setContent={setter => {
-                        setInputTextRef.current = setter;
-                      }}
-                      isDarkMode={isDarkMode}
-                      historicalSessionId={isHistoricalSession && replayEnabled ? currentSessionId : null}
-                      onReplay={handleReplay}
+          {/* Show normal chat interface when models are configured */}
+          {hasConfiguredModels === true && (
+            <>
+              {messages.length === 0 && (
+                <>
+                  {chatInput}
+                  <div className="flex-1 overflow-y-auto">
+                    <BookmarkList
+                      bookmarks={favoritePrompts}
+                      onBookmarkSelect={handleBookmarkSelect}
+                      onBookmarkUpdateTitle={handleBookmarkUpdateTitle}
+                      onBookmarkDelete={handleBookmarkDelete}
+                      onBookmarkReorder={handleBookmarkReorder}
                     />
                   </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </div>
+                </>
+              )}
+              {messages.length > 0 && (
+                <>
+                  <div className="scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll scroll-smooth p-2">
+                    <MessageList messages={messages} />
+                    <div ref={messagesEndRef} />
+                  </div>
+                  {chatInput}
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 };

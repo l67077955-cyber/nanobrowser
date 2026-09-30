@@ -1,6 +1,5 @@
 /* eslint-disable react/prop-types */
-import { FaTrash } from 'react-icons/fa';
-import { BsBookmark } from 'react-icons/bs';
+import { FiTrash2, FiBookmark } from 'react-icons/fi';
 import { t } from '@extension/i18n';
 
 interface ChatSession {
@@ -15,7 +14,6 @@ interface ChatHistoryListProps {
   onSessionDelete: (sessionId: string) => void;
   onSessionBookmark: (sessionId: string) => void;
   visible: boolean;
-  isDarkMode?: boolean;
 }
 
 const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
@@ -24,7 +22,6 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
   onSessionDelete,
   onSessionBookmark,
   visible,
-  isDarkMode = false,
 }) => {
   if (!visible) return null;
 
@@ -33,69 +30,54 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
+  const actionButton =
+    'rounded-md p-1.5 text-nb-muted opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100 hover:bg-nb-tile-2';
+
   return (
-    <div className="h-full overflow-y-auto p-4">
-      <h2 className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-        {t('chat_history_title')}
-      </h2>
+    <div className="h-full overflow-y-auto p-2">
+      <h2 className="nb-label px-2 pb-2 pt-1">{t('chat_history_title')}</h2>
       {sessions.length === 0 ? (
-        <div
-          className={`rounded-lg ${isDarkMode ? 'bg-slate-800 text-gray-400' : 'bg-white/30 text-gray-500'} p-4 text-center backdrop-blur-sm`}>
+        <div className="rounded-xl border border-dashed border-nb-line p-4 text-center text-[12.5px] text-nb-muted">
           {t('chat_history_empty')}
         </div>
       ) : (
-        <div className="space-y-2">
+        <ul className="flex flex-col gap-0.5">
           {sessions.map(session => (
-            <div
-              key={session.id}
-              className={`group relative rounded-lg ${
-                isDarkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white/50 hover:bg-white/70'
-              } p-3 backdrop-blur-sm transition-all`}>
-              <button onClick={() => onSessionSelect(session.id)} className="w-full text-left" type="button">
-                <h3 className={`text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
-                  {session.title}
-                </h3>
-                <p className={`mt-1 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {formatDate(session.createdAt)}
-                </p>
+            <li key={session.id} className="group flex items-center gap-1 rounded-lg hover:bg-nb-tile">
+              <button
+                onClick={() => onSessionSelect(session.id)}
+                className="flex min-w-0 flex-1 items-baseline gap-3 rounded-lg p-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-nb-llm"
+                type="button">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-nb-ink">{session.title}</span>
+                <span className="shrink-0 text-[11px] tabular-nums text-nb-muted">{formatDate(session.createdAt)}</span>
               </button>
-
-              {/* Bookmark button - top right */}
               {onSessionBookmark && (
                 <button
                   onClick={e => {
                     e.stopPropagation();
                     onSessionBookmark(session.id);
                   }}
-                  className={`absolute right-2 top-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 ${
-                    isDarkMode
-                      ? 'bg-slate-700 text-sky-400 hover:bg-slate-600'
-                      : 'bg-white text-sky-500 hover:bg-gray-100'
-                  }`}
+                  className={`${actionButton} hover:text-nb-llm`}
                   aria-label={t('chat_history_bookmark')}
+                  title={t('chat_history_bookmark')}
                   type="button">
-                  <BsBookmark size={14} />
+                  <FiBookmark size={14} />
                 </button>
               )}
-
-              {/* Delete button - bottom right */}
               <button
                 onClick={e => {
                   e.stopPropagation();
                   onSessionDelete(session.id);
                 }}
-                className={`absolute bottom-2 right-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 ${
-                  isDarkMode
-                    ? 'bg-slate-700 text-gray-400 hover:bg-slate-600'
-                    : 'bg-white text-gray-500 hover:bg-gray-100'
-                }`}
+                className={`${actionButton} mr-1 hover:text-nb-critical`}
                 aria-label={t('chat_history_delete')}
+                title={t('chat_history_delete')}
                 type="button">
-                <FaTrash size={14} />
+                <FiTrash2 size={14} />
               </button>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );

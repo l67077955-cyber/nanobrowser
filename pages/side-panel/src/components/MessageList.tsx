@@ -6,7 +6,6 @@ import './StepList.css';
 
 interface MessageListProps {
   messages: Message[];
-  isDarkMode?: boolean;
 }
 
 type NavigatorMeta = Extract<StepMeta, { kind: 'navigator' }>;
