@@ -462,11 +462,31 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     if (!this.decisionEngine) {
       return { engineResult: { decision: null }, modelOutput: await this.invoke(inputMessages) };
     }
-    return decideWithEngineOrLLM<NavigatorAgent['ModelOutput']>(
+    const started = performance.now();
+    const decided = await decideWithEngineOrLLM<NavigatorAgent['ModelOutput']>(
       this.context.controller.signal,
       signal => this.decideWithEngine(state, signal),
       signal => this.invoke(inputMessages, signal),
     );
+    const { engineResult } = decided;
+    if (engineResult.decision || engineResult.trace) return decided;
+    // no record of the engine means it was still working when the LLM answered
+    const waitedMs = Math.round(performance.now() - started);
+    return {
+      ...decided,
+      engineResult: {
+        decision: null,
+        trace: {
+          model: this.decisionEngine.name,
+          latencyMs: waitedMs,
+          operation: 'LATE',
+          confidence: 0,
+          alternatives: [],
+          deferred: 'slower than the LLM',
+          noPick: `${this.decisionEngine.name} had not answered after ${waitedMs}ms when the LLM did, so the LLM's answer was used`,
+        },
+      },
+    };
   }
 
   /**
@@ -490,6 +510,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           confidence: 0,
           alternatives: [],
           deferred: message.slice(0, 120),
+          noPick: message.slice(0, 600),
         },
       };
     }

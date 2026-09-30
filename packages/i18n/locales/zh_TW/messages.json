@@ -1130,6 +1130,12 @@
   "chat_steps_detail_alternatives": {
     "message": "備選"
   },
+  "chat_steps_detail_operations": {
+    "message": "Operations"
+  },
+  "chat_steps_detail_noPick": {
+    "message": "No pick"
+  },
   "chat_steps_you": {
     "message": "你"
   },

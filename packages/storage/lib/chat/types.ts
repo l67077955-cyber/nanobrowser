@@ -22,8 +22,10 @@ export interface JevTrace {
   targetConfidence?: number;
   margin?: number; // top-1 minus top-2 target probability
   alternatives: DecisionAlternative[];
+  operations?: DecisionAlternative[]; // the operations Jev weighed, most likely first
   path?: string[]; // groups narrowed through when the page had too many targets for one question, e.g. ["[6-10]"]
   deferred?: string; // why the step went to the LLM
+  noPick?: string; // set when Jev picked nothing at all: what went wrong, in full
 }
 
 export interface StepAction {

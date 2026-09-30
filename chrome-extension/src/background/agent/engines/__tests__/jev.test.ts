@@ -229,7 +229,41 @@ describe('JevDecisionEngine', () => {
     expect(abstain).toMatchObject({ decision: null, trace: { operation: 'ABSTAIN', deferred: 'jev abstained' } });
     const noTarget = { operation: choice('CLICK', OPS), click_target: choice('none', ['1', '3', 'none']) };
     const none = await engineWith(noTarget).engine.decide(signupPage(), signal);
-    expect(none).toMatchObject({ decision: null, trace: { operation: 'ABSTAIN', deferred: 'jev abstained' } });
+    // the operation it wanted and how it weighed the targets stay on record
+    expect(none).toMatchObject({
+      decision: null,
+      trace: {
+        operation: 'CLICK',
+        confidence: 0.95,
+        alternatives: [{ label: 'none', p: 1 }, expect.anything(), expect.anything()],
+        deferred: 'no element fits CLICK',
+      },
+    });
+    expect(none.trace?.target).toBeUndefined();
+  });
+
+  it('records how the operations were weighed', async () => {
+    const operation = {
+      type: 'choice',
+      choice: 'BLOCKED',
+      probabilities: Object.fromEntries(OPS.map(id => [id, id === 'BLOCKED' ? 0.6 : id === 'CLICK' ? 0.3 : 0.1 / 7])),
+      confidence: 0.6,
+    };
+    const { trace } = await engineWith({ operation }).engine.decide(signupPage(), signal);
+    expect(trace).toMatchObject({ operation: 'BLOCKED', deferred: 'no way forward' });
+    expect(trace?.operations?.slice(0, 2)).toEqual([
+      { label: 'BLOCKED', p: 0.6 },
+      { label: 'CLICK', p: 0.3 },
+    ]);
+    expect(trace?.operations).toHaveLength(3);
+  });
+
+  it('says so when the page has nothing to act on', async () => {
+    const { engine, fetchImpl } = engineWith({});
+    const result = await engine.decide({ ...signupPage(), selectorMap: new Map() }, signal);
+    expect(result).toMatchObject({ decision: null, trace: { deferred: 'nothing to act on' } });
+    expect(result.trace?.noPick).toBeTruthy();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('offers a none candidate in every target question', () => {
@@ -377,7 +411,7 @@ describe('Jev target narrowing', () => {
     const noGroup = narrowingEngine({ operation: choice('CLICK', CLICK_OPS), click_target: choice('none', GROUPS) });
     expect(await noGroup.engine.decide(busyPage(), signal)).toMatchObject({
       decision: null,
-      trace: { deferred: 'jev abstained' },
+      trace: { deferred: 'no element fits CLICK' },
     });
     const noElement = narrowingEngine(
       { operation: choice('CLICK', CLICK_OPS), click_target: choice('g1', GROUPS) },
@@ -385,7 +419,7 @@ describe('Jev target narrowing', () => {
     );
     expect(await noElement.engine.decide(busyPage(), signal)).toMatchObject({
       decision: null,
-      trace: { deferred: 'jev abstained', path: ['[1-5]'] },
+      trace: { deferred: 'no element fits CLICK', path: ['[1-5]'] },
     });
   });
 });

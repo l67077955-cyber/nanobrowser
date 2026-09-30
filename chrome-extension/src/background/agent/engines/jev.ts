@@ -4,7 +4,7 @@ import { createLogger } from '@src/background/log';
 import { DOMElementNode, DOMTextNode, type DOMBaseNode } from '@src/background/browser/dom/views';
 import type { BrowserState } from '@src/background/browser/views';
 import type { ActionResult } from '../types';
-import type { JevTrace } from '@extension/storage';
+import type { DecisionAlternative, JevTrace } from '@extension/storage';
 import type { EngineResult, NavigatorDecisionEngine } from './types';
 
 const logger = createLogger('JevEngine');
@@ -445,7 +445,13 @@ export type JevChoice =
   | ({ kind: 'action'; target: Target } & TargetPick)
   /** too many targets for one question: Jev picked a group and has to be asked again inside it */
   | ({ kind: 'group'; label: string; candidates: TargetCandidates } & TargetPick)
-  | { kind: 'control'; operation: keyof typeof CONTROLS; confidence: number };
+  | {
+      kind: 'control';
+      operation: keyof typeof CONTROLS;
+      confidence: number;
+      /** the operation Jev chose before it found no target for it, and how it weighed the targets */
+      declined?: TargetPick;
+    };
 
 /** A choice with nothing left to narrow */
 type ResolvedChoice = Exclude<JevChoice, { kind: 'group' }>;
@@ -462,24 +468,26 @@ export function interpretTarget(
 ): JevChoice {
   const groups = groupCandidates(candidates, maxOptions);
   const picked = validateChoice(answer, [...Object.keys(groups ?? candidates), NO_TARGET]);
-  if (picked.choice === NO_TARGET) return { kind: 'control', operation: 'ABSTAIN', confidence: picked.confidence };
+  const offered = groups
+    ? Object.fromEntries(
+        Object.entries(groups).map(([key, g]) => [
+          key,
+          collapse(`${g.label} ${groupMembers(g).join(' · ')}`, MAX_LABEL_LENGTH),
+        ]),
+      )
+    : Object.fromEntries(Object.entries(candidates).map(([key, t]) => [key, targetLabel(t)]));
   const pick = {
     operation,
     confidence,
     targetConfidence: picked.confidence,
     targetProbabilities: picked.probabilities,
+    offered,
   };
-  if (groups) {
-    const offered = Object.fromEntries(
-      Object.entries(groups).map(([key, g]) => [
-        key,
-        collapse(`${g.label} ${groupMembers(g).join(' · ')}`, MAX_LABEL_LENGTH),
-      ]),
-    );
-    return { kind: 'group', ...groups[picked.choice], ...pick, offered };
+  if (picked.choice === NO_TARGET) {
+    return { kind: 'control', operation: 'ABSTAIN', confidence: picked.confidence, declined: pick };
   }
-  const offered = Object.fromEntries(Object.entries(candidates).map(([key, t]) => [key, targetLabel(t)]));
-  return { kind: 'action', target: candidates[picked.choice], ...pick, offered };
+  if (groups) return { kind: 'group', ...groups[picked.choice], ...pick };
+  return { kind: 'action', target: candidates[picked.choice], ...pick };
 }
 
 export function interpretAnswers(
@@ -504,13 +512,23 @@ export function interpretAnswers(
 
 const MAX_ALTERNATIVES = 3;
 
+const rankProbabilities = (probabilities: Record<string, number>) =>
+  Object.entries(probabilities).sort((a, b) => b[1] - a[1]);
+
+/** The operations Jev weighed, most likely first; the answer has been validated by then */
+function operationAlternatives(answer: unknown): DecisionAlternative[] {
+  return rankProbabilities((answer as ChoiceAnswer).probabilities)
+    .slice(0, MAX_ALTERNATIVES)
+    .map(([label, p]) => ({ label, p }));
+}
+
 /**
  * Side-panel record of a choice: top alternatives and the margin between the first two.
  * `path` lists the groups Jev narrowed through before this choice.
  */
 export function traceChoice(choice: JevChoice, model: string, latencyMs: number, path: string[] = []): JevTrace {
   const narrowed = path.length > 0 ? { path } : {};
-  if (choice.kind === 'control') {
+  if (choice.kind === 'control' && !choice.declined) {
     return {
       model,
       latencyMs,
@@ -520,16 +538,24 @@ export function traceChoice(choice: JevChoice, model: string, latencyMs: number,
       ...narrowed,
     };
   }
-  const ranked = Object.entries(choice.targetProbabilities).sort((a, b) => b[1] - a[1]);
+  // no target for the operation: the record shows the operation and how the targets were weighed all the same
+  const pick = choice.kind === 'control' ? choice.declined! : choice;
+  const ranked = rankProbabilities(pick.targetProbabilities);
+  const target =
+    choice.kind === 'action'
+      ? targetLabel(choice.target)
+      : choice.kind === 'group'
+        ? pick.offered[ranked[0][0]]
+        : undefined;
   return {
     model,
     latencyMs,
-    operation: choice.operation,
-    target: choice.kind === 'action' ? targetLabel(choice.target) : choice.offered[ranked[0][0]],
-    confidence: choice.confidence,
-    targetConfidence: choice.targetConfidence,
+    operation: pick.operation,
+    ...(target !== undefined ? { target } : {}),
+    confidence: pick.confidence,
+    targetConfidence: pick.targetConfidence,
     margin: (ranked[0]?.[1] ?? 0) - (ranked[1]?.[1] ?? 0),
-    alternatives: ranked.slice(0, MAX_ALTERNATIVES).map(([key, p]) => ({ label: choice.offered[key] ?? NO_TARGET, p })),
+    alternatives: ranked.slice(0, MAX_ALTERNATIVES).map(([key, p]) => ({ label: pick.offered[key] ?? NO_TARGET, p })),
     ...narrowed,
   };
 }
@@ -600,7 +626,20 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
 
   async decide(state: BrowserState, signal: AbortSignal): Promise<EngineResult> {
     const space = buildActionSpace(state.selectorMap);
-    if (space.elements.length === 0) return { decision: null };
+    if (space.elements.length === 0) {
+      return {
+        decision: null,
+        trace: {
+          model: this.model,
+          latencyMs: 0,
+          operation: 'NONE',
+          confidence: 0,
+          alternatives: [],
+          deferred: 'nothing to act on',
+          noPick: 'The page shows no element Jev can click, type into or select from, so it was not asked',
+        },
+      };
+    }
 
     const goal = this.options.getGoal();
     const started = performance.now();
@@ -619,7 +658,10 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
       const answer = narrowed.answers?.[targetQuestionId(operation)];
       choice = interpretTarget(answer, operation, candidates, confidence, maxOptions);
     }
-    const trace = traceChoice(choice, this.model, Math.round(performance.now() - started), path);
+    const trace: JevTrace = {
+      ...traceChoice(choice, this.model, Math.round(performance.now() - started), path),
+      operations: operationAlternatives(response.answers?.operation),
+    };
     logger.info(`Jev chose ${trace.target ? `${trace.operation} ${trace.target}` : trace.operation}`, {
       confidence: trace.confidence,
       targetConfidence: trace.targetConfidence,
@@ -654,7 +696,9 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     // DONE needs a written answer and BLOCKED needs reasoning: both are the LLM's job.
     if (choice.kind === 'control' && choice.operation === 'DONE') return 'task looks done';
     if (choice.kind === 'control' && choice.operation === 'BLOCKED') return 'no way forward';
-    if (choice.kind === 'control' && choice.operation === 'ABSTAIN') return 'jev abstained';
+    if (choice.kind === 'control' && choice.operation === 'ABSTAIN') {
+      return choice.declined ? `no element fits ${choice.declined.operation}` : 'jev abstained';
+    }
     const unsure = this.unsure(choice);
     if (unsure) return unsure;
 

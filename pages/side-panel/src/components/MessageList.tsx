@@ -1,4 +1,5 @@
 import {
+  type DecisionAlternative,
   type JevTrace,
   type Message,
   type StepMeta,
@@ -329,8 +330,20 @@ function NavigatorRow({ meta, step }: { meta: NavigatorMeta; step: number }) {
 }
 
 function JevDetail({ trace, deferred }: { trace: JevTrace; deferred: boolean }) {
-  const picked = trace.alternatives[0]?.label;
   const floors = useContext(FloorsContext);
+  // Jev picked nothing: there are no scores to show, only what happened
+  if (trace.noPick) {
+    return (
+      <div className="nb-kv">
+        <span>Jev</span>
+        <span className="nb-num">
+          {shortModel(trace.model)} · {formatMs(trace.latencyMs)}
+        </span>
+        <span>{t('chat_steps_detail_noPick')}</span>
+        <span>{trace.noPick}</span>
+      </div>
+    );
+  }
   return (
     <>
       <div className="nb-kv">
@@ -363,25 +376,36 @@ function JevDetail({ trace, deferred }: { trace: JevTrace; deferred: boolean }) 
           </>
         )}
       </div>
-      {trace.alternatives.length > 0 && (
-        <div>
-          <div className="nb-label" style={{ marginBottom: 4 }}>
-            {t('chat_steps_detail_alternatives')}
-          </div>
-          <ul className="nb-alts">
-            {trace.alternatives.map(alt => (
-              <li key={alt.label} className={alt.label === picked ? 'picked' : ''}>
-                <span title={alt.label}>{alt.label}</span>
-                <span className="track">
-                  <span className="fill" style={{ display: 'block', width: `${alt.p * 100}%` }} />
-                </span>
-                <b>{pct(alt.p)}%</b>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {/* a step Jev passed on shows how it weighed the operations as well */}
+      {deferred && trace.operations && (
+        <Alternatives label={t('chat_steps_detail_operations')} alternatives={trace.operations} />
       )}
+      <Alternatives label={t('chat_steps_detail_alternatives')} alternatives={trace.alternatives} />
     </>
+  );
+}
+
+/** Scored options of one Jev question, the pick first */
+function Alternatives({ label, alternatives }: { label: string; alternatives: DecisionAlternative[] }) {
+  if (alternatives.length === 0) return null;
+  const picked = alternatives[0].label;
+  return (
+    <div>
+      <div className="nb-label" style={{ marginBottom: 4 }}>
+        {label}
+      </div>
+      <ul className="nb-alts">
+        {alternatives.map(alt => (
+          <li key={alt.label} className={alt.label === picked ? 'picked' : ''}>
+            <span title={alt.label}>{alt.label}</span>
+            <span className="track">
+              <span className="fill" style={{ display: 'block', width: `${alt.p * 100}%` }} />
+            </span>
+            <b>{pct(alt.p)}%</b>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
