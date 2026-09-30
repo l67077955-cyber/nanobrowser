@@ -31,6 +31,9 @@
   "nav_settings_a11y": {
     "message": "Settings"
   },
+  "nav_openInWindow_a11y": {
+    "message": "Open in a separate window"
+  },
   "nav_back": {
     "message": "← Back"
   },
@@ -1181,6 +1184,12 @@
   },
   "options_general_confirmSensitive_desc": {
     "message": "Pause for your approval before clicking elements named like delete, send, post, pay or confirm."
+  },
+  "options_general_openInWindow": {
+    "message": "Open in a separate window"
+  },
+  "options_general_openInWindow_desc": {
+    "message": "The toolbar icon opens Nanobrowser in a window of its own instead of the side panel. It works on the tab in front in your browser window."
   },
   "options_general_fastModeMinOperation": {
     "message": "Jev operation threshold"

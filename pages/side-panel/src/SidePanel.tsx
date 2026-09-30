@@ -16,6 +16,8 @@ import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import ChatHistoryList from './components/ChatHistoryList';
 import BookmarkList from './components/BookmarkList';
+import OpenInWindowButton from './components/OpenInWindowButton';
+import { getTargetTab } from './utils';
 import { EventType, type AgentEvent, ExecutionState } from './types/event';
 import './SidePanel.css';
 
@@ -468,8 +470,7 @@ const SidePanel = () => {
       }
 
       // Get current tab ID
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const tabId = tabs[0]?.id;
+      const tabId = (await getTargetTab())?.id;
       if (!tabId) {
         throw new Error('No active tab found');
       }
@@ -611,8 +612,7 @@ const SidePanel = () => {
     }
 
     try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const tabId = tabs[0]?.id;
+      const tabId = (await getTargetTab())?.id;
       if (!tabId) {
         throw new Error('No active tab found');
       }
@@ -1135,6 +1135,8 @@ const SidePanel = () => {
               </button>
             </>
           )}
+          {/* closing the side panel ends a running task, so not while one runs */}
+          {!showStopButton && <OpenInWindowButton />}
           <a
             href="https://discord.gg/NN3ABHggMK"
             target="_blank"

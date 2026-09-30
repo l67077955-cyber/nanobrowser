@@ -13,6 +13,7 @@ import {
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
+import { setupStandaloneWindow } from './services/standaloneWindow';
 import { Executor, type ExecutorSnapshot } from './agent/executor';
 import { snapshotFromChat } from './agent/resume';
 import { createLogger } from './log';
@@ -38,8 +39,8 @@ let activeTask: { taskId: string; source: 'panel' | 'remote' } | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
-// Setup side panel behavior
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(error => console.error(error));
+// The toolbar icon opens the side panel, or a window of its own if set so
+setupStandaloneWindow();
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (tabId && changeInfo.status === 'complete' && tab.url?.startsWith('http')) {

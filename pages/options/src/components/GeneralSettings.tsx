@@ -306,6 +306,27 @@ export const GeneralSettings = () => {
               </label>
             </div>
           </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_openInWindow')}</h3>
+              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_openInWindow_desc')}</p>
+            </div>
+            <div className="relative inline-flex cursor-pointer items-center">
+              <input
+                id="openInWindow"
+                type="checkbox"
+                checked={settings.openInWindow}
+                onChange={e => updateSetting('openInWindow', e.target.checked)}
+                className="peer sr-only"
+              />
+              <label
+                htmlFor="openInWindow"
+                className={`peer h-6 w-11 rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-nb-line after:bg-nb-tile after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-full peer-checked:after:border-nb-llm peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`}>
+                <span className="sr-only">{t('options_general_openInWindow')}</span>
+              </label>
+            </div>
+          </div>
         </div>
       </div>
     </section>

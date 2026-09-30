@@ -24,3 +24,18 @@ export function getCurrentTimestampStr(): string {
     })
     .replace(',', '');
 }
+
+/**
+ * The tab a task starts on: the one in front in the window the side panel is docked in. Opened in a window of
+ * its own, the panel is the only tab of its window, and the tab is the one in front in the browser window
+ * the user was last in.
+ */
+export async function getTargetTab(): Promise<chrome.tabs.Tab | undefined> {
+  if (!(await chrome.tabs.getCurrent())) {
+    return (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+  }
+  const tabs = await chrome.tabs.query({ active: true, windowType: 'normal' });
+  if (tabs.length <= 1) return tabs[0];
+  const lastFocused = await chrome.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null);
+  return tabs.find(tab => tab.windowId === lastFocused?.id) ?? tabs[0];
+}

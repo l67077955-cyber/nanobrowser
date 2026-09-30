@@ -31,6 +31,9 @@
   "nav_settings_a11y": {
     "message": "設定"
   },
+  "nav_openInWindow_a11y": {
+    "message": "在獨立視窗開啟"
+  },
   "nav_back": {
     "message": "← 返回"
   },
@@ -1173,6 +1176,12 @@
   },
   "options_general_confirmSensitive_desc": {
     "message": "點擊名稱像刪除、傳送、發布、付款或確認的元素前，先暫停等你允許。"
+  },
+  "options_general_openInWindow": {
+    "message": "在獨立視窗開啟"
+  },
+  "options_general_openInWindow_desc": {
+    "message": "點工具列圖示時，在獨立視窗開啟 Nanobrowser，而不是側邊面板。它會操作瀏覽器視窗中最前面的分頁。"
   },
   "options_general_fastModeMinOperation": {
     "message": "Jev 操作門檻"

@@ -25,6 +25,8 @@ export interface GeneralSettingsConfig {
   memoryEnabled: boolean;
   /** after each task, look for new facts about the user in what they wrote */
   memoryAutoExtract: boolean;
+  /** the toolbar icon opens Nanobrowser in a window of its own instead of the side panel */
+  openInWindow: boolean;
 }
 
 export type GeneralSettingsStorage = BaseStorage<GeneralSettingsConfig> & {
@@ -52,6 +54,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsConfig = {
   confirmSensitiveActions: false,
   memoryEnabled: true,
   memoryAutoExtract: true,
+  openInWindow: false,
 };
 
 const storage = createStorage<GeneralSettingsConfig>('general-settings', DEFAULT_GENERAL_SETTINGS, {

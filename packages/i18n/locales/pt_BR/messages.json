@@ -31,6 +31,9 @@
   "nav_settings_a11y": {
     "message": "Configurações"
   },
+  "nav_openInWindow_a11y": {
+    "message": "Abrir em uma janela separada"
+  },
   "nav_back": {
     "message": "← Voltar"
   },
@@ -1180,6 +1183,12 @@
   },
   "options_general_confirmSensitive_desc": {
     "message": "Pausa para sua aprovação antes de clicar em elementos como excluir, enviar, publicar, pagar ou confirmar."
+  },
+  "options_general_openInWindow": {
+    "message": "Abrir em uma janela separada"
+  },
+  "options_general_openInWindow_desc": {
+    "message": "O ícone da barra de ferramentas abre o Nanobrowser em uma janela própria em vez do painel lateral. Ele trabalha na aba que está à frente na janela do navegador."
   },
   "options_general_fastModeMinOperation": {
     "message": "Limite de operação do Jev"

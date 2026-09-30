@@ -12,6 +12,18 @@ import { isUrlAllowed } from './util';
 import { analytics } from '../services/analytics';
 
 const logger = createLogger('BrowserContext');
+
+/**
+ * The tab in front in the browser window the user works in. Nanobrowser's own window is a window too, and
+ * the focused one while the user types in it, so "the current window" is not always the browser's.
+ */
+export async function getActiveBrowserTab(): Promise<chrome.tabs.Tab | undefined> {
+  const tabs = await chrome.tabs.query({ active: true, windowType: 'normal' });
+  if (tabs.length <= 1) return tabs[0];
+  const lastFocused = await chrome.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null);
+  return tabs.find(tab => tab.windowId === lastFocused?.id) ?? tabs[0];
+}
+
 export default class BrowserContext {
   private _config: BrowserContextConfig;
   private _currentTabId: number | null = null;
@@ -61,7 +73,7 @@ export default class BrowserContext {
    */
   public async resumeLastTab(): Promise<void> {
     if (this._currentTabId || !this._lastTabId) return;
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const activeTab = await getActiveBrowserTab();
     if (activeTab?.id === this._lastTabId || /^https?:/i.test(activeTab?.url ?? '')) return;
     const lastTab = await chrome.tabs.get(this._lastTabId).catch(() => null);
     if (lastTab?.id) await this.switchTab(lastTab.id);
@@ -109,7 +121,7 @@ export default class BrowserContext {
     // 1. If _currentTabId not set, query the active tab and attach it
     if (!this._currentTabId) {
       let activeTab: chrome.tabs.Tab;
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tab = await getActiveBrowserTab();
       if (!tab?.id) {
         // open a new tab with blank page
         const newTab = await chrome.tabs.create({ url: this._config.homePageUrl });
@@ -143,11 +155,11 @@ export default class BrowserContext {
   }
 
   /**
-   * Get all tab IDs from the browser and the current window.
+   * Get all tab IDs from the browser windows.
    * @returns A set of tab IDs.
    */
   public async getAllTabIds(): Promise<Set<number>> {
-    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const tabs = await chrome.tabs.query({ windowType: 'normal' });
     return new Set(tabs.map(tab => tab.id).filter(id => id !== undefined));
   }
 
@@ -286,8 +298,11 @@ export default class BrowserContext {
       throw new URLNotAllowedError(`Open tab failed. URL: ${url} is not allowed`);
     }
 
-    // Create the new tab
-    const tab = await chrome.tabs.create({ url, active: true });
+    // Create the new tab, next to the one being worked on
+    const currentTab = this._currentTabId
+      ? await chrome.tabs.get(this._currentTabId).catch(() => undefined)
+      : await getActiveBrowserTab();
+    const tab = await chrome.tabs.create({ url, active: true, windowId: currentTab?.windowId });
     if (!tab.id) {
       throw new Error('No tab ID available');
     }
