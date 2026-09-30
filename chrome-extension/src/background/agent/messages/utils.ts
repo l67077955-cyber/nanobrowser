@@ -156,6 +156,7 @@ export function convertInputMessages(inputMessages: BaseMessage[], modelName: st
 /**
  * The planner must not see the navigator's AgentOutput tool calls as tool calls: some models (DeepSeek)
  * imitate the history and answer with an AgentOutput call instead of the planner schema.
+ * The navigator uses it too for thinking Claude models, which reject tool calls replayed without thinking blocks.
  */
 export function convertMessagesForPlanner(inputMessages: BaseMessage[]): BaseMessage[] {
   const outputMessages: BaseMessage[] = [];

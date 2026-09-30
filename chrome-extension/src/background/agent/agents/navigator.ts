@@ -27,6 +27,8 @@ import { type BrowserState, BrowserStateHistory, URLNotAllowedError } from '@src
 import { convertZodToJsonSchema, repairJsonString } from '@src/background/utils';
 import { HistoryTreeProcessor } from '@src/background/browser/dom/history/service';
 import { AgentStepRecord } from '../history';
+import { isAnthropicAdaptiveThinkingModel } from '../helper';
+import { convertMessagesForPlanner } from '../messages/utils';
 import { type DOMHistoryElement } from '@src/background/browser/dom/history/view';
 import type { EngineResult, NavigatorDecisionEngine } from '../engines/types';
 import type { StepMeta } from '@extension/storage';
@@ -159,7 +161,12 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
       let response = undefined;
       try {
-        response = await structuredLlm.invoke(inputMessages, {
+        // Thinking Claude models expect thinking blocks before every tool call in the history;
+        // the navigator replays its outputs without them, so they are shown as text instead
+        const messages = isAnthropicAdaptiveThinkingModel(this.modelName)
+          ? convertMessagesForPlanner(inputMessages)
+          : inputMessages;
+        response = await structuredLlm.invoke(messages, {
           signal,
           ...this.callOptions,
         });

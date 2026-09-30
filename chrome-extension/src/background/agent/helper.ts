@@ -10,6 +10,8 @@ import { ChatOllama } from '@langchain/ollama';
 import { ChatDeepSeek } from '@langchain/deepseek';
 
 const maxTokens = 1024 * 4;
+// thinking shares the output budget with the answer
+const adaptiveThinkingMaxTokens = 1024 * 16;
 
 // Custom ChatLlama class to handle Llama API response format
 class ChatLlama extends ChatOpenAI {
@@ -59,7 +61,25 @@ class ChatLlama extends ChatOpenAI {
   }
 }
 
-// O series models or GPT-5 models that support reasoning
+/**
+ * LangChain 0.3 always sends sampling parameters and forces the tool for structured output, and only knows
+ * budget thinking. Claude models from Opus 4.7 on reject sampling parameters; the latest ones also reject
+ * forced tool use and budget thinking. Sends adaptive thinking and lets the model choose the tool instead.
+ */
+class ChatAnthropicAdaptiveThinking extends ChatAnthropic {
+  invocationParams(options?: this['ParsedCallOptions']): ReturnType<ChatAnthropic['invocationParams']> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { temperature, top_k, top_p, thinking, ...params } = super.invocationParams(options);
+    const forcesTool = params.tool_choice?.type === 'any' || params.tool_choice?.type === 'tool';
+    return {
+      ...params,
+      ...(forcesTool ? { tool_choice: { type: 'auto' } } : {}),
+      thinking: { type: 'adaptive' },
+    } as unknown as ReturnType<ChatAnthropic['invocationParams']>;
+  }
+}
+
+// O series, GPT-5 or GPT-6 models that support reasoning
 function isOpenAIReasoningModel(modelName: string): boolean {
   let modelNameWithoutProvider = modelName;
   if (modelName.startsWith('openai/')) {
@@ -67,8 +87,29 @@ function isOpenAIReasoningModel(modelName: string): boolean {
   }
   return (
     modelNameWithoutProvider.startsWith('o') ||
-    (modelNameWithoutProvider.startsWith('gpt-5') && !modelNameWithoutProvider.startsWith('gpt-5-chat'))
+    (modelNameWithoutProvider.startsWith('gpt-5') && !modelNameWithoutProvider.startsWith('gpt-5-chat')) ||
+    modelNameWithoutProvider.startsWith('gpt-6')
   );
+}
+
+// GPT-6 models reject minimal: Luna takes none instead, Sol and Astra (no none either) take low
+function toGpt6ReasoningEffort(
+  modelName: string,
+  effort: NonNullable<ModelConfig['reasoningEffort']>,
+): 'none' | 'low' | 'medium' | 'high' {
+  if (modelName.includes('luna')) {
+    return effort === 'minimal' ? 'none' : effort;
+  }
+  return effort === 'minimal' ? 'low' : effort;
+}
+
+/**
+ * Claude models from Opus 4.7 on reject sampling parameters (temperature, top_p, top_k),
+ * and from the 5 generation on think by default, which rules out forced tool use.
+ */
+export function isAnthropicAdaptiveThinkingModel(modelName: string): boolean {
+  const modelNameWithoutProvider = modelName.startsWith('anthropic/') ? modelName.substring(10) : modelName;
+  return /^claude-(opus-4-[78]|(opus|sonnet)-5|fable|mythos)/.test(modelNameWithoutProvider);
 }
 
 // Function to check if a model is an Anthropic Opus model
@@ -140,6 +181,8 @@ function createOpenAIChatModel(
       // if it's gpt-5.1, we need to convert minimal to none, it doesn't support minimal
       if (modelConfig.modelName.includes('gpt-5.1') && modelConfig.reasoningEffort === 'minimal') {
         args.modelKwargs.reasoning_effort = 'none';
+      } else if (modelConfig.modelName.includes('gpt-6')) {
+        args.modelKwargs.reasoning_effort = toGpt6ReasoningEffort(modelConfig.modelName, modelConfig.reasoningEffort);
       } else {
         args.modelKwargs.reasoning_effort = modelConfig.reasoningEffort;
       }
@@ -260,6 +303,14 @@ export function createChatModel(providerConfig: ProviderConfig, modelConfig: Mod
       return createOpenAIChatModel(providerConfig, modelConfig, undefined);
     }
     case ProviderTypeEnum.Anthropic: {
+      if (isAnthropicAdaptiveThinkingModel(modelConfig.modelName)) {
+        return new ChatAnthropicAdaptiveThinking({
+          model: modelConfig.modelName,
+          apiKey: providerConfig.apiKey,
+          maxTokens: adaptiveThinkingMaxTokens,
+          clientOptions: {},
+        });
+      }
       // For Opus models, only support temperature, not topP
       // For 4.5 models, only support either temperature or topP, not both, so we only use temperature to align with Opus
       const args = {

@@ -170,6 +170,26 @@ export function getDefaultAgentModelParams(providerId: string, agentName: AgentN
   return newParameters;
 }
 
+// Default model lists before the 2026-09 update, to recognise lists the user never edited
+const previousDefaultModelNames = {
+  [ProviderTypeEnum.OpenAI]: [
+    'gpt-5.1',
+    'gpt-5',
+    'gpt-5-pro',
+    'gpt-5-mini',
+    'gpt-5-chat-latest',
+    'gpt-4.1',
+    'gpt-4.1-mini',
+    'gpt-4o',
+  ],
+  [ProviderTypeEnum.Anthropic]: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1'],
+  [ProviderTypeEnum.Gemini]: ['gemini-3-pro-preview', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+  [ProviderTypeEnum.Grok]: ['grok-4', 'grok-4-fast-non-reasoning', 'grok-3', 'grok-3-fast'],
+  [ProviderTypeEnum.OpenRouter]: ['google/gemini-2.5-pro', 'google/gemini-2.5-flash', 'openai/gpt-4o-2024-11-20'],
+  [ProviderTypeEnum.Groq]: ['llama-3.3-70b-versatile'],
+  [ProviderTypeEnum.Cerebras]: ['llama-3.3-70b'],
+};
+
 // Helper function to ensure backward compatibility for provider configs
 function ensureBackwardCompatibility(providerId: string, config: ProviderConfig): ProviderConfig {
   // Log input config
@@ -220,6 +240,19 @@ function ensureBackwardCompatibility(providerId: string, config: ProviderConfig)
     updatedConfig.modelNames[1] === 'deepseek-reasoner'
   ) {
     updatedConfig.modelNames = [...(llmProviderModelNames[ProviderTypeEnum.DeepSeek] || [])];
+  }
+
+  // Model lists never edited by the user still hold the previous defaults: move them to the current ones
+  const previousDefaults = previousDefaultModelNames[updatedConfig.type as keyof typeof previousDefaultModelNames];
+  if (
+    previousDefaults &&
+    Array.isArray(updatedConfig.modelNames) &&
+    updatedConfig.modelNames.length === previousDefaults.length &&
+    updatedConfig.modelNames.every((name, index) => name === previousDefaults[index])
+  ) {
+    updatedConfig.modelNames = [
+      ...(llmProviderModelNames[updatedConfig.type as keyof typeof llmProviderModelNames] || []),
+    ];
   }
 
   // Ensure createdAt exists

@@ -23,7 +23,7 @@ import {
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 
-// Helper function to check if a model is an OpenAI reasoning model (O-series or GPT-5 models)
+// Helper function to check if a model is an OpenAI reasoning model (O-series, GPT-5 or GPT-6 models)
 function isOpenAIReasoningModel(modelName: string): boolean {
   // Extract the model name without provider prefix if present
   let modelNameWithoutProvider = modelName;
@@ -36,7 +36,8 @@ function isOpenAIReasoningModel(modelName: string): boolean {
   }
   return (
     modelNameWithoutProvider.startsWith('o') ||
-    (modelNameWithoutProvider.startsWith('gpt-5') && !modelNameWithoutProvider.startsWith('gpt-5-chat'))
+    (modelNameWithoutProvider.startsWith('gpt-5') && !modelNameWithoutProvider.startsWith('gpt-5-chat')) ||
+    modelNameWithoutProvider.startsWith('gpt-6')
   );
 }
 
