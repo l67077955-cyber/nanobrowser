@@ -1,6 +1,12 @@
-import type { JevTrace, Message, StepMeta } from '@extension/storage';
+import {
+  type JevTrace,
+  type Message,
+  type StepMeta,
+  DEFAULT_GENERAL_SETTINGS,
+  generalSettingsStore,
+} from '@extension/storage';
 import { t } from '@extension/i18n';
-import { memo, useMemo, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react';
 import { ACTOR_PROFILES } from '../types/message';
 import './StepList.css';
 
@@ -14,9 +20,36 @@ type PlannerMeta = Extract<StepMeta, { kind: 'planner' }>;
 const PROGRESS_MESSAGE = 'Showing progress...';
 // Long runs produce hundreds of rows; render the tail and fold the rest
 const VISIBLE_MESSAGES = 80;
-// Mirrors the Jev engine's floors so the bars show how close a pick was to being deferred
-const MIN_OPERATION_CONFIDENCE = 0.5;
-const MIN_TARGET_CONFIDENCE = 0.6;
+
+interface ConfidenceFloors {
+  operation: number;
+  target: number;
+}
+
+// The Jev engine's floors from the settings, so the bars show how close a pick was to being deferred
+const DEFAULT_FLOORS: ConfidenceFloors = {
+  operation: DEFAULT_GENERAL_SETTINGS.fastModeMinOperationConfidence,
+  target: DEFAULT_GENERAL_SETTINGS.fastModeMinTargetConfidence,
+};
+const FloorsContext = createContext(DEFAULT_FLOORS);
+
+function useConfidenceFloors(): ConfidenceFloors {
+  const [floors, setFloors] = useState(DEFAULT_FLOORS);
+  useEffect(() => {
+    const load = async () => {
+      const settings = await generalSettingsStore.getSettings();
+      setFloors({
+        operation: settings.fastModeMinOperationConfidence,
+        target: settings.fastModeMinTargetConfidence,
+      });
+    };
+    load().catch(error => console.error('Error loading confidence floors:', error));
+    return generalSettingsStore.subscribe(() => {
+      load().catch(error => console.error('Error loading confidence floors:', error));
+    });
+  }, []);
+  return floors;
+}
 
 const OPERATION_NAMES: Record<string, string> = {
   click_element: 'CLICK',
@@ -67,6 +100,7 @@ export function stepStats(messages: Message[]): StepStats | null {
 
 export default memo(function MessageList({ messages }: MessageListProps) {
   const [showAll, setShowAll] = useState(false);
+  const floors = useConfidenceFloors();
   const stats = useMemo(() => stepStats(messages), [messages]);
 
   // Step numbers restart with every task the user sends
@@ -88,17 +122,19 @@ export default memo(function MessageList({ messages }: MessageListProps) {
           {t('chat_steps_showEarlier', [String(hidden)])}
         </button>
       )}
-      {messages.slice(hidden).map((message, i) => {
-        const index = i + hidden;
-        return (
-          <MessageRow
-            key={`${message.actor}-${message.timestamp}-${index}`}
-            message={message}
-            step={stepNumbers[index]}
-            isLast={index === messages.length - 1}
-          />
-        );
-      })}
+      <FloorsContext.Provider value={floors}>
+        {messages.slice(hidden).map((message, i) => {
+          const index = i + hidden;
+          return (
+            <MessageRow
+              key={`${message.actor}-${message.timestamp}-${index}`}
+              message={message}
+              step={stepNumbers[index]}
+              isLast={index === messages.length - 1}
+            />
+          );
+        })}
+      </FloorsContext.Provider>
     </div>
   );
 });
@@ -193,6 +229,7 @@ function MessageRow({ message, step, isLast }: { message: Message; step: number;
 
 function NavigatorRow({ meta, step }: { meta: NavigatorMeta; step: number }) {
   const [open, setOpen] = useState(false);
+  const floors = useContext(FloorsContext);
   const byJev = meta.engine === 'jev';
   const jev = meta.jev;
   const first = meta.actions[0];
@@ -209,6 +246,7 @@ function NavigatorRow({ meta, step }: { meta: NavigatorMeta; step: number }) {
   }
   const extra = meta.actions.length > 1 ? ` +${meta.actions.length - 1}` : '';
   const pick = byJev && jev ? (jev.targetConfidence ?? jev.confidence) : undefined;
+  const pickFloor = jev?.targetConfidence !== undefined ? floors.target : floors.operation;
 
   return (
     <div className={`nb-row${open ? ' open' : ''}`}>
@@ -224,7 +262,7 @@ function NavigatorRow({ meta, step }: { meta: NavigatorMeta; step: number }) {
           {extra && <span className="nb-sub">{extra}</span>}
         </span>
         <span className="nb-metrics">
-          {pick !== undefined && <span className={pick < MIN_TARGET_CONFIDENCE ? 'low' : ''}>{pct(pick)}%</span>}
+          {pick !== undefined && <span className={pick < pickFloor ? 'low' : ''}>{pct(pick)}%</span>}
           <span>{formatMs(meta.latencyMs)}</span>
         </span>
       </button>
@@ -274,15 +312,16 @@ function NavigatorRow({ meta, step }: { meta: NavigatorMeta; step: number }) {
 
 function JevDetail({ trace, deferred }: { trace: JevTrace; deferred: boolean }) {
   const picked = trace.alternatives[0]?.label;
+  const floors = useContext(FloorsContext);
   return (
     <>
       <div className="nb-kv">
         <span>{t('chat_steps_detail_operation')}</span>
-        <Bar value={trace.confidence} floor={MIN_OPERATION_CONFIDENCE} />
+        <Bar value={trace.confidence} floor={floors.operation} />
         {trace.targetConfidence !== undefined && (
           <>
             <span>{t('chat_steps_detail_target')}</span>
-            <Bar value={trace.targetConfidence} floor={MIN_TARGET_CONFIDENCE} />
+            <Bar value={trace.targetConfidence} floor={floors.target} />
           </>
         )}
         {trace.margin !== undefined && (
