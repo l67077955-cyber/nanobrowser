@@ -260,17 +260,17 @@ export class Executor {
   private async runPlanner(): Promise<AgentOutput<PlannerOutput> | null> {
     const context = this.context;
     try {
-      // Add current browser state to memory
-      let positionForPlan = 0;
-      if (this.tasks.length > 1 || this.context.nSteps > 0) {
-        await this.navigator.addStateMessageToMemory();
-        positionForPlan = this.context.messageManager.length() - 1;
-      } else {
-        positionForPlan = this.context.messageManager.length();
-      }
+      // Add current browser state to memory, on the first step too: a blind first plan
+      // misleads the fast engine, and the navigator reuses this same state read
+      const observeStarted = performance.now();
+      await this.navigator.addStateMessageToMemory();
+      const observeMs = Math.round(performance.now() - observeStarted);
+      const positionForPlan = this.context.messageManager.length() - 1;
 
       // Execute planner
+      const planStarted = performance.now();
       const planOutput = await this.planner.execute();
+      logger.info(`⏱ planner: observe ${observeMs}ms, plan ${Math.round(performance.now() - planStarted)}ms`);
       if (planOutput.result) {
         this.context.messageManager.addPlan(JSON.stringify(planOutput.result), positionForPlan);
         this.latestNextSteps = planOutput.result.next_steps || null;
