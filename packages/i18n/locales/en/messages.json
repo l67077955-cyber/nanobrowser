@@ -1047,6 +1047,9 @@
   "chat_steps_detail_margin": {
     "message": "Lead"
   },
+  "chat_steps_detail_narrowed": {
+    "message": "Narrowed via"
+  },
   "chat_steps_detail_alternatives": {
     "message": "Alternatives"
   },

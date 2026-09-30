@@ -1039,6 +1039,9 @@
   "chat_steps_detail_margin": {
     "message": "領先幅度"
   },
+  "chat_steps_detail_narrowed": {
+    "message": "縮小範圍"
+  },
   "chat_steps_detail_alternatives": {
     "message": "備選"
   },

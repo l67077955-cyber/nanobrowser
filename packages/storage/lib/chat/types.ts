@@ -22,6 +22,7 @@ export interface JevTrace {
   targetConfidence?: number;
   margin?: number; // top-1 minus top-2 target probability
   alternatives: DecisionAlternative[];
+  path?: string[]; // groups narrowed through when the page had too many targets for one question, e.g. ["[6-10]"]
   deferred?: string; // why the step went to the LLM
 }
 

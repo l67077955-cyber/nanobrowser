@@ -291,6 +291,12 @@ function JevDetail({ trace, deferred }: { trace: JevTrace; deferred: boolean }) 
             <span className="nb-num">{pct(trace.margin)} pts</span>
           </>
         )}
+        {trace.path && (
+          <>
+            <span>{t('chat_steps_detail_narrowed')}</span>
+            <span className="nb-num">{trace.path.join(' → ')}</span>
+          </>
+        )}
         {deferred && (
           <>
             <span>Jev</span>

@@ -21,8 +21,13 @@ const DEFAULT_MIN_OPERATION_CONFIDENCE = 0.5;
 const DEFAULT_MIN_TARGET_CONFIDENCE = 0.6;
 // Offered with every target question so Jev is never forced to pick an element
 const NO_TARGET = 'none';
-const MAX_ELEMENTS = 250;
+// A choice question takes up to 255 options (docs.typesafe.ai/primitives/choice); NO_TARGET is one of them.
+// More targets than that are offered as groups, and Jev is asked again inside the group it picks.
+const MAX_CHOICE_OPTIONS = 255;
+const MAX_ELEMENTS = 1000;
 const MAX_LABEL_LENGTH = 100;
+// Groups list every member, so labels are cut short to keep the request inside Jev's 32k-token context
+const MAX_GROUP_LABEL_LENGTH = 40;
 const MAX_PAGE_TEXT = 4000;
 const HISTORY_SIZE = 10;
 
@@ -45,6 +50,11 @@ Use the user's entire goal, field values, nearby text, and recent actions. This 
 a target for that operation; another question decides which operation to execute. Do not choose
 a field that already contains the requested value. Choose only an offered element index, or none
 when no offered element clearly matches (e.g. several look identical and nothing tells them apart).`;
+
+const TARGET_GROUP = `There are too many candidate elements to offer at once, so they are offered in groups,
+in page order. Choose the group that contains the best target if the next operation is the one specified
+in this question; a follow-up question then chooses the element inside that group. Use the user's entire goal,
+nearby text, and recent actions. Choose only an offered group, or none when no group clearly contains a match.`;
 
 const TEXT_VALUE = `Return a JSON object with exactly one key, text: the exact string to enter in the selected field.
 Infer the value from the original goal and field meaning, using current page context and history.
@@ -103,9 +113,17 @@ interface Target {
   optionText?: string;
 }
 
+type TargetCandidates = Record<string, Target>;
+
 export interface JevActionSpace {
   elements: JevElement[];
-  targets: Partial<Record<Operation, Record<string, Target>>>;
+  targets: Partial<Record<Operation, TargetCandidates>>;
+}
+
+interface TargetGroup {
+  /** index range of the members, e.g. "[6-10]" */
+  label: string;
+  candidates: TargetCandidates;
 }
 
 export interface JevHistoryEntry {
@@ -281,22 +299,41 @@ export function pageText(root: DOMElementNode, max = MAX_PAGE_TEXT): string {
   return collapse(parts.join(' '), max);
 }
 
-export function buildJevRequest(
-  state: Pick<BrowserState, 'url' | 'title' | 'elementTree'>,
-  space: JevActionSpace,
-  goal: string,
-  history: JevHistoryEntry[],
-  model: string,
-) {
-  const operations: Record<string, string> = {};
-  for (const op of Object.keys(space.targets) as Operation[]) operations[op] = OPERATION_LABELS[op];
-  Object.assign(operations, CONTROLS);
+const targetQuestionId = (operation: Operation) => `${operation.toLowerCase()}_target`;
 
-  const questions: Record<string, unknown> = {
-    operation: { type: 'choice', criteria: operations, instructions: { goal, rules: NEXT_ACTION } },
-  };
-  for (const [op, candidates] of Object.entries(space.targets) as [Operation, Record<string, Target>][]) {
-    const criteria: Record<string, Record<string, string>> = {};
+/**
+ * Split candidates, in page order, into as many equal groups as one question can offer.
+ * Null when they fit in one question as they are.
+ */
+export function groupCandidates(candidates: TargetCandidates, maxOptions: number): Record<string, TargetGroup> | null {
+  const entries = Object.entries(candidates);
+  // NO_TARGET takes one option; fewer than two groups would never narrow anything
+  const slots = Math.max(2, maxOptions - 1);
+  if (entries.length <= slots) return null;
+  const size = Math.ceil(entries.length / slots);
+  const groups: Record<string, TargetGroup> = {};
+  for (let start = 0; start < entries.length; start += size) {
+    const members = entries.slice(start, start + size);
+    groups[`g${start / size + 1}`] = {
+      label: `[${members[0][0]}-${members[members.length - 1][0]}]`,
+      candidates: Object.fromEntries(members),
+    };
+  }
+  return groups;
+}
+
+const groupMembers = (group: TargetGroup) =>
+  Object.values(group.candidates).map(t => collapse(t.label || t.role, MAX_GROUP_LABEL_LENGTH));
+
+function targetQuestion(operation: Operation, candidates: TargetCandidates, goal: string, maxOptions: number) {
+  const groups = groupCandidates(candidates, maxOptions);
+  const criteria: Record<string, unknown> = {};
+  if (groups) {
+    for (const [key, group] of Object.entries(groups)) {
+      criteria[key] = { range: group.label, elements: groupMembers(group) };
+    }
+    criteria[NO_TARGET] = { range: '', elements: 'None of these groups clearly contains the right target' };
+  } else {
     for (const [key, t] of Object.entries(candidates)) {
       criteria[key] = { element: `[${key}] ${t.label}`, current_value: t.value ?? '', role: t.role };
     }
@@ -305,21 +342,74 @@ export function buildJevRequest(
       current_value: '',
       role: '',
     };
-    questions[`${op.toLowerCase()}_target`] = {
-      type: 'choice',
-      criteria,
-      instructions: { goal, operation: op, rules: [NEXT_ACTION, TARGET] },
-    };
+  }
+  return {
+    type: 'choice',
+    criteria,
+    instructions: { goal, operation, rules: [NEXT_ACTION, groups ? TARGET_GROUP : TARGET] },
+  };
+}
+
+/** Elements whose state the rules depend on: fields, dropdowns, and anything checked, selected or expanded */
+const isStateful = (e: JevElement) =>
+  e.value !== undefined ||
+  e.checked !== undefined ||
+  e.selected !== undefined ||
+  e.expanded !== undefined ||
+  e.operations.some(op => op !== 'CLICK');
+
+type PageState = Pick<BrowserState, 'url' | 'title' | 'elementTree'>;
+
+const requestState = (state: PageState, elements: JevElement[], history: JevHistoryEntry[]) => ({
+  page: { url: state.url, title: state.title, text: pageText(state.elementTree) },
+  elements,
+  recent_actions: history.slice(-HISTORY_SIZE),
+});
+
+export function buildJevRequest(
+  state: PageState,
+  space: JevActionSpace,
+  goal: string,
+  history: JevHistoryEntry[],
+  model: string,
+  maxOptions = MAX_CHOICE_OPTIONS,
+) {
+  const operations: Record<string, string> = {};
+  for (const op of Object.keys(space.targets) as Operation[]) operations[op] = OPERATION_LABELS[op];
+  Object.assign(operations, CONTROLS);
+
+  const questions: Record<string, unknown> = {
+    operation: { type: 'choice', criteria: operations, instructions: { goal, rules: NEXT_ACTION } },
+  };
+  let grouped = false;
+  for (const [op, candidates] of Object.entries(space.targets) as [Operation, TargetCandidates][]) {
+    questions[targetQuestionId(op)] = targetQuestion(op, candidates, goal, maxOptions);
+    grouped ||= groupCandidates(candidates, maxOptions) !== null;
   }
 
+  // A grouped question already names every element, so the full list would only double the request
+  const elements = grouped ? space.elements.filter(isStateful) : space.elements;
+  return { model, state: requestState(state, elements, history), questions };
+}
+
+/** Follow-up request that asks only for the target of an already chosen operation, inside one group */
+export function buildNarrowRequest(
+  state: PageState,
+  space: JevActionSpace,
+  operation: Operation,
+  candidates: TargetCandidates,
+  goal: string,
+  history: JevHistoryEntry[],
+  model: string,
+  maxOptions = MAX_CHOICE_OPTIONS,
+) {
+  const indices = new Set(Object.values(candidates).map(t => String(t.index)));
+  const members = space.elements.filter(e => indices.has(e.index));
+  const grouped = groupCandidates(candidates, maxOptions) !== null;
   return {
     model,
-    state: {
-      page: { url: state.url, title: state.title, text: pageText(state.elementTree) },
-      elements: space.elements,
-      recent_actions: history.slice(-HISTORY_SIZE),
-    },
-    questions,
+    state: requestState(state, grouped ? members.filter(isStateful) : members, history),
+    questions: { [targetQuestionId(operation)]: targetQuestion(operation, candidates, goal, maxOptions) },
   };
 }
 
@@ -341,64 +431,109 @@ export function validateChoice(answer: unknown, ids: string[]): ChoiceAnswer {
   return a;
 }
 
+interface TargetPick {
+  operation: Operation;
+  confidence: number;
+  targetConfidence: number;
+  /** probability per offered option, and the label each one is shown with in the side panel */
+  targetProbabilities: Record<string, number>;
+  offered: Record<string, string>;
+}
+
 export type JevChoice =
-  | {
-      kind: 'action';
-      operation: Operation;
-      target: Target;
-      confidence: number;
-      targetConfidence: number;
-      /** probability per candidate, keyed like space.targets[operation] */
-      targetProbabilities: Record<string, number>;
-    }
+  | ({ kind: 'action'; target: Target } & TargetPick)
+  /** too many targets for one question: Jev picked a group and has to be asked again inside it */
+  | ({ kind: 'group'; label: string; candidates: TargetCandidates } & TargetPick)
   | { kind: 'control'; operation: keyof typeof CONTROLS; confidence: number };
 
-export function interpretAnswers(answers: Record<string, unknown>, space: JevActionSpace): JevChoice {
+/** A choice with nothing left to narrow */
+type ResolvedChoice = Exclude<JevChoice, { kind: 'group' }>;
+
+const targetLabel = (t: Target) => `[${t.index}] ${t.label}`;
+
+/** Resolve the answer to one target question: an element, a group to narrow further, or an abstention */
+export function interpretTarget(
+  answer: unknown,
+  operation: Operation,
+  candidates: TargetCandidates,
+  confidence: number,
+  maxOptions = MAX_CHOICE_OPTIONS,
+): JevChoice {
+  const groups = groupCandidates(candidates, maxOptions);
+  const picked = validateChoice(answer, [...Object.keys(groups ?? candidates), NO_TARGET]);
+  if (picked.choice === NO_TARGET) return { kind: 'control', operation: 'ABSTAIN', confidence: picked.confidence };
+  const pick = {
+    operation,
+    confidence,
+    targetConfidence: picked.confidence,
+    targetProbabilities: picked.probabilities,
+  };
+  if (groups) {
+    const offered = Object.fromEntries(
+      Object.entries(groups).map(([key, g]) => [
+        key,
+        collapse(`${g.label} ${groupMembers(g).join(' · ')}`, MAX_LABEL_LENGTH),
+      ]),
+    );
+    return { kind: 'group', ...groups[picked.choice], ...pick, offered };
+  }
+  const offered = Object.fromEntries(Object.entries(candidates).map(([key, t]) => [key, targetLabel(t)]));
+  return { kind: 'action', target: candidates[picked.choice], ...pick, offered };
+}
+
+export function interpretAnswers(
+  answers: Record<string, unknown>,
+  space: JevActionSpace,
+  maxOptions = MAX_CHOICE_OPTIONS,
+): JevChoice {
   const opIds = [...Object.keys(space.targets), ...Object.keys(CONTROLS)];
   const op = validateChoice(answers.operation, opIds);
   if (op.choice in CONTROLS) {
     return { kind: 'control', operation: op.choice as keyof typeof CONTROLS, confidence: op.confidence };
   }
   const operation = op.choice as Operation;
-  const candidates = space.targets[operation]!;
-  const target = validateChoice(answers[`${operation.toLowerCase()}_target`], [...Object.keys(candidates), NO_TARGET]);
-  if (target.choice === NO_TARGET) return { kind: 'control', operation: 'ABSTAIN', confidence: target.confidence };
-  return {
-    kind: 'action',
+  return interpretTarget(
+    answers[targetQuestionId(operation)],
     operation,
-    target: candidates[target.choice],
-    confidence: op.confidence,
-    targetConfidence: target.confidence,
-    targetProbabilities: target.probabilities,
-  };
+    space.targets[operation]!,
+    op.confidence,
+    maxOptions,
+  );
 }
 
 const MAX_ALTERNATIVES = 3;
 
-/** Side-panel record of a choice: top alternatives and the margin between the first two */
-export function traceChoice(choice: JevChoice, space: JevActionSpace, model: string, latencyMs: number): JevTrace {
+/**
+ * Side-panel record of a choice: top alternatives and the margin between the first two.
+ * `path` lists the groups Jev narrowed through before this choice.
+ */
+export function traceChoice(choice: JevChoice, model: string, latencyMs: number, path: string[] = []): JevTrace {
+  const narrowed = path.length > 0 ? { path } : {};
   if (choice.kind === 'control') {
-    return { model, latencyMs, operation: choice.operation, confidence: choice.confidence, alternatives: [] };
+    return {
+      model,
+      latencyMs,
+      operation: choice.operation,
+      confidence: choice.confidence,
+      alternatives: [],
+      ...narrowed,
+    };
   }
-  const candidates = space.targets[choice.operation]!;
   const ranked = Object.entries(choice.targetProbabilities).sort((a, b) => b[1] - a[1]);
   return {
     model,
     latencyMs,
     operation: choice.operation,
-    target: `[${choice.target.index}] ${choice.target.label}`,
+    target: choice.kind === 'action' ? targetLabel(choice.target) : choice.offered[ranked[0][0]],
     confidence: choice.confidence,
     targetConfidence: choice.targetConfidence,
     margin: (ranked[0]?.[1] ?? 0) - (ranked[1]?.[1] ?? 0),
-    alternatives: ranked.slice(0, MAX_ALTERNATIVES).map(([key, p]) => ({
-      label: key === NO_TARGET ? NO_TARGET : `[${candidates[key].index}] ${candidates[key].label}`,
-      p,
-    })),
+    alternatives: ranked.slice(0, MAX_ALTERNATIVES).map(([key, p]) => ({ label: choice.offered[key] ?? NO_TARGET, p })),
+    ...narrowed,
   };
 }
 
-const summarize = (operation: string, target?: Target) =>
-  target ? `${operation} [${target.index}] ${target.label}` : operation;
+const summarize = (operation: string, target?: Target) => (target ? `${operation} ${targetLabel(target)}` : operation);
 
 /** OpenRouter keys go through OpenRouter, anything else straight to TypeSafe */
 export function jevEndpoint(apiKey: string): { url: string; model: string } {
@@ -445,6 +580,8 @@ export interface JevEngineOptions {
   /** below these, a pick goes to the LLM navigator instead of being executed */
   minOperationConfidence?: number;
   minTargetConfidence?: number;
+  /** options one choice question may hold; more targets than this are narrowed group by group */
+  maxChoiceOptions?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -466,9 +603,22 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
 
     const goal = this.options.getGoal();
     const started = performance.now();
-    const response = await this.post(buildJevRequest(state, space, goal, this.history, this.model), signal);
-    const choice = interpretAnswers(response.answers ?? {}, space);
-    const trace = traceChoice(choice, space, this.model, Math.round(performance.now() - started));
+    const maxOptions = this.options.maxChoiceOptions ?? MAX_CHOICE_OPTIONS;
+    const response = await this.post(buildJevRequest(state, space, goal, this.history, this.model, maxOptions), signal);
+    let choice = interpretAnswers(response.answers ?? {}, space, maxOptions);
+    // Jev picked a group: ask again inside it until an element is left. An unsure pick stops here and defers.
+    const path: string[] = [];
+    while (choice.kind === 'group' && !this.unsure(choice)) {
+      const { operation, candidates, confidence } = choice;
+      path.push(choice.label);
+      const narrowed = await this.post(
+        buildNarrowRequest(state, space, operation, candidates, goal, this.history, this.model, maxOptions),
+        signal,
+      );
+      const answer = narrowed.answers?.[targetQuestionId(operation)];
+      choice = interpretTarget(answer, operation, candidates, confidence, maxOptions);
+    }
+    const trace = traceChoice(choice, this.model, Math.round(performance.now() - started), path);
     logger.info(`Jev chose ${trace.target ? `${trace.operation} ${trace.target}` : trace.operation}`, {
       confidence: trace.confidence,
       targetConfidence: trace.targetConfidence,
@@ -476,6 +626,10 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
       latencyMs: trace.latencyMs,
     });
 
+    // Still a group: the loop stopped on a pick below the confidence floors
+    if (choice.kind === 'group') {
+      return { decision: null, trace: { ...trace, deferred: this.unsure(choice) ?? 'unsure which element' } };
+    }
     const deferral = this.deferralReason(choice);
     if (deferral) return { decision: null, trace: { ...trace, deferred: deferral } };
 
@@ -495,21 +649,28 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
   }
 
   /** Why this choice should go to the LLM instead, or null to execute it */
-  private deferralReason(choice: JevChoice): string | null {
+  private deferralReason(choice: ResolvedChoice): string | null {
     // DONE needs a written answer and BLOCKED needs reasoning: both are the LLM's job.
     if (choice.kind === 'control' && choice.operation === 'DONE') return 'task looks done';
     if (choice.kind === 'control' && choice.operation === 'BLOCKED') return 'no way forward';
     if (choice.kind === 'control' && choice.operation === 'ABSTAIN') return 'jev abstained';
-    const minOperation = this.options.minOperationConfidence ?? DEFAULT_MIN_OPERATION_CONFIDENCE;
-    const minTarget = this.options.minTargetConfidence ?? DEFAULT_MIN_TARGET_CONFIDENCE;
-    if (choice.confidence < minOperation) return 'unsure which operation';
-    if (choice.kind === 'action' && choice.targetConfidence < minTarget) return 'unsure which element';
+    const unsure = this.unsure(choice);
+    if (unsure) return unsure;
 
     // Same decision three times in a row means the page is not responding to it; let the LLM look.
     const key = choice.kind === 'action' ? `${choice.operation}:${choice.target.index}` : choice.operation;
     this.repeatCount = key === this.lastDecisionKey ? this.repeatCount + 1 : 0;
     this.lastDecisionKey = key;
     if (this.repeatCount >= 2) return 'same action repeated';
+    return null;
+  }
+
+  /** Which confidence floor this choice misses, or null when it clears both */
+  private unsure(choice: JevChoice): string | null {
+    const minOperation = this.options.minOperationConfidence ?? DEFAULT_MIN_OPERATION_CONFIDENCE;
+    const minTarget = this.options.minTargetConfidence ?? DEFAULT_MIN_TARGET_CONFIDENCE;
+    if (choice.confidence < minOperation) return 'unsure which operation';
+    if (choice.kind !== 'control' && choice.targetConfidence < minTarget) return 'unsure which element';
     return null;
   }
 
@@ -531,7 +692,7 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
   }
 
   private async toAction(
-    choice: JevChoice,
+    choice: ResolvedChoice,
     state: BrowserState,
     goal: string,
     signal: AbortSignal,

@@ -1046,6 +1046,9 @@
   "chat_steps_detail_margin": {
     "message": "Vantagem"
   },
+  "chat_steps_detail_narrowed": {
+    "message": "Refinado por"
+  },
   "chat_steps_detail_alternatives": {
     "message": "Alternativas"
   },

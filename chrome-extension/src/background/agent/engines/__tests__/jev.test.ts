@@ -2,7 +2,14 @@ import { describe, it, expect, vi } from 'vitest';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { type DOMBaseNode, DOMElementNode, DOMTextNode } from '@src/background/browser/dom/views';
 import type { BrowserState } from '@src/background/browser/views';
-import { buildActionSpace, buildJevRequest, interpretAnswers, JevDecisionEngine, validateChoice } from '../jev';
+import {
+  buildActionSpace,
+  buildJevRequest,
+  groupCandidates,
+  interpretAnswers,
+  JevDecisionEngine,
+  validateChoice,
+} from '../jev';
 
 function el(
   tagName: string,
@@ -264,5 +271,121 @@ describe('JevDecisionEngine', () => {
     });
     await expect(engine.decide(signupPage(), signal)).rejects.toThrow('HTTP 401');
     expect(fetchImpl.mock.calls[0][0]).toBe('https://api.typesafe.ai/v1/systemone');
+  });
+});
+
+describe('Jev target narrowing', () => {
+  const signal = new AbortController().signal;
+  const GROUPS = ['g1', 'g2', 'g3', 'g4', 'g5', 'none'];
+  const CLICK_OPS = OPS.filter(op => op !== 'TYPE_TEXT' && op !== 'SELECT');
+
+  /** 25 buttons; [9] is the only Repost */
+  function busyPage(): BrowserState {
+    const buttons = Array.from({ length: 25 }, (_, i) =>
+      el('button', {}, i + 1, [text(i === 8 ? 'Repost' : `Like ${i + 1}`)]),
+    );
+    return {
+      elementTree: el('body', {}, null, buttons),
+      selectorMap: new Map(buttons.map((button, i) => [i + 1, button])),
+      url: 'https://example.com/feed',
+      title: 'Feed',
+      tabs: [],
+    } as unknown as BrowserState;
+  }
+
+  /** Engine limited to 5 targets per question, answering each request with the next reply */
+  function narrowingEngine(...replies: Record<string, unknown>[]) {
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ answers: replies.shift() }), { status: 200 }),
+    );
+    const engine = new JevDecisionEngine({
+      apiKey: 'sk-or-test',
+      textLLM: {} as BaseChatModel,
+      getGoal: () => 'Repost the post',
+      maxChoiceOptions: 6,
+      fetchImpl,
+    });
+    const questions = (call: number) =>
+      JSON.parse(fetchImpl.mock.calls[call][1]!.body as string).questions as Record<
+        string,
+        { criteria: Record<string, unknown> }
+      >;
+    return { engine, fetchImpl, questions };
+  }
+
+  it('leaves candidates that fit in one question ungrouped', () => {
+    const space = buildActionSpace(busyPage().selectorMap);
+    expect(groupCandidates(space.targets.CLICK!, 26)).toBeNull();
+  });
+
+  it('splits candidates in page order into as many groups as a question holds', () => {
+    const space = buildActionSpace(busyPage().selectorMap);
+    const groups = groupCandidates(space.targets.CLICK!, 6)!;
+    expect(Object.values(groups).map(g => g.label)).toEqual(['[1-5]', '[6-10]', '[11-15]', '[16-20]', '[21-25]']);
+    expect(Object.keys(groups.g2.candidates)).toEqual(['6', '7', '8', '9', '10']);
+  });
+
+  it('asks for a group first, then for the element inside it', async () => {
+    const { engine, fetchImpl, questions } = narrowingEngine(
+      { operation: choice('CLICK', CLICK_OPS), click_target: choice('g2', GROUPS) },
+      { click_target: choice('9', ['6', '7', '8', '9', '10', 'none']) },
+    );
+    const { decision, trace } = await engine.decide(busyPage(), signal);
+    expect(decision?.action).toEqual([{ click_element: { intent: 'CLICK [9] Repost', index: 9 } }]);
+    expect(trace).toMatchObject({ target: '[9] Repost', path: ['[6-10]'] });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(questions(0).click_target.criteria.g2).toEqual({
+      range: '[6-10]',
+      elements: ['Like 6', 'Like 7', 'Like 8', 'Repost', 'Like 10'],
+    });
+    expect(Object.keys(questions(1))).toEqual(['click_target']);
+    expect(Object.keys(questions(1).click_target.criteria)).toEqual(['6', '7', '8', '9', '10', 'none']);
+  });
+
+  it('keeps narrowing while a group is still too large', async () => {
+    const { engine, fetchImpl, questions } = narrowingEngine(
+      { operation: choice('CLICK', CLICK_OPS), click_target: choice('g2', GROUPS) },
+      { click_target: choice('g4', GROUPS) },
+      { click_target: choice('43', ['41', '42', '43', '44', '45', 'none']) },
+    );
+    const state = busyPage();
+    // 125 buttons: 5 groups of 25, then 5 groups of 5
+    for (let i = 26; i <= 125; i++) state.selectorMap.set(i, el('button', {}, i, [text(`Like ${i}`)]));
+    const { decision, trace } = await engine.decide(state, signal);
+    expect(decision?.action).toEqual([{ click_element: { intent: 'CLICK [43] Like 43', index: 43 } }]);
+    expect(trace?.path).toEqual(['[26-50]', '[41-45]']);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(Object.keys(questions(1).click_target.criteria)).toEqual(GROUPS);
+  });
+
+  it('defers without a second request when unsure of the group', async () => {
+    const { engine, fetchImpl } = narrowingEngine({
+      operation: choice('CLICK', CLICK_OPS),
+      click_target: choice('g2', GROUPS, 0.4),
+    });
+    const { decision, trace } = await engine.decide(busyPage(), signal);
+    expect(decision).toBeNull();
+    expect(trace).toMatchObject({
+      deferred: 'unsure which element',
+      target: '[6-10] Like 6 · Like 7 · Like 8 · Repost · Like 10',
+    });
+    expect(trace?.path).toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it('defers when no group or no element in the group matches', async () => {
+    const noGroup = narrowingEngine({ operation: choice('CLICK', CLICK_OPS), click_target: choice('none', GROUPS) });
+    expect(await noGroup.engine.decide(busyPage(), signal)).toMatchObject({
+      decision: null,
+      trace: { deferred: 'jev abstained' },
+    });
+    const noElement = narrowingEngine(
+      { operation: choice('CLICK', CLICK_OPS), click_target: choice('g1', GROUPS) },
+      { click_target: choice('none', ['1', '2', '3', '4', '5', 'none']) },
+    );
+    expect(await noElement.engine.decide(busyPage(), signal)).toMatchObject({
+      decision: null,
+      trace: { deferred: 'jev abstained', path: ['[1-5]'] },
+    });
   });
 });
