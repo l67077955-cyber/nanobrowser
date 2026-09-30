@@ -1,46 +1,96 @@
+/* Settings share the side panel's look: warm neutrals, thin lines, one accent hue.
+   Tokens mirror pages/side-panel/src/components/StepList.css - keep the two in sync. */
+:root {
+  --nb-page: #f3f2ef;
+  --nb-tile: #fcfcfa;
+  --nb-tile-2: #f7f6f3;
+  --nb-line: #e6e4df;
+  --nb-hair: #eeede9;
+  --nb-ink: #1b1a1f;
+  --nb-ink-2: #57565e;
+  --nb-muted: #8e8d94;
+  --nb-track: #ebeae5;
+  --nb-llm: #3a6db0;
+  --nb-jev: #0f9480;
+  --nb-plan: #6d5fc0;
+  --nb-good: #2f8f5b;
+  --nb-warning: #c2871f;
+  --nb-critical: #c0463e;
+  --nb-glow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 1px 2px rgba(30, 25, 20, 0.04);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --nb-page: #0c0d0f;
+    --nb-tile: #141518;
+    --nb-tile-2: #18191d;
+    --nb-line: #24252a;
+    --nb-hair: #1f2024;
+    --nb-ink: #eeeef0;
+    --nb-ink-2: #b3b2b9;
+    --nb-muted: #7c7b84;
+    --nb-track: #25262b;
+    --nb-llm: #5486d0;
+    --nb-jev: #14a088;
+    --nb-plan: #8b7fe0;
+    --nb-good: #3fa56d;
+    --nb-warning: #d19a37;
+    --nb-critical: #d65a51;
+    --nb-glow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+    color-scheme: dark;
+  }
+}
+
+body {
+  background: var(--nb-page);
+  color: var(--nb-ink);
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
 #app-container {
   text-align: center;
   width: 100vw;
-  height: 100vh;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-.App {
-  width: 100vw;
-  height: 100vh;
-  font-size: calc(10px + 2vmin);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  min-height: 100vh;
 }
 
 code {
-  background: rgba(148, 163, 184, 0.5);
+  background: var(--nb-track);
   border-radius: 0.25rem;
-  padding: 0.2rem 0.5rem;
+  padding: 0.1rem 0.4rem;
+  color: var(--nb-ink);
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  code {
-    background: rgba(30, 58, 138, 0.4);
-    color: #7dd3fc;
-  }
-  
-  .dark-mode-text {
-    color: #e2e8f0 !important; /* slate-200 */
-  }
-  
-  .dark-mode-bg {
-    background-color: #1e293b !important; /* slate-800 */
-  }
-  
-  .dark-mode-border {
-    border-color: #475569 !important; /* slate-600 */
-  }
+input::placeholder,
+textarea::placeholder {
+  color: var(--nb-muted);
+}
+
+/* same small caps label as the step stream */
+.nb-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-muted);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--nb-line);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--nb-muted);
 }

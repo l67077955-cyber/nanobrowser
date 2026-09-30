@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import '@src/Options.css';
-import { Button } from '@extension/ui';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { t } from '@extension/i18n';
 import { FiSettings, FiCpu, FiShield, FiTrendingUp, FiHelpCircle } from 'react-icons/fi';
@@ -21,20 +20,6 @@ const TABS: { id: TabTypes; icon: React.ComponentType<{ className?: string }>; l
 
 const Options = () => {
   const [activeTab, setActiveTab] = useState<TabTypes>('models');
-  const [isDarkMode, setIsDarkMode] = useState(false);
-
-  // Check for dark mode preference
-  useEffect(() => {
-    const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    setIsDarkMode(darkModeMediaQuery.matches);
-
-    const handleChange = (e: MediaQueryListEvent) => {
-      setIsDarkMode(e.matches);
-    };
-
-    darkModeMediaQuery.addEventListener('change', handleChange);
-    return () => darkModeMediaQuery.removeEventListener('change', handleChange);
-  }, []);
 
   const handleTabClick = (tabId: TabTypes) => {
     if (tabId === 'help') {
@@ -47,42 +32,42 @@ const Options = () => {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'general':
-        return <GeneralSettings isDarkMode={isDarkMode} />;
+        return <GeneralSettings />;
       case 'models':
-        return <ModelSettings isDarkMode={isDarkMode} />;
+        return <ModelSettings />;
       case 'firewall':
-        return <FirewallSettings isDarkMode={isDarkMode} />;
+        return <FirewallSettings />;
       case 'analytics':
-        return <AnalyticsSettings isDarkMode={isDarkMode} />;
+        return <AnalyticsSettings />;
       default:
         return null;
     }
   };
 
   return (
-    <div
-      className={`flex min-h-screen min-w-[768px] ${isDarkMode ? 'bg-slate-900' : "bg-[url('/bg.jpg')] bg-cover bg-center"} ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+    <div className="flex min-h-screen min-w-[768px] bg-nb-page text-nb-ink">
       {/* Vertical Navigation Bar */}
-      <nav
-        className={`w-48 border-r ${isDarkMode ? 'border-slate-700 bg-slate-800/80' : 'border-white/20 bg-[#0EA5E9]/10'} backdrop-blur-sm`}>
-        <div className="p-4">
-          <h1 className={`mb-6 text-xl font-bold ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-            {t('options_nav_header')}
-          </h1>
-          <ul className="space-y-2">
+      <nav className="w-52 shrink-0 border-r border-nb-line">
+        <div className="sticky top-0 p-4">
+          <div className="mb-5 flex items-center gap-2 px-2">
+            <img src="/icon-128.png" alt="" className="size-6" />
+            <h1 className="text-base font-semibold tracking-tight">{t('options_nav_header')}</h1>
+          </div>
+          <ul className="space-y-1">
             {TABS.map(item => (
               <li key={item.id}>
-                <Button
+                <button
+                  type="button"
                   onClick={() => handleTabClick(item.id)}
-                  className={`flex w-full items-center space-x-2 rounded-lg px-4 py-2 text-left text-base 
-                    ${
-                      activeTab !== item.id
-                        ? `${isDarkMode ? 'bg-slate-700/70 text-gray-300 hover:text-white' : 'bg-[#0EA5E9]/15 font-medium text-gray-700 hover:text-white'} backdrop-blur-sm`
-                        : `${isDarkMode ? 'bg-sky-800/50' : ''} text-white backdrop-blur-sm`
-                    }`}>
-                  <item.icon className="h-4 w-4" />
+                  aria-current={activeTab === item.id ? 'page' : undefined}
+                  className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-nb-llm ${
+                    activeTab === item.id
+                      ? 'border-nb-line bg-nb-tile font-medium text-nb-ink shadow-nb'
+                      : 'border-transparent text-nb-ink-2 hover:bg-nb-tile-2 hover:text-nb-ink'
+                  }`}>
+                  <item.icon className={`size-4 ${activeTab === item.id ? 'text-nb-llm' : 'text-nb-muted'}`} />
                   <span>{item.label}</span>
-                </Button>
+                </button>
               </li>
             ))}
           </ul>
@@ -90,7 +75,7 @@ const Options = () => {
       </nav>
 
       {/* Main Content Area */}
-      <main className={`flex-1 ${isDarkMode ? 'bg-slate-800/50' : 'bg-white/10'} p-8 backdrop-blur-sm`}>
+      <main className="flex-1 p-8">
         <div className="mx-auto min-w-[512px] max-w-screen-lg">{renderTabContent()}</div>
       </main>
     </div>
