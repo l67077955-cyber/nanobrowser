@@ -72,10 +72,16 @@ const SidePanel = () => {
     }
   }, []);
 
-  // Check model configuration on mount
+  // Check model configuration on mount, and again whenever the settings are saved: no reopening needed
   useEffect(() => {
     checkModelConfiguration();
     loadGeneralSettings();
+    const unsubscribeModels = agentModelStore.subscribe(checkModelConfiguration);
+    const unsubscribeSettings = generalSettingsStore.subscribe(loadGeneralSettings);
+    return () => {
+      unsubscribeModels();
+      unsubscribeSettings();
+    };
   }, [checkModelConfiguration, loadGeneralSettings]);
 
   // Re-check model configuration when the side panel becomes visible again

@@ -13,7 +13,6 @@ import {
   llmProviderStore,
   agentModelStore,
   speechToTextModelStore,
-  captchaModelStore,
   AgentNameEnum,
   llmProviderModelNames,
   ProviderTypeEnum,
@@ -23,6 +22,7 @@ import {
   type ProviderConfig,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
+import { CaptchaModelPicker } from './CaptchaModelPicker';
 
 // Helper function to check if a model is an OpenAI reasoning model (O-series, GPT-5 or GPT-6 models)
 function isOpenAIReasoningModel(modelName: string): boolean {
@@ -88,7 +88,6 @@ export const ModelSettings = () => {
   // State for model input handling
 
   const [selectedSpeechToTextModel, setSelectedSpeechToTextModel] = useState<string>('');
-  const [selectedCaptchaModel, setSelectedCaptchaModel] = useState<string>('');
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -153,36 +152,22 @@ export const ModelSettings = () => {
     };
 
     loadAgentModels();
+    // a model chosen in another settings tab shows up here
+    return agentModelStore.subscribe(loadAgentModels);
   }, []);
 
   useEffect(() => {
     const loadSpeechToTextModel = async () => {
       try {
         const config = await speechToTextModelStore.getSpeechToTextModel();
-        if (config) {
-          setSelectedSpeechToTextModel(`${config.provider}>${config.modelName}`);
-        }
+        setSelectedSpeechToTextModel(config ? `${config.provider}>${config.modelName}` : '');
       } catch (error) {
         console.error('Error loading speech-to-text model:', error);
       }
     };
 
     loadSpeechToTextModel();
-  }, []);
-
-  useEffect(() => {
-    const loadCaptchaModel = async () => {
-      try {
-        const config = await captchaModelStore.getCaptchaModel();
-        if (config) {
-          setSelectedCaptchaModel(`${config.provider}>${config.modelName}`);
-        }
-      } catch (error) {
-        console.error('Error loading captcha model:', error);
-      }
-    };
-
-    loadCaptchaModel();
+    return speechToTextModelStore.subscribe(loadSpeechToTextModel);
   }, []);
 
   // Auto-focus the input field when a new provider is added
@@ -267,6 +252,37 @@ export const ModelSettings = () => {
     return models;
   }, []);
 
+  // What the storage listener reads: it is registered once and must not see the state of the first render
+  const modifiedProvidersRef = useRef(modifiedProviders);
+  modifiedProvidersRef.current = modifiedProviders;
+  const providersFromStorageRef = useRef(providersFromStorage);
+  providersFromStorageRef.current = providersFromStorage;
+
+  // Providers saved elsewhere (another settings tab, a model list saved as it is edited) show up without a
+  // page reload. A provider with unsaved edits, or one that was added here and not saved yet, keeps what is typed.
+  useEffect(
+    () =>
+      llmProviderStore.subscribe(async () => {
+        try {
+          const stored = await llmProviderStore.getAllProviders();
+          const wasStored = providersFromStorageRef.current;
+          setProviders(prev => {
+            const next: Record<string, ProviderConfig> = { ...stored };
+            for (const [id, config] of Object.entries(prev)) {
+              const unsaved = modifiedProvidersRef.current.has(id) || (!stored[id] && !wasStored.has(id));
+              if (unsaved) next[id] = config;
+            }
+            return next;
+          });
+          setProvidersFromStorage(new Set(Object.keys(stored)));
+          setAvailableModels(await getAvailableModelsCallback());
+        } catch (error) {
+          console.error('Error reloading providers:', error);
+        }
+      }),
+    [getAvailableModelsCallback],
+  );
+
   // Update available models whenever providers change
   useEffect(() => {
     const updateAvailableModels = async () => {
@@ -318,68 +334,39 @@ export const ModelSettings = () => {
     }));
   };
 
+  /**
+   * The model list of a provider that is already saved goes to storage as it is edited: a name that was typed
+   * stays after a reload without Save having to be clicked. A provider that is not saved yet still needs Save.
+   */
+  const changeModelNames = (provider: string, change: (current: string[]) => string[]) => {
+    const current =
+      providers[provider]?.modelNames ?? llmProviderModelNames[provider as keyof typeof llmProviderModelNames] ?? [];
+    const modelNames = change([...current]);
+    setProviders(prev => ({ ...prev, [provider]: { ...prev[provider], modelNames } }));
+
+    if (!providersFromStorage.has(provider)) {
+      setModifiedProviders(prev => new Set(prev).add(provider));
+      return;
+    }
+    llmProviderStore
+      .getProvider(provider)
+      .then(stored => (stored ? llmProviderStore.setProvider(provider, { ...stored, modelNames }) : undefined))
+      .catch(error => {
+        console.error('Error saving the model list:', error);
+        // not saved: the Save button stays available for it
+        setModifiedProviders(prev => new Set(prev).add(provider));
+      });
+  };
+
   const addModel = (provider: string, model: string) => {
-    if (!model.trim()) return;
-
-    setModifiedProviders(prev => new Set(prev).add(provider));
-    setProviders(prev => {
-      const providerData = prev[provider] || {};
-
-      // Get current models - either from provider config or default models
-      let currentModels = providerData.modelNames;
-      if (currentModels === undefined) {
-        currentModels = [...(llmProviderModelNames[provider as keyof typeof llmProviderModelNames] || [])];
-      }
-
-      // Don't add duplicates
-      if (currentModels.includes(model.trim())) return prev;
-
-      return {
-        ...prev,
-        [provider]: {
-          ...providerData,
-          modelNames: [...currentModels, model.trim()],
-        },
-      };
-    });
-
-    // Clear the input
-    setNewModelInputs(prev => ({
-      ...prev,
-      [provider]: '',
-    }));
+    const name = model.trim();
+    if (!name) return;
+    setNewModelInputs(prev => ({ ...prev, [provider]: '' }));
+    changeModelNames(provider, current => (current.includes(name) ? current : [...current, name]));
   };
 
   const removeModel = (provider: string, modelToRemove: string) => {
-    setModifiedProviders(prev => new Set(prev).add(provider));
-
-    setProviders(prev => {
-      const providerData = prev[provider] || {};
-
-      // If modelNames doesn't exist in the provider data yet, we need to initialize it
-      // with the default models from llmProviderModelNames first
-      if (!providerData.modelNames) {
-        const defaultModels = llmProviderModelNames[provider as keyof typeof llmProviderModelNames] || [];
-        const filteredModels = defaultModels.filter(model => model !== modelToRemove);
-
-        return {
-          ...prev,
-          [provider]: {
-            ...providerData,
-            modelNames: filteredModels,
-          },
-        };
-      }
-
-      // If modelNames already exists, just filter out the model to remove
-      return {
-        ...prev,
-        [provider]: {
-          ...providerData,
-          modelNames: providerData.modelNames.filter(model => model !== modelToRemove),
-        },
-      };
-    });
+    changeModelNames(provider, current => current.filter(model => model !== modelToRemove));
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, provider: string) => {
@@ -489,6 +476,13 @@ export const ModelSettings = () => {
         // Use existing modelNames from state, or default if somehow missing
         configToSave.modelNames =
           providers[provider].modelNames || llmProviderModelNames[provider as keyof typeof llmProviderModelNames] || [];
+        // a name still in the box, not yet turned into a chip
+        const pending = (newModelInputs[provider] || '').trim();
+        if (pending && !configToSave.modelNames.includes(pending)) {
+          configToSave.modelNames = [...configToSave.modelNames, pending];
+          setProviders(prev => ({ ...prev, [provider]: { ...prev[provider], modelNames: configToSave.modelNames } }));
+        }
+        setNewModelInputs(prev => ({ ...prev, [provider]: '' }));
       }
 
       // Pass the cleaned config to setProvider
@@ -719,21 +713,6 @@ export const ModelSettings = () => {
       }
     } catch (error) {
       console.error('Error saving speech-to-text model:', error);
-    }
-  };
-
-  const handleCaptchaModelChange = async (modelValue: string) => {
-    setSelectedCaptchaModel(modelValue);
-
-    try {
-      if (modelValue) {
-        const [provider, modelName] = modelValue.split('>');
-        await captchaModelStore.setCaptchaModel({ provider, modelName });
-      } else {
-        await captchaModelStore.resetCaptchaModel();
-      }
-    } catch (error) {
-      console.error('Error saving captcha model:', error);
     }
   };
 
@@ -1467,6 +1446,7 @@ export const ModelSettings = () => {
                                   value={newModelInputs[providerId] || ''}
                                   onChange={e => handleModelsChange(providerId, e.target.value)}
                                   onKeyDown={e => handleKeyDown(e, providerId)}
+                                  onBlur={e => addModel(providerId, e.target.value)}
                                   className={`min-w-[150px] flex-1 border-none bg-transparent p-1 text-sm text-nb-ink outline-none`}
                                 />
                               </div>
@@ -1506,6 +1486,7 @@ export const ModelSettings = () => {
                                   value={newModelInputs[providerId] || ''}
                                   onChange={e => handleModelsChange(providerId, e.target.value)}
                                   onKeyDown={e => handleKeyDown(e, providerId)}
+                                  onBlur={e => addModel(providerId, e.target.value)}
                                   className={`min-w-[150px] flex-1 border-none bg-transparent p-1 text-sm text-nb-ink outline-none`}
                                 />
                               </div>
@@ -1612,33 +1593,9 @@ export const ModelSettings = () => {
         </div>
       </div>
 
-      {/* Captcha Model Selection */}
-      <div className={`rounded-xl border border-nb-line bg-nb-tile p-6 text-left shadow-nb`}>
-        <h2 className={`mb-4 text-left text-base font-semibold tracking-tight text-nb-ink`}>
-          {t('options_models_captcha_header')}
-        </h2>
-        <p className={`mb-4 text-sm text-nb-muted`}>{t('options_models_captcha_desc')}</p>
-
-        <div className={`rounded-lg border border-nb-hair bg-nb-tile-2 p-4`}>
-          <div className="flex items-center">
-            <label htmlFor="captcha-model" className={`w-24 text-sm font-medium text-nb-ink-2`}>
-              {t('options_models_labels_model')}
-            </label>
-            <select
-              id="captcha-model"
-              className={`flex-1 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-sm text-nb-ink focus:border-nb-llm focus:outline-none`}
-              value={selectedCaptchaModel}
-              onChange={e => handleCaptchaModelChange(e.target.value)}>
-              <option value="">{t('options_models_chooseModel')}</option>
-              {availableModels.map(({ provider, providerName, model }) => (
-                <option key={`${provider}>${model}`} value={`${provider}>${model}`}>
-                  {`${providerName} > ${model}`}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
+      <CaptchaModelPicker
+        providers={Object.fromEntries(Object.entries(providers).filter(([id]) => providersFromStorage.has(id)))}
+      />
 
       {/* Speech-to-Text Model Selection */}
       <div className={`rounded-xl border border-nb-line bg-nb-tile p-6 text-left shadow-nb`}>

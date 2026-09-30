@@ -344,7 +344,28 @@
     "message": "Captcha Model"
   },
   "options_models_captcha_desc": {
-    "message": "Reads image captchas (distorted characters, arithmetic questions) so the agent can fill them in. Choose a model that accepts images. If none is chosen, the Navigator model is used when vision is enabled."
+    "message": "Reads image captchas (distorted characters, arithmetic questions) so the agent can fill them in. Any model that accepts images works, from any provider you have saved; it does not have to be in the provider's model list. If none is chosen, the Navigator model is used when vision is enabled."
+  },
+  "options_models_captcha_provider": {
+    "message": "Provider"
+  },
+  "options_models_captcha_chooseProvider": {
+    "message": "Choose Provider"
+  },
+  "options_models_captcha_modelPlaceholder": {
+    "message": "Pick from the list or type a model name"
+  },
+  "options_models_captcha_openRouterHint": {
+    "message": "The list shows the $COUNT$ OpenRouter models that accept images right now. Small fast ones (Gemini Flash Lite, Qwen Flash, GLM Flash) are enough for captchas.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "200"
+      }
+    }
+  },
+  "options_models_captcha_anyModelHint": {
+    "message": "The list shows models of this provider; type the name of any other one that accepts images."
   },
   "options_models_stt_desc": {
     "message": "設定在使用麥克風功能時，將語音轉換為文字所使用的 Gemini 模型。"
@@ -715,11 +736,20 @@
     }
   },
   "act_solveCaptcha_failed": {
-    "message": "Could not solve the captcha: $ERROR$. The captcha model has to accept images (Settings > Models > Captcha Model)",
+    "message": "Could not solve the captcha: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1",
         "example": "no captcha image found beside the field"
+      }
+    }
+  },
+  "act_solveCaptcha_modelFailed": {
+    "message": "The captcha model could not be called: $ERROR$. Check that it accepts images and that its name is right (Settings > Models > Captcha Model)",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "404 No endpoints found"
       }
     }
   },

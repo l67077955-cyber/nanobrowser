@@ -31,7 +31,7 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { wrapUntrustedContent } from '../messages/utils';
 import type { DOMElementNode } from '@src/background/browser/dom/views';
 import { ElementChangedError, ElementNotFoundError } from '@src/background/browser/views';
-import { readCaptcha } from '@src/background/services/captcha';
+import { CaptchaUnreadableError, readCaptcha } from '@src/background/services/captcha';
 import { isAbortedError } from '../agents/errors';
 
 const logger = createLogger('Action');
@@ -42,6 +42,9 @@ export class InvalidInputError extends Error {
     this.name = 'InvalidInputError';
   }
 }
+
+/** The call to the captcha model failed, as opposed to a captcha it could not read */
+class CaptchaModelError extends Error {}
 
 /**
  * Added to the result of input_text when the field ends up holding something other than the text: a format
@@ -370,7 +373,11 @@ export class ActionBuilder {
 
         try {
           const image = await page.captureCaptchaImage(fieldNode, imageNode);
-          const code = await readCaptcha(this.captchaLLM, image, this.context.controller.signal);
+          const code = await readCaptcha(this.captchaLLM, image, this.context.controller.signal).catch(error => {
+            if (isAbortedError(error) || error instanceof CaptchaUnreadableError) throw error;
+            // the provider turned the request down: a wrong model name, or a model that takes no images
+            throw new CaptchaModelError(error instanceof Error ? error.message : String(error));
+          });
           const content = await page.inputTextElementNode(this.context.options.useVision, fieldNode, code);
           const msg = t('act_solveCaptcha_ok', [code, input.index.toString()]);
           this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
@@ -380,7 +387,11 @@ export class ActionBuilder {
           });
         } catch (error) {
           if (isAbortedError(error)) throw error;
-          const msg = t('act_solveCaptcha_failed', [error instanceof Error ? error.message : String(error)]);
+          const reason = error instanceof Error ? error.message : String(error);
+          const msg =
+            error instanceof CaptchaModelError
+              ? t('act_solveCaptcha_modelFailed', [reason])
+              : t('act_solveCaptcha_failed', [reason]);
           this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, msg);
           return new ActionResult({ error: msg, includeInMemory: true });
         }

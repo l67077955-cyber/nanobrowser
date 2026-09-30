@@ -8,6 +8,10 @@ export const GeneralSettings = () => {
   useEffect(() => {
     // Load initial settings
     generalSettingsStore.getSettings().then(setSettings);
+    // settings changed elsewhere (the Memory tab, another settings tab) show up here
+    return generalSettingsStore.subscribe(() => {
+      generalSettingsStore.getSettings().then(setSettings);
+    });
   }, []);
 
   const updateSetting = async <K extends keyof GeneralSettingsConfig>(key: K, value: GeneralSettingsConfig[K]) => {

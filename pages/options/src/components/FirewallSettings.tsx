@@ -20,6 +20,8 @@ export const FirewallSettings = () => {
 
   useEffect(() => {
     loadFirewallSettings();
+    // rules saved in another settings tab show up here
+    return firewallStore.subscribe(loadFirewallSettings);
   }, [loadFirewallSettings]);
 
   const handleToggleFirewall = async () => {
@@ -34,9 +36,7 @@ export const FirewallSettings = () => {
     const moved =
       activeList === 'allow' ? await firewallStore.addToAllowList(entry) : await firewallStore.addToDenyList(entry);
     setNotice(
-      moved
-        ? t(activeList === 'allow' ? 'options_firewall_movedToAllow' : 'options_firewall_movedToDeny', entry)
-        : '',
+      moved ? t(activeList === 'allow' ? 'options_firewall_movedToAllow' : 'options_firewall_movedToDeny', entry) : '',
     );
     await loadFirewallSettings();
     setNewUrl('');

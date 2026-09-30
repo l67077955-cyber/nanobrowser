@@ -67,6 +67,15 @@ analytics.init().catch(error => {
   logger.error('Failed to initialize analytics:', error);
 });
 
+// An executor holds the models and options it was set up with. When a setting is saved, the next message of
+// a running session gets a new executor instead of the stale one, so no reload is needed for it to apply.
+let settingsChanged = false;
+for (const store of [llmProviderStore, agentModelStore, generalSettingsStore, firewallStore, captchaModelStore]) {
+  store.subscribe(() => {
+    settingsChanged = true;
+  });
+}
+
 // Listen for analytics settings changes
 analyticsSettingsStore.subscribe(() => {
   analytics.updateSettings().catch(error => {
@@ -137,11 +146,12 @@ chrome.runtime.onConnect.addListener(port => {
 
             await browserContext.resumeLastTab().catch(error => logger.warning('resumeLastTab failed', error));
             const sameSession = currentExecutor && (await currentExecutor.getCurrentTaskId()) === message.taskId;
-            if (currentExecutor && sameSession && !currentExecutor.stopped) {
+            if (currentExecutor && sameSession && !currentExecutor.stopped && !settingsChanged) {
               currentExecutor.addFollowUpTask(message.task);
             } else {
               // The executor of this session is gone (side panel closed, service worker restarted, another
-              // session ran since) or was cancelled: a new one goes on from what that one knew
+              // session ran since), was cancelled, or was set up before the settings changed: a new one,
+              // built from the settings as they are now, goes on from what that one knew
               const snapshot =
                 currentExecutor && sameSession
                   ? currentExecutor.snapshot()
@@ -382,7 +392,12 @@ async function setupExecutor(
   const captchaProviderConfig = captchaModel ? providers[captchaModel.provider] : undefined;
   let captchaLLM: BaseChatModel | null = generalSettings.useVision ? navigatorLLM : null;
   if (captchaModel && captchaProviderConfig) {
-    captchaLLM = createChatModel(captchaProviderConfig, { ...captchaModel, parameters: { temperature: 0, topP: 0.1 } });
+    captchaLLM = createChatModel(captchaProviderConfig, {
+      ...captchaModel,
+      parameters: { temperature: 0, topP: 0.1 },
+      // reading a few characters needs no thinking
+      reasoningEffort: 'minimal',
+    });
   }
 
   memoryLLM = plannerLLM ?? navigatorLLM;
@@ -410,6 +425,8 @@ async function setupExecutor(
     generalSettings: generalSettings,
   });
 
+  // the executor was built from the settings as they are now, whatever was saved while it was set up
+  settingsChanged = false;
   return executor;
 }
 

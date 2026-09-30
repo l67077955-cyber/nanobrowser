@@ -54,6 +54,22 @@ describe('solve_captcha', () => {
     expect(result.error).toBeTruthy();
   });
 
+  it('tells a model that cannot be called from a captcha that cannot be read', async () => {
+    const failing = {
+      invoke: vi.fn(async () => {
+        throw new Error('404 No endpoints found that support image input');
+      }),
+    } as unknown as BaseChatModel;
+    const { action, page } = setup(failing);
+    const result = await action.call({ index: 3 });
+    expect(page.inputTextElementNode).not.toHaveBeenCalled();
+    expect(result.error).toContain('act_solveCaptcha_modelFailed');
+    expect(result.error).toContain('No endpoints found');
+
+    const unreadable = await setup(modelReplying('UNREADABLE')).action.call({ index: 3 });
+    expect(unreadable.error).toContain('act_solveCaptcha_failed');
+  });
+
   it('says that a model is missing instead of looking at the page', async () => {
     const { action, page } = setup(null);
     const result = await action.call({ index: 3 });

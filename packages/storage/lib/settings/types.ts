@@ -51,6 +51,27 @@ export const llmProviderModelNames = {
   // Custom OpenAI providers don't have predefined models as they are user-defined
 };
 
+/**
+ * Models that accept images, offered for reading captchas where the provider's own model list does not say
+ * which ones do. Any other name can be typed. OpenRouter's are only used when its live model list cannot be loaded.
+ */
+export const captchaModelSuggestions: Partial<Record<ProviderTypeEnum, string[]>> = {
+  [ProviderTypeEnum.OpenRouter]: [
+    'google/gemini-3.5-flash-lite',
+    'google/gemini-3.8-flash',
+    'qwen/qwen3.7-flash',
+    'z-ai/glm-5.3-flash',
+    'openai/gpt-6-luna',
+    'anthropic/claude-haiku-4.5',
+  ],
+  [ProviderTypeEnum.Groq]: [
+    'meta-llama/llama-4-scout-17b-16e-instruct',
+    'meta-llama/llama-4-maverick-17b-128e-instruct',
+  ],
+  [ProviderTypeEnum.Ollama]: ['qwen2.5vl:7b', 'gemma3:12b', 'llama3.2-vision:11b', 'minicpm-v:8b'],
+  [ProviderTypeEnum.Llama]: ['Llama-4-Maverick-17B-128E-Instruct-FP8', 'Llama-4-Scout-17B-16E-Instruct-FP8'],
+};
+
 // Default parameters for each agent per provider, for providers not specified, use OpenAI parameters
 export const llmProviderParameters = {
   [ProviderTypeEnum.OpenAI]: {
