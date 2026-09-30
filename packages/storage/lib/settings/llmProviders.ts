@@ -1,7 +1,13 @@
 import { StorageEnum } from '../base/enums';
 import { createStorage } from '../base/base';
 import type { BaseStorage } from '../base/types';
-import { type AgentNameEnum, llmProviderModelNames, llmProviderParameters, ProviderTypeEnum } from './types';
+import {
+  type AgentNameEnum,
+  llmProviderModelNames,
+  llmProviderParameters,
+  openRouterModelsAdded,
+  ProviderTypeEnum,
+} from './types';
 
 const AZURE_API_VERSION = '2025-04-01-preview';
 
@@ -12,6 +18,7 @@ export interface ProviderConfig {
   apiKey: string; // Must be provided, but may be empty for local models
   baseUrl?: string; // Optional base URL if provided // For Azure: Endpoint
   modelNames?: string[]; // Chosen model names (NOT used for Azure OpenAI)
+  modelListVersion?: number; // Which additions to the default models this list has already received
   createdAt?: number; // Timestamp in milliseconds when the provider was created
   // Azure Specific Fields:
   azureDeploymentNames?: string[]; // Azure deployment names array
@@ -42,6 +49,13 @@ const storage = createStorage<LLMKeyRecord>(
     liveUpdate: true,
   },
 );
+
+// Models that joined the defaults after providers were saved are appended to a saved list once, so they are
+// offered without being typed. The version saved with the list records it: a model removed afterwards stays removed.
+const MODEL_LIST_VERSION = 1;
+const modelsAddedToDefaults: Partial<Record<ProviderTypeEnum, string[]>> = {
+  [ProviderTypeEnum.OpenRouter]: openRouterModelsAdded,
+};
 
 // Helper function to determine provider type from provider name
 // Make sure to update this function if you add a new provider type
@@ -127,6 +141,7 @@ export function getDefaultProviderConfig(providerId: string): ProviderConfig {
               ? 'https://api.llama.com/v1'
               : undefined,
         modelNames: [...(llmProviderModelNames[providerId] || [])],
+        modelListVersion: MODEL_LIST_VERSION,
         createdAt: Date.now(),
       };
 
@@ -255,6 +270,12 @@ function ensureBackwardCompatibility(providerId: string, config: ProviderConfig)
     ];
   }
 
+  const added = modelsAddedToDefaults[updatedConfig.type as ProviderTypeEnum];
+  if (added && Array.isArray(updatedConfig.modelNames) && (updatedConfig.modelListVersion ?? 0) < MODEL_LIST_VERSION) {
+    updatedConfig.modelNames = [...new Set([...updatedConfig.modelNames, ...added])];
+  }
+  updatedConfig.modelListVersion = MODEL_LIST_VERSION;
+
   // Ensure createdAt exists
   if (!updatedConfig.createdAt) {
     updatedConfig.createdAt = new Date('03/04/2025').getTime();
@@ -316,6 +337,7 @@ export const llmProviderStore: LLMProviderStorage = {
           }
         : {
             modelNames: config.modelNames || [],
+            modelListVersion: config.modelListVersion,
           }),
     };
 

@@ -1,27 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { captchaModelStore, captchaModelSuggestions, ProviderTypeEnum, type ProviderConfig } from '@extension/storage';
 import { t } from '@extension/i18n';
+import { useOpenRouterModels } from './openRouterModels';
 
-const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const MODEL_INPUT_ID = 'captcha-model';
-
-interface OpenRouterModel {
-  id: string;
-  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
-}
-
-/** The chat models of an OpenRouter model list that take images; batch variants answer hours later */
-export function imageModelIds(models: OpenRouterModel[]): string[] {
-  return models
-    .filter(
-      model =>
-        model.architecture?.input_modalities?.includes('image') &&
-        model.architecture?.output_modalities?.includes('text') &&
-        !model.id.endsWith(':batch'),
-    )
-    .map(model => model.id)
-    .sort();
-}
 
 interface CaptchaModelPickerProps {
   /** the saved providers */
@@ -35,7 +17,6 @@ interface CaptchaModelPickerProps {
 export const CaptchaModelPicker = ({ providers }: CaptchaModelPickerProps) => {
   const [provider, setProvider] = useState('');
   const [model, setModel] = useState('');
-  const [openRouterModels, setOpenRouterModels] = useState<string[] | null>(null);
   // a provider is chosen and its model is not yet: nothing is stored then, and the provider must stay selected
   const choosingRef = useRef(false);
 
@@ -63,25 +44,9 @@ export const CaptchaModelPicker = ({ providers }: CaptchaModelPickerProps) => {
 
   const providerConfig = providers[provider];
   const isOpenRouter = providerConfig?.type === ProviderTypeEnum.OpenRouter;
-  const openRouterBaseUrl = isOpenRouter ? providerConfig.baseUrl || OPENROUTER_BASE_URL : null;
-
   // OpenRouter says which of its models take images: offer exactly those, as they are today
-  useEffect(() => {
-    if (!openRouterBaseUrl) return;
-    let cancelled = false;
-    fetch(`${openRouterBaseUrl.replace(/\/+$/, '')}/models`)
-      .then(response => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
-      .then((body: { data?: OpenRouterModel[] }) => {
-        if (!cancelled) setOpenRouterModels(imageModelIds(body.data ?? []));
-      })
-      .catch(error => {
-        console.error('Error loading the OpenRouter model list:', error);
-        if (!cancelled) setOpenRouterModels(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [openRouterBaseUrl]);
+  const openRouterModels =
+    useOpenRouterModels(isOpenRouter ? (providerConfig.baseUrl ?? '') : undefined)?.image ?? null;
 
   const suggestions = useMemo(() => {
     if (!providerConfig) return [];

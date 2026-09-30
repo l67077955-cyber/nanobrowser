@@ -23,6 +23,7 @@ import {
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import { CaptchaModelPicker } from './CaptchaModelPicker';
+import { useOpenRouterModels } from './openRouterModels';
 
 // Helper function to check if a model is an OpenAI reasoning model (O-series, GPT-5 or GPT-6 models)
 function isOpenAIReasoningModel(modelName: string): boolean {
@@ -368,6 +369,10 @@ export const ModelSettings = () => {
   const removeModel = (provider: string, modelToRemove: string) => {
     changeModelNames(provider, current => current.filter(model => model !== modelToRemove));
   };
+
+  // The OpenRouter model box offers what OpenRouter has today, so a model is picked instead of typed from memory
+  const openRouterProvider = Object.values(providers).find(config => config?.type === ProviderTypeEnum.OpenRouter);
+  const openRouterModels = useOpenRouterModels(openRouterProvider ? (openRouterProvider.baseUrl ?? '') : undefined);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, provider: string) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -1443,15 +1448,33 @@ export const ModelSettings = () => {
                                   id={`${providerId}-models-input`}
                                   type="text"
                                   placeholder=""
+                                  list={`${providerId}-model-suggestions`}
+                                  autoComplete="off"
                                   value={newModelInputs[providerId] || ''}
-                                  onChange={e => handleModelsChange(providerId, e.target.value)}
+                                  onChange={e => {
+                                    // a pick from the list replaces the whole text and is added at once
+                                    if ((e.nativeEvent as InputEvent).inputType === 'insertReplacementText') {
+                                      addModel(providerId, e.target.value);
+                                    } else {
+                                      handleModelsChange(providerId, e.target.value);
+                                    }
+                                  }}
                                   onKeyDown={e => handleKeyDown(e, providerId)}
                                   onBlur={e => addModel(providerId, e.target.value)}
                                   className={`min-w-[150px] flex-1 border-none bg-transparent p-1 text-sm text-nb-ink outline-none`}
                                 />
+                                <datalist id={`${providerId}-model-suggestions`}>
+                                  {(openRouterModels?.all ?? [])
+                                    .filter(model => !providerConfig.modelNames?.includes(model))
+                                    .map(model => (
+                                      <option key={model} value={model} />
+                                    ))}
+                                </datalist>
                               </div>
                               <p className={`mt-1 text-xs text-nb-muted`}>
                                 {t('options_models_providers_models_instructions')}
+                                {openRouterModels &&
+                                  ` ${t('options_models_providers_models_openrouter_list', [openRouterModels.all.length.toString()])}`}
                               </p>
                             </>
                           ) : (

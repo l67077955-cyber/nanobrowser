@@ -22,6 +22,17 @@ export enum ProviderTypeEnum {
   CustomOpenAI = 'custom_openai',
 }
 
+// OpenRouter models added to the defaults after the first list: all of them accept images as well as text
+export const openRouterModelsAdded = [
+  'qwen/qwen3.8-flash',
+  'qwen/qwen3.7-flash',
+  'qwen/qwen3.8-max-0902',
+  'minimax/minimax-m3',
+  'z-ai/glm-5.3-flash',
+  'moonshotai/kimi-k2.6',
+  'bytedance-seed/seed-2.0-lite',
+];
+
 // Default supported models for each built-in provider
 export const llmProviderModelNames = {
   [ProviderTypeEnum.OpenAI]: ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-astra'],
@@ -39,6 +50,7 @@ export const llmProviderModelNames = {
     'google/gemini-3.8-flash',
     'google/gemini-3.5-flash-lite',
     'deepseek/deepseek-v4.1-flash',
+    ...openRouterModelsAdded,
   ],
   [ProviderTypeEnum.Groq]: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile'],
   [ProviderTypeEnum.Cerebras]: ['gpt-oss-120b', 'qwen-3.8-27b'],
@@ -60,7 +72,12 @@ export const captchaModelSuggestions: Partial<Record<ProviderTypeEnum, string[]>
     'google/gemini-3.5-flash-lite',
     'google/gemini-3.8-flash',
     'qwen/qwen3.7-flash',
+    'qwen/qwen3.8-flash',
+    'qwen/qwen3-vl-32b-instruct',
+    'minimax/minimax-m3',
     'z-ai/glm-5.3-flash',
+    'moonshotai/kimi-k2.6',
+    'bytedance-seed/seed-2.0-lite',
     'openai/gpt-6-luna',
     'anthropic/claude-haiku-4.5',
   ],

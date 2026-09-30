@@ -425,6 +425,15 @@
   "options_models_providers_models_instructions": {
     "message": "Digite e pressione Enter ou Espaço para adicionar."
   },
+  "options_models_providers_models_openrouter_list": {
+    "message": "Or pick one of the $COUNT$ models OpenRouter offers: click the box and start typing, e.g. qwen or minimax.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "400"
+      }
+    }
+  },
   "options_models_providers_models_openrouter_empty": {
     "message": "Nenhum modelo selecionado. Adicione nomes de modelos manualmente, se necessário."
   },

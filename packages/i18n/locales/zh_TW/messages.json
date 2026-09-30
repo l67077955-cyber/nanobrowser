@@ -421,6 +421,15 @@
   "options_models_providers_models_instructions": {
     "message": "輸入後按下 Enter 或空格鍵以新增。"
   },
+  "options_models_providers_models_openrouter_list": {
+    "message": "Or pick one of the $COUNT$ models OpenRouter offers: click the box and start typing, e.g. qwen or minimax.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "400"
+      }
+    }
+  },
   "options_models_providers_models_openrouter_empty": {
     "message": "未選擇任何模型。如有需要，請手動新增模型名稱。"
   },
