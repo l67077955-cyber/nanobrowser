@@ -169,6 +169,28 @@ export async function decideWithEngineOrLLM<T>(
   }
 }
 
+/** How often the same actions may run on the same page before the model is told they change nothing */
+const REPEAT_LIMIT = 3;
+
+/** Counts identical actions taken on an identical page: the mark of a model going round in circles */
+export class RepeatedActionTracker {
+  private counts = new Map<string, number>();
+
+  /** @returns a note for the model once the actions have been repeated too often on this page, else null */
+  record(actions: Record<string, unknown>[], page: string): string | null {
+    // the intent is free text the model rewords from step to step
+    const key = JSON.stringify(actions, (name, value) => (name === 'intent' ? undefined : value)) + '\n' + page;
+    const count = (this.counts.get(key) ?? 0) + 1;
+    this.counts.set(key, count);
+    if (count < REPEAT_LIMIT) return null;
+    return `Warning: this exact action has now been taken ${count} times on this same page and the page did not change, so repeating it again will not help. Do something different: type into a text field with input_text directly (no click needed first), press Enter with send_keys, use another element, or call done and explain what is blocking you.`;
+  }
+
+  reset(): void {
+    this.counts.clear();
+  }
+}
+
 export interface NavigatorResult {
   done: boolean;
 }
@@ -178,6 +200,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   private jsonSchema: Record<string, unknown>;
   private _stateHistory: BrowserStateHistory | null = null;
   private decisionEngine: NavigatorDecisionEngine | null = null;
+  private readonly repeats = new RepeatedActionTracker();
 
   constructor(
     actionRegistry: NavigatorActionRegistry,
@@ -322,7 +345,15 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       this.decisionEngine?.observeStep(actions, actionResults);
       // logger.info('Action results', JSON.stringify(actionResults, null, 2));
 
-      this.context.actionResults = actionResults;
+      // goes into memory with the results, so the navigator and the planner both read it
+      const repeatNote = this.repeats.record(
+        actions,
+        `${currentState.url}\n${currentState.scrollY}\n${currentState.elementTree.clickableElementsToString(this.context.options.includeAttributes)}`,
+      );
+      if (repeatNote) logger.warning(repeatNote);
+      this.context.actionResults = repeatNote
+        ? [...actionResults, new ActionResult({ extractedContent: repeatNote, includeInMemory: true })]
+        : actionResults;
 
       // check if the task is paused or stopped
       if (this.context.paused || this.context.stopped) {
@@ -399,6 +430,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         // logger.info('All history', JSON.stringify(this.context.history, null, 2));
       }
     }
+  }
+
+  /** A new task may well repeat what an earlier one did */
+  resetRepeats(): void {
+    this.repeats.reset();
   }
 
   setDecisionEngine(engine: NavigatorDecisionEngine | null): void {

@@ -134,6 +134,7 @@ export class Executor {
     this.tasks.push(task);
     // the plan belonged to the previous task
     this.latestNextSteps = null;
+    this.navigator.resetRepeats();
     // the page the planner finished on is read again: the user may be on another tab or page by now
     if (this.context.stateMessageAdded) {
       this.context.messageManager.removeLastStateMessage();
