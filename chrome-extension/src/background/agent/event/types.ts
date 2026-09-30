@@ -1,3 +1,5 @@
+import type { StepMeta } from '@extension/storage';
+
 export enum Actors {
   SYSTEM = 'system',
   USER = 'user',
@@ -56,6 +58,8 @@ export interface EventData {
   maxSteps: number;
   /** details is the content of the event */
   details: string;
+  /** structured record of a finished planner/navigator step */
+  meta?: StepMeta;
 }
 
 export class AgentEvent {

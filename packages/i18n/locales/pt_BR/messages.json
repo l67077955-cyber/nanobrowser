@@ -975,5 +975,69 @@
         "example": "Opção não encontrada"
       }
     }
+  },
+
+  "chat_steps_summary_a11y": {
+    "message": "Resumo da execução"
+  },
+  "chat_steps_summary_steps": {
+    "message": "Passos"
+  },
+  "chat_steps_summary_avg": {
+    "message": "Média"
+  },
+  "chat_steps_summary_fallbacks": {
+    "message": "Ao LLM"
+  },
+  "chat_steps_summary_errors": {
+    "message": "Erros"
+  },
+  "chat_steps_showEarlier": {
+    "message": "Mostrar $COUNT$ anteriores",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
+  "chat_steps_deferred": {
+    "message": "Jev passou ao LLM: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "unsure which element"
+      }
+    }
+  },
+  "chat_steps_detail_model": {
+    "message": "Modelo"
+  },
+  "chat_steps_detail_time": {
+    "message": "Decisão"
+  },
+  "chat_steps_detail_goal": {
+    "message": "Objetivo"
+  },
+  "chat_steps_detail_operation": {
+    "message": "Operação"
+  },
+  "chat_steps_detail_target": {
+    "message": "Alvo"
+  },
+  "chat_steps_detail_margin": {
+    "message": "Vantagem"
+  },
+  "chat_steps_detail_alternatives": {
+    "message": "Alternativas"
+  },
+  "chat_steps_you": {
+    "message": "Você"
+  },
+  "chat_steps_answer": {
+    "message": "Resposta"
+  },
+  "chat_steps_plan": {
+    "message": "PLANO"
   }
 }

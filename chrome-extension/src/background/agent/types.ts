@@ -6,6 +6,7 @@ import type MessageManager from './messages/service';
 import type { EventManager } from './event/manager';
 import { type Actors, type ExecutionState, AgentEvent } from './event/types';
 import { AgentStepHistory } from './history';
+import type { StepMeta } from '@extension/storage';
 
 export interface AgentOptions {
   maxSteps: number;
@@ -75,12 +76,13 @@ export class AgentContext {
     this.finalAnswer = null;
   }
 
-  async emitEvent(actor: Actors, state: ExecutionState, eventDetails: string) {
+  async emitEvent(actor: Actors, state: ExecutionState, eventDetails: string, meta?: StepMeta) {
     const event = new AgentEvent(actor, state, {
       taskId: this.taskId,
       step: this.nSteps,
       maxSteps: this.options.maxSteps,
       details: eventDetails,
+      meta,
     });
     await this.eventManager.emit(event);
   }

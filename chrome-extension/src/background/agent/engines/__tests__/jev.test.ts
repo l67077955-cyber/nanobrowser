@@ -136,7 +136,7 @@ describe('JevDecisionEngine', () => {
       operation: choice('CLICK', OPS),
       click_target: choice('3', ['1', '3']),
     });
-    const decision = await engine.decide(signupPage(), signal);
+    const { decision } = await engine.decide(signupPage(), signal);
     expect(decision?.action).toEqual([{ click_element: { intent: 'CLICK [3] Sign up', index: 3 } }]);
     expect(fetchImpl.mock.calls[0][0]).toBe('https://openrouter.ai/api/alpha/decisions');
   });
@@ -146,7 +146,7 @@ describe('JevDecisionEngine', () => {
       operation: choice('TYPE_TEXT', OPS),
       type_text_target: choice('1', ['1']),
     });
-    const decision = await engine.decide(signupPage(), signal);
+    const { decision } = await engine.decide(signupPage(), signal);
     expect(decision?.action).toEqual([{ input_text: { intent: 'TYPE_TEXT [1] Email', index: 1, text: 'a@b.com' } }]);
     expect(textLLM.invoke).toHaveBeenCalledOnce();
   });
@@ -156,22 +156,46 @@ describe('JevDecisionEngine', () => {
       { operation: choice('TYPE_TEXT', OPS), type_text_target: choice('1', ['1']) },
       '{"text": null}',
     );
-    expect(await engine.decide(signupPage(), signal)).toBeNull();
+    expect((await engine.decide(signupPage(), signal)).decision).toBeNull();
   });
 
   it('defers DONE and low-confidence decisions to the LLM', async () => {
-    expect(await engineWith({ operation: choice('DONE', OPS) }).engine.decide(signupPage(), signal)).toBeNull();
+    expect(
+      (await engineWith({ operation: choice('DONE', OPS) }).engine.decide(signupPage(), signal)).decision,
+    ).toBeNull();
     const lowConfidence = { operation: choice('CLICK', OPS, 0.3), click_target: choice('3', ['1', '3']) };
-    expect(await engineWith(lowConfidence).engine.decide(signupPage(), signal)).toBeNull();
+    expect((await engineWith(lowConfidence).engine.decide(signupPage(), signal)).decision).toBeNull();
     const lowTarget = { operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3'], 0.51) };
-    expect(await engineWith(lowTarget).engine.decide(signupPage(), signal)).toBeNull();
+    expect((await engineWith(lowTarget).engine.decide(signupPage(), signal)).decision).toBeNull();
+  });
+
+  it('records why a step was deferred', async () => {
+    const done = await engineWith({ operation: choice('DONE', OPS) }).engine.decide(signupPage(), signal);
+    expect(done.trace).toMatchObject({ operation: 'DONE', deferred: 'task looks done' });
+    const lowTarget = { operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3'], 0.51) };
+    const unsure = await engineWith(lowTarget).engine.decide(signupPage(), signal);
+    expect(unsure.trace).toMatchObject({ target: '[3] Sign up', deferred: 'unsure which element' });
+  });
+
+  it('ranks target alternatives and reports the top-two margin', async () => {
+    const clickTarget = { type: 'choice', choice: '3', probabilities: { '1': 0.3, '3': 0.7 }, confidence: 0.8 };
+    const { trace } = await engineWith({ operation: choice('CLICK', OPS), click_target: clickTarget }).engine.decide(
+      signupPage(),
+      signal,
+    );
+    expect(trace?.alternatives).toEqual([
+      { label: '[3] Sign up', p: 0.7 },
+      { label: '[1] Email', p: 0.3 },
+    ]);
+    expect(trace?.margin).toBeCloseTo(0.4);
+    expect(trace?.deferred).toBeUndefined();
   });
 
   it('defers after the same decision repeats three times', async () => {
     const { engine } = engineWith({ operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3']) });
-    expect(await engine.decide(signupPage(), signal)).not.toBeNull();
-    expect(await engine.decide(signupPage(), signal)).not.toBeNull();
-    expect(await engine.decide(signupPage(), signal)).toBeNull();
+    expect((await engine.decide(signupPage(), signal)).decision).not.toBeNull();
+    expect((await engine.decide(signupPage(), signal)).decision).not.toBeNull();
+    expect((await engine.decide(signupPage(), signal)).decision).toBeNull();
   });
 
   it('throws on HTTP errors so the navigator can fall back', async () => {

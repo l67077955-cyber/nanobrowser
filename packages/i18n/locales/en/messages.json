@@ -976,5 +976,69 @@
         "example": "Option not found"
       }
     }
+  },
+
+  "chat_steps_summary_a11y": {
+    "message": "Run summary"
+  },
+  "chat_steps_summary_steps": {
+    "message": "Steps"
+  },
+  "chat_steps_summary_avg": {
+    "message": "Avg"
+  },
+  "chat_steps_summary_fallbacks": {
+    "message": "Fallback"
+  },
+  "chat_steps_summary_errors": {
+    "message": "Errors"
+  },
+  "chat_steps_showEarlier": {
+    "message": "Show $COUNT$ earlier",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
+  "chat_steps_deferred": {
+    "message": "Jev deferred: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "unsure which element"
+      }
+    }
+  },
+  "chat_steps_detail_model": {
+    "message": "Model"
+  },
+  "chat_steps_detail_time": {
+    "message": "Decision"
+  },
+  "chat_steps_detail_goal": {
+    "message": "Goal"
+  },
+  "chat_steps_detail_operation": {
+    "message": "Operation"
+  },
+  "chat_steps_detail_target": {
+    "message": "Target"
+  },
+  "chat_steps_detail_margin": {
+    "message": "Lead"
+  },
+  "chat_steps_detail_alternatives": {
+    "message": "Alternatives"
+  },
+  "chat_steps_you": {
+    "message": "You"
+  },
+  "chat_steps_answer": {
+    "message": "Answer"
+  },
+  "chat_steps_plan": {
+    "message": "PLAN"
   }
 }

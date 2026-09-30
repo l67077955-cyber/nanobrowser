@@ -1,4 +1,4 @@
-import type { Actors } from '@extension/storage';
+import type { Actors, StepMeta } from '@extension/storage';
 
 export enum EventType {
   /**
@@ -51,6 +51,8 @@ export interface EventData {
   maxSteps: number;
   /** details is the content of the event */
   details: string;
+  /** structured record of a finished planner/navigator step */
+  meta?: StepMeta;
 }
 
 export class AgentEvent {

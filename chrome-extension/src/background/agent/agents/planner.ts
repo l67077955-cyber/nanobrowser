@@ -77,7 +77,9 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
         plannerMessages[plannerMessages.length - 1] = new HumanMessage(newMsg);
       }
 
+      const started = performance.now();
       const modelOutput = await this.invoke(convertMessagesForPlanner(plannerMessages));
+      const latencyMs = Math.round(performance.now() - started);
       if (!modelOutput) {
         throw new Error('Failed to validate planner output');
       }
@@ -100,7 +102,12 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
 
       // If task is done, emit the final answer; otherwise emit next steps
       const eventMessage = cleanedPlan.done ? cleanedPlan.final_answer : cleanedPlan.next_steps;
-      this.context.emitEvent(Actors.PLANNER, ExecutionState.STEP_OK, eventMessage);
+      this.context.emitEvent(Actors.PLANNER, ExecutionState.STEP_OK, eventMessage, {
+        kind: 'planner',
+        model: this.modelName,
+        latencyMs,
+        done: Boolean(cleanedPlan.done),
+      });
       logger.info('Planner output', JSON.stringify(cleanedPlan, null, 2));
 
       return {

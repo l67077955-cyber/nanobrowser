@@ -4,7 +4,8 @@ import { createLogger } from '@src/background/log';
 import { DOMElementNode, DOMTextNode, type DOMBaseNode } from '@src/background/browser/dom/views';
 import type { BrowserState } from '@src/background/browser/views';
 import type { ActionResult } from '../types';
-import type { NavigatorDecision, NavigatorDecisionEngine } from './types';
+import type { JevTrace } from '@extension/storage';
+import type { EngineResult, NavigatorDecisionEngine } from './types';
 
 const logger = createLogger('JevEngine');
 
@@ -296,7 +297,15 @@ export function validateChoice(answer: unknown, ids: string[]): ChoiceAnswer {
 }
 
 export type JevChoice =
-  | { kind: 'action'; operation: Operation; target: Target; confidence: number; targetConfidence: number }
+  | {
+      kind: 'action';
+      operation: Operation;
+      target: Target;
+      confidence: number;
+      targetConfidence: number;
+      /** probability per candidate, keyed like space.targets[operation] */
+      targetProbabilities: Record<string, number>;
+    }
   | { kind: 'control'; operation: keyof typeof CONTROLS; confidence: number };
 
 export function interpretAnswers(answers: Record<string, unknown>, space: JevActionSpace): JevChoice {
@@ -314,6 +323,30 @@ export function interpretAnswers(answers: Record<string, unknown>, space: JevAct
     target: candidates[target.choice],
     confidence: op.confidence,
     targetConfidence: target.confidence,
+    targetProbabilities: target.probabilities,
+  };
+}
+
+const MAX_ALTERNATIVES = 3;
+
+/** Side-panel record of a choice: top alternatives and the margin between the first two */
+export function traceChoice(choice: JevChoice, space: JevActionSpace, model: string, latencyMs: number): JevTrace {
+  if (choice.kind === 'control') {
+    return { model, latencyMs, operation: choice.operation, confidence: choice.confidence, alternatives: [] };
+  }
+  const candidates = space.targets[choice.operation]!;
+  const ranked = Object.entries(choice.targetProbabilities).sort((a, b) => b[1] - a[1]);
+  return {
+    model,
+    latencyMs,
+    operation: choice.operation,
+    target: `[${choice.target.index}] ${choice.target.label}`,
+    confidence: choice.confidence,
+    targetConfidence: choice.targetConfidence,
+    margin: (ranked[0]?.[1] ?? 0) - (ranked[1]?.[1] ?? 0),
+    alternatives: ranked
+      .slice(0, MAX_ALTERNATIVES)
+      .map(([key, p]) => ({ label: `[${candidates[key].index}] ${candidates[key].label}`, p })),
   };
 }
 
@@ -341,45 +374,54 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     this.model = openRouter ? OPENROUTER_MODEL : TYPESAFE_MODEL;
   }
 
-  async decide(state: BrowserState, signal: AbortSignal): Promise<NavigatorDecision | null> {
+  async decide(state: BrowserState, signal: AbortSignal): Promise<EngineResult> {
     const space = buildActionSpace(state.selectorMap);
-    if (space.elements.length === 0) return null;
+    if (space.elements.length === 0) return { decision: null };
 
     const goal = this.options.getGoal();
     const started = performance.now();
     const response = await this.post(buildJevRequest(state, space, goal, this.history, this.model), signal);
     const choice = interpretAnswers(response.answers ?? {}, space);
-    const latency = Math.round(performance.now() - started);
-    logger.info(
-      `Jev chose ${choice.kind === 'action' ? summarize(choice.operation, choice.target) : choice.operation}`,
-      {
-        confidence: choice.confidence,
-        targetConfidence: choice.kind === 'action' ? choice.targetConfidence : undefined,
-        latencyMs: latency,
-      },
-    );
+    const trace = traceChoice(choice, space, this.model, Math.round(performance.now() - started));
+    logger.info(`Jev chose ${trace.target ? `${trace.operation} ${trace.target}` : trace.operation}`, {
+      confidence: trace.confidence,
+      targetConfidence: trace.targetConfidence,
+      margin: trace.margin,
+      latencyMs: trace.latencyMs,
+    });
 
+    const deferral = this.deferralReason(choice);
+    if (deferral) return { decision: null, trace: { ...trace, deferred: deferral } };
+
+    const action = await this.toAction(choice, state, goal, signal);
+    if (!action) return { decision: null, trace: { ...trace, deferred: 'no value for the field' } };
+    return {
+      decision: {
+        current_state: {
+          evaluation_previous_goal: '',
+          memory: '',
+          next_goal: `[jev ${trace.latencyMs}ms] ${choice.kind === 'action' ? summarize(choice.operation, choice.target) : choice.operation}`,
+        },
+        action: [action],
+      },
+      trace,
+    };
+  }
+
+  /** Why this choice should go to the LLM instead, or null to execute it */
+  private deferralReason(choice: JevChoice): string | null {
     // DONE needs a written answer and BLOCKED needs reasoning: both are the LLM's job.
-    if (choice.kind === 'control' && (choice.operation === 'DONE' || choice.operation === 'BLOCKED')) return null;
-    if (choice.confidence < MIN_OPERATION_CONFIDENCE) return null;
-    if (choice.kind === 'action' && choice.targetConfidence < MIN_TARGET_CONFIDENCE) return null;
+    if (choice.kind === 'control' && choice.operation === 'DONE') return 'task looks done';
+    if (choice.kind === 'control' && choice.operation === 'BLOCKED') return 'no way forward';
+    if (choice.confidence < MIN_OPERATION_CONFIDENCE) return 'unsure which operation';
+    if (choice.kind === 'action' && choice.targetConfidence < MIN_TARGET_CONFIDENCE) return 'unsure which element';
 
     // Same decision three times in a row means the page is not responding to it; let the LLM look.
     const key = choice.kind === 'action' ? `${choice.operation}:${choice.target.index}` : choice.operation;
     this.repeatCount = key === this.lastDecisionKey ? this.repeatCount + 1 : 0;
     this.lastDecisionKey = key;
-    if (this.repeatCount >= 2) return null;
-
-    const action = await this.toAction(choice, state, goal, signal);
-    if (!action) return null;
-    return {
-      current_state: {
-        evaluation_previous_goal: '',
-        memory: '',
-        next_goal: `[jev ${latency}ms] ${choice.kind === 'action' ? summarize(choice.operation, choice.target) : choice.operation}`,
-      },
-      action: [action],
-    };
+    if (this.repeatCount >= 2) return 'same action repeated';
+    return null;
   }
 
   observeStep(actions: Record<string, unknown>[], results: ActionResult[]): void {

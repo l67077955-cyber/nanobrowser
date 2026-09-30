@@ -968,5 +968,69 @@
         "example": "Option not found"
       }
     }
+  },
+
+  "chat_steps_summary_a11y": {
+    "message": "執行摘要"
+  },
+  "chat_steps_summary_steps": {
+    "message": "步數"
+  },
+  "chat_steps_summary_avg": {
+    "message": "平均"
+  },
+  "chat_steps_summary_fallbacks": {
+    "message": "退回"
+  },
+  "chat_steps_summary_errors": {
+    "message": "錯誤"
+  },
+  "chat_steps_showEarlier": {
+    "message": "顯示更早的 $COUNT$ 則",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
+  "chat_steps_deferred": {
+    "message": "Jev 已交給 LLM：$REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1",
+        "example": "unsure which element"
+      }
+    }
+  },
+  "chat_steps_detail_model": {
+    "message": "模型"
+  },
+  "chat_steps_detail_time": {
+    "message": "決策耗時"
+  },
+  "chat_steps_detail_goal": {
+    "message": "目標"
+  },
+  "chat_steps_detail_operation": {
+    "message": "操作"
+  },
+  "chat_steps_detail_target": {
+    "message": "目標元素"
+  },
+  "chat_steps_detail_margin": {
+    "message": "領先幅度"
+  },
+  "chat_steps_detail_alternatives": {
+    "message": "備選"
+  },
+  "chat_steps_you": {
+    "message": "你"
+  },
+  "chat_steps_answer": {
+    "message": "答案"
+  },
+  "chat_steps_plan": {
+    "message": "計畫"
   }
 }

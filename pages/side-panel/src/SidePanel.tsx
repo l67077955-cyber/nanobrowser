@@ -216,6 +216,8 @@ const SidePanel = () => {
               displayProgress = true;
               break;
             case ExecutionState.STEP_OK:
+              // one row per step, carrying who decided and what ran
+              skip = !data?.meta;
               displayProgress = false;
               break;
             case ExecutionState.STEP_FAIL:
@@ -226,10 +228,7 @@ const SidePanel = () => {
               displayProgress = false;
               break;
             case ExecutionState.ACT_START:
-              if (content !== 'cache_content') {
-                // skip to display caching content
-                skip = false;
-              }
+              // shown inside the step row once the step finishes
               break;
             case ExecutionState.ACT_OK:
               skip = !isReplayingRef.current;
@@ -269,6 +268,7 @@ const SidePanel = () => {
           actor,
           content: content || '',
           timestamp: timestamp,
+          ...(data?.meta ? { meta: data.meta } : {}),
         });
       }
 
@@ -1001,8 +1001,7 @@ const SidePanel = () => {
 
   return (
     <div>
-      <div
-        className={`flex h-screen flex-col ${isDarkMode ? 'bg-slate-900' : "bg-[url('/bg.jpg')] bg-cover bg-no-repeat"} overflow-hidden border ${isDarkMode ? 'border-sky-800' : 'border-[rgb(186,230,253)]'} rounded-2xl`}>
+      <div className="nb-panel flex h-screen flex-col overflow-hidden rounded-2xl">
         <header className="header relative">
           <div className="header-logo">
             {showHistory ? (
@@ -1024,7 +1023,7 @@ const SidePanel = () => {
                   type="button"
                   onClick={handleNewChat}
                   onKeyDown={e => e.key === 'Enter' && handleNewChat()}
-                  className={`header-icon ${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'} cursor-pointer`}
+                  className={'header-icon cursor-pointer'}
                   aria-label={t('nav_newChat_a11y')}
                   tabIndex={0}>
                   <PiPlusBold size={20} />
@@ -1033,25 +1032,21 @@ const SidePanel = () => {
                   type="button"
                   onClick={handleLoadHistory}
                   onKeyDown={e => e.key === 'Enter' && handleLoadHistory()}
-                  className={`header-icon ${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'} cursor-pointer`}
+                  className={'header-icon cursor-pointer'}
                   aria-label={t('nav_loadHistory_a11y')}
                   tabIndex={0}>
                   <GrHistory size={20} />
                 </button>
               </>
             )}
-            <a
-              href="https://discord.gg/NN3ABHggMK"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`header-icon ${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'}`}>
+            <a href="https://discord.gg/NN3ABHggMK" target="_blank" rel="noopener noreferrer" className={'header-icon'}>
               <RxDiscordLogo size={20} />
             </a>
             <button
               type="button"
               onClick={() => chrome.runtime.openOptionsPage()}
               onKeyDown={e => e.key === 'Enter' && chrome.runtime.openOptionsPage()}
-              className={`header-icon ${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'} cursor-pointer`}
+              className={'header-icon cursor-pointer'}
               aria-label={t('nav_settings_a11y')}
               tabIndex={0}>
               <FiSettings size={20} />
@@ -1156,8 +1151,7 @@ const SidePanel = () => {
                   </>
                 )}
                 {messages.length > 0 && (
-                  <div
-                    className={`scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll scroll-smooth p-2 ${isDarkMode ? 'bg-slate-900/80' : ''}`}>
+                  <div className="scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll scroll-smooth p-2">
                     <MessageList messages={messages} isDarkMode={isDarkMode} />
                     <div ref={messagesEndRef} />
                   </div>

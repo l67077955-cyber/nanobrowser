@@ -6,10 +6,56 @@ export enum Actors {
   VALIDATOR = 'validator',
 }
 
+/** One scored alternative of a Jev decision head */
+export interface DecisionAlternative {
+  label: string;
+  p: number;
+}
+
+/** Jev's pick for a navigator step, whether it was executed or deferred */
+export interface JevTrace {
+  model: string;
+  latencyMs: number;
+  operation: string;
+  target?: string; // "[83] More · post: …"
+  confidence: number;
+  targetConfidence?: number;
+  margin?: number; // top-1 minus top-2 target probability
+  alternatives: DecisionAlternative[];
+  deferred?: string; // why the step went to the LLM
+}
+
+export interface StepAction {
+  name: string; // action name, e.g. click_element
+  target?: string; // "[83]"
+  detail?: string; // the action's intent; never the typed text, which may be a secret
+  ok: boolean;
+  error?: string;
+}
+
+/** Structured record of one planner or navigator step, rendered as a row in the side panel */
+export type StepMeta =
+  | {
+      kind: 'planner';
+      model: string;
+      latencyMs: number;
+      done: boolean;
+    }
+  | {
+      kind: 'navigator';
+      engine: 'jev' | 'llm';
+      model: string; // model that made the executed decision
+      latencyMs: number; // decision time, including a deferred Jev call
+      actions: StepAction[];
+      goal?: string;
+      jev?: JevTrace;
+    };
+
 export interface Message {
   actor: Actors;
   content: string;
   timestamp: number; // Unix timestamp in milliseconds
+  meta?: StepMeta;
 }
 
 export interface ChatMessage extends Message {

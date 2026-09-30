@@ -28,7 +28,8 @@ import { convertZodToJsonSchema, repairJsonString } from '@src/background/utils'
 import { HistoryTreeProcessor } from '@src/background/browser/dom/history/service';
 import { AgentStepRecord } from '../history';
 import { type DOMHistoryElement } from '@src/background/browser/dom/history/view';
-import type { NavigatorDecisionEngine } from '../engines/types';
+import type { EngineResult, NavigatorDecisionEngine } from '../engines/types';
+import type { StepMeta } from '@extension/storage';
 
 const logger = createLogger('NavigatorAgent');
 
@@ -67,6 +68,43 @@ export class NavigatorActionRegistry {
       action: z.array(actionSchema),
     });
   }
+}
+
+interface NavigatorStepMetaInput {
+  engineResult: EngineResult;
+  llmModel: string;
+  decisionMs: number;
+  goal?: string;
+  actions: Record<string, unknown>[];
+  results: ActionResult[];
+}
+
+/** Side-panel record of a finished navigator step: who decided, how fast, and what ran */
+export function navigatorStepMeta(input: NavigatorStepMetaInput): StepMeta {
+  const { engineResult, llmModel, decisionMs, goal, actions, results } = input;
+  const byEngine = engineResult.decision !== null;
+  return {
+    kind: 'navigator',
+    engine: byEngine ? 'jev' : 'llm',
+    model: byEngine && engineResult.trace ? engineResult.trace.model : llmModel,
+    latencyMs: decisionMs,
+    goal: byEngine ? undefined : goal || undefined,
+    jev: engineResult.trace,
+    // only actions that ran; doMultiAction stops early on errors or page changes
+    actions: results.map((result, i) => {
+      const [name, rawArgs] = Object.entries(actions[i] ?? {})[0] ?? ['unknown', {}];
+      const args = (rawArgs ?? {}) as Record<string, unknown>;
+      // intent only: typed text may be a password and meta is persisted in chat history
+      const detail = typeof args.intent === 'string' && args.intent.trim() ? args.intent : undefined;
+      return {
+        name,
+        target: typeof args.index === 'number' ? `[${args.index}]` : undefined,
+        detail,
+        ok: !result.error,
+        error: result.error ?? undefined,
+      };
+    }),
+  };
 }
 
 export interface NavigatorResult {
@@ -182,7 +220,12 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       const inputMessages = messageManager.getMessages();
       // logger.info('Navigator input message', inputMessages[inputMessages.length - 1]);
 
-      const modelOutput = (await this.decideWithEngine(currentState)) ?? (await this.invoke(inputMessages));
+      const decisionStarted = performance.now();
+      const engineResult = await this.decideWithEngine(currentState);
+      const modelOutput = engineResult.decision
+        ? (engineResult.decision as Awaited<this['ModelOutput']>)
+        : await this.invoke(inputMessages);
+      const decisionMs = Math.round(performance.now() - decisionStarted);
 
       // check if the task is paused or stopped
       if (this.context.paused || this.context.stopped) {
@@ -211,7 +254,19 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         return agentOutput;
       }
       // emit event
-      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_OK, 'Navigation done');
+      this.context.emitEvent(
+        Actors.NAVIGATOR,
+        ExecutionState.STEP_OK,
+        'Navigation done',
+        navigatorStepMeta({
+          engineResult,
+          llmModel: this.modelName,
+          decisionMs,
+          goal: modelOutput.current_state?.next_goal,
+          actions,
+          results: actionResults,
+        }),
+      );
       let done = false;
       if (actionResults.length > 0 && actionResults[actionResults.length - 1].isDone) {
         done = true;
@@ -275,14 +330,26 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   /**
    * Ask the fast decision engine first; null means this step goes to the LLM
    */
-  private async decideWithEngine(state: BrowserState): Promise<this['ModelOutput'] | null> {
-    if (!this.decisionEngine) return null;
+  private async decideWithEngine(state: BrowserState): Promise<EngineResult> {
+    if (!this.decisionEngine) return { decision: null };
+    const started = performance.now();
     try {
       return await this.decisionEngine.decide(state, this.context.controller.signal);
     } catch (error) {
       if (this.context.controller.signal.aborted) throw error;
       logger.warning(`[${this.decisionEngine.name}] decision failed, falling back to LLM`, error);
-      return null;
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        decision: null,
+        trace: {
+          model: this.decisionEngine.name,
+          latencyMs: Math.round(performance.now() - started),
+          operation: 'ERROR',
+          confidence: 0,
+          alternatives: [],
+          deferred: message.slice(0, 120),
+        },
+      };
     }
   }
 
