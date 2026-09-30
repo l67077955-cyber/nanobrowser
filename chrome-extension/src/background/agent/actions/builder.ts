@@ -41,6 +41,20 @@ export class InvalidInputError extends Error {
 }
 
 /**
+ * Added to the result of input_text when the field ends up holding something other than the text: a format
+ * mask, a length limit or text the page kept. The model reads it instead of taking the text for typed.
+ * @param content what the field contains after typing, null when it is no longer on the page
+ */
+export function inputMismatchNote(text: string, content: string | null): string {
+  if (content === null) return '';
+  const flat = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const held = flat(content);
+  if (held === flat(text)) return '';
+  const shown = held.length > 200 ? `${held.slice(0, 199)}…` : held;
+  return `. The field now reads "${shown}", which is not the text given: check it before going on`;
+}
+
+/**
  * An action is a function that takes an input and returns an ActionResult
  */
 export class Action {
@@ -313,10 +327,13 @@ export class ActionBuilder {
           throw new Error(t('act_errors_elementNotExist', [input.index.toString()]));
         }
 
-        await page.inputTextElementNode(this.context.options.useVision, elementNode, input.text);
+        const content = await page.inputTextElementNode(this.context.options.useVision, elementNode, input.text);
         const msg = t('act_inputText_ok', [input.text, input.index.toString()]);
         this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
-        return new ActionResult({ extractedContent: msg, includeInMemory: true });
+        return new ActionResult({
+          extractedContent: msg + inputMismatchNote(input.text, content),
+          includeInMemory: true,
+        });
       },
       inputTextActionSchema,
       true,

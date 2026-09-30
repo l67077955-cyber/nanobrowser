@@ -1370,6 +1370,14 @@ window.buildDomTree = (
         const value = node.getAttribute(name);
         nodeData.attributes[name] = value;
       }
+      // What a field holds now is a property, not an attribute: without it a typed field reads as empty
+      // (a textarea always, an input unless the page mirrors it), and nobody can tell whether text stuck.
+      const valueless = ['password', 'hidden', 'file', 'checkbox', 'radio', 'button', 'submit', 'reset', 'image'];
+      // by tag name: a field inside an iframe is no instance of this window's classes
+      const fieldTag = node.tagName.toLowerCase();
+      if (fieldTag === 'textarea' || (fieldTag === 'input' && !valueless.includes(node.type))) {
+        nodeData.attributes['value'] = String(node.value ?? '').slice(0, 200);
+      }
     }
 
     let nodeWasHighlighted = false;

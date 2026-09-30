@@ -1117,7 +1117,8 @@ export default class Page {
     return null;
   }
 
-  async inputTextElementNode(useVision: boolean, elementNode: DOMElementNode, text: string): Promise<void> {
+  /** @returns what the field contains after typing, or null when it is gone from the page */
+  async inputTextElementNode(useVision: boolean, elementNode: DOMElementNode, text: string): Promise<string | null> {
     if (!this._puppeteerPage) {
       throw new Error('Puppeteer is not connected');
     }
@@ -1172,12 +1173,12 @@ export default class Page {
       });
 
       // Choose appropriate input method based on element properties
-      if ((isContentEditable || tagName === 'input') && !isReadOnly && !isDisabled) {
+      if ((isContentEditable || tagName === 'input' || tagName === 'textarea') && !isReadOnly && !isDisabled) {
         // Empty the field the way a user does: select what it contains and delete it. A page that keeps the
         // text in its own state puts it back after a value set from script, and the new text lands behind it.
         await element.focus();
         const hasContent = await element.evaluate(el => {
-          if (el instanceof HTMLInputElement) {
+          if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
             el.select();
             return el.value !== '';
           }
@@ -1189,9 +1190,10 @@ export default class Page {
         }
         // What the keys did not remove is cleared directly
         await element.evaluate(el => {
-          const value = el instanceof HTMLInputElement ? el.value : (el.textContent ?? '');
+          const isField = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+          const value = isField ? el.value : (el.textContent ?? '');
           if (value === '') return;
-          if (el instanceof HTMLInputElement) {
+          if (isField) {
             el.value = '';
           } else {
             el.textContent = '';
@@ -1201,8 +1203,23 @@ export default class Page {
           el.dispatchEvent(new Event('change', { bubbles: true }));
         });
 
-        // Type the text with a small delay between keypresses
-        await element.type(text, { delay: 50 });
+        if (tagName === 'textarea') {
+          // A textarea takes long, multi-line text: each line is inserted as the keyboard would deliver it, so
+          // a page that keeps the text itself takes it over (a value set from script is dropped when the page
+          // renders again). Lines are joined with Shift+Enter, as a bare Enter sends the message in a chat box.
+          const keyboard = this._puppeteerPage.keyboard;
+          for (const [i, line] of text.split(/\r?\n/).entries()) {
+            if (i > 0) {
+              await keyboard.down('Shift');
+              await keyboard.press('Enter');
+              await keyboard.up('Shift');
+            }
+            if (line) await keyboard.sendCharacter(line);
+          }
+        } else {
+          // Type the text with a small delay between keypresses
+          await element.type(text, { delay: 50 });
+        }
       } else {
         // Use direct value setting for other types of elements
         await element.evaluate((el, value) => {
@@ -1219,6 +1236,18 @@ export default class Page {
 
       // Wait for page stability after input
       await this.waitForPageAndFramesLoad();
+
+      // Success is what the field holds afterwards, not that the keys were sent
+      const content = await element
+        .evaluate(el =>
+          el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : (el.textContent ?? ''),
+        )
+        // the field is gone: typing moved the page on
+        .catch(() => null);
+      if (content !== null && text.trim() !== '' && content.trim() === '') {
+        throw new Error('the field is still empty after typing, so it did not take the text');
+      }
+      return content;
     } catch (error) {
       const errorMsg = `Failed to input text into element: ${elementNode}. Error: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(errorMsg);
