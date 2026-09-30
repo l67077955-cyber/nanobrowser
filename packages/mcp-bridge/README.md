@@ -1,0 +1,72 @@
+# Nanobrowser MCP bridge
+
+Lets other agents run tasks in a browser that has the Nanobrowser extension, as MCP tools.
+
+```
+agent (Claude Code, nanobot, …) ──MCP over HTTP──▶ bridge ◀──WebSocket── Nanobrowser extension
+```
+
+An extension cannot listen on a port, so it connects out to the bridge. The bridge can run on the same
+computer as the browser or on another one the browser can reach.
+
+## Start the bridge
+
+```bash
+node packages/mcp-bridge/cli.mjs            # 127.0.0.1:8787
+node packages/mcp-bridge/cli.mjs --port 9000 --host 127.0.0.1 --token-file /path/to/token
+```
+
+On first start it creates a token in `~/.config/nanobrowser/bridge-token` (or takes
+`NANOBROWSER_BRIDGE_TOKEN`). Both the extension and the agents present this token.
+
+## Connect the browser
+
+In the extension settings, open **Remote**:
+
+1. **Bridge address**: `ws://localhost:8787/extension` when the bridge is on the same computer.
+2. **Token**: the content of the token file.
+3. Save, then turn on **Allow remote tasks**. The status line shows `Connected to the bridge`.
+
+When the bridge runs on another machine, do not expose the port. Forward it instead and keep the address
+above:
+
+```bash
+ssh -L 8787:127.0.0.1:8787 user@server      # or forward port 8787 in VS Code's Ports panel
+```
+
+To reach it over the network without a tunnel, put a TLS reverse proxy in front and use `wss://`: the
+token travels with every connection.
+
+## Connect an agent
+
+The MCP endpoint is `http://127.0.0.1:8787/mcp` with the header `Authorization: Bearer <token>`.
+
+```bash
+claude mcp add --transport http nanobrowser http://127.0.0.1:8787/mcp \
+  --header "Authorization: Bearer $(cat ~/.config/nanobrowser/bridge-token)"
+```
+
+| Tool          | What it does                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| `run_task`    | Start a task described in plain language. Returns when it ends or after `wait_seconds` (default 25). |
+| `get_task`    | State, result and latest steps of a task; waits up to `wait_seconds` for it to end.         |
+| `cancel_task` | Stop a running task.                                                                       |
+| `status`      | Whether a browser is connected and whether it is busy.                                     |
+
+A task is `running`, `waiting_confirmation`, `completed`, `failed` or `cancelled`.
+
+## What a remote agent can and cannot do
+
+- One task at a time. While the user runs a task of their own, `run_task` is refused; a task the user
+  starts in the side panel takes over from a remote one.
+- With "confirm sensitive actions" on, approval is given in the side panel only. With the side panel
+  closed, such an action is declined.
+- The site access rules of the extension apply to remote tasks as well.
+- Remote tasks are not read for things to remember about the user.
+- An open side panel shows a remote task as a chat of its own, and its stop button ends it.
+
+## Tests
+
+```bash
+pnpm -F @extension/mcp-bridge test
+```

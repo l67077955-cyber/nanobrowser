@@ -1,0 +1,17 @@
+{
+  "name": "@extension/mcp-bridge",
+  "version": "0.1.13",
+  "description": "chrome extension - MCP bridge that lets other agents run tasks in the browser",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "nanobrowser-bridge": "cli.mjs"
+  },
+  "scripts": {
+    "start": "node cli.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "8.18.0"
+  }
+}

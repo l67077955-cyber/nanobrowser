@@ -246,6 +246,12 @@ importers:
         specifier: workspace:*
         version: link:../tsconfig
 
+  packages/mcp-bridge:
+    dependencies:
+      ws:
+        specifier: 8.18.0
+        version: 8.18.0
+
   packages/schema-utils:
     devDependencies:
       '@extension/tsconfig':

@@ -1277,5 +1277,74 @@
   },
   "chat_memory_unchanged": {
     "message": "Nothing new was saved to memory."
+  },
+  "chat_remote_task": {
+    "message": "Remote agent: $TASK$",
+    "placeholders": {
+      "task": {
+        "content": "$1",
+        "example": "Find the cheapest flight to Berlin"
+      }
+    }
+  },
+  "options_tabs_remote": {
+    "message": "Remote"
+  },
+  "options_remote_header": {
+    "message": "Remote control"
+  },
+  "options_remote_intro": {
+    "message": "Other agents can run tasks in this browser through the Nanobrowser MCP bridge. The extension connects out to the bridge; nothing listens on this computer."
+  },
+  "options_remote_enable": {
+    "message": "Allow remote tasks"
+  },
+  "options_remote_enable_desc": {
+    "message": "Whoever holds the token can have the agent act in this browser, with the sites you are signed in to. Your own tasks are never interrupted."
+  },
+  "options_remote_url": {
+    "message": "Bridge address"
+  },
+  "options_remote_url_desc": {
+    "message": "WebSocket address of the bridge. Use wss:// unless it is on this computer or behind an SSH tunnel."
+  },
+  "options_remote_token": {
+    "message": "Token"
+  },
+  "options_remote_token_desc": {
+    "message": "The bridge creates it on first start and prints where it is stored."
+  },
+  "options_remote_btnSave": {
+    "message": "Save"
+  },
+  "options_remote_btnShow": {
+    "message": "Show"
+  },
+  "options_remote_btnHide": {
+    "message": "Hide"
+  },
+  "options_remote_status": {
+    "message": "Status"
+  },
+  "options_remote_status_off": {
+    "message": "Off"
+  },
+  "options_remote_status_connecting": {
+    "message": "Connecting…"
+  },
+  "options_remote_status_connected": {
+    "message": "Connected to the bridge"
+  },
+  "options_remote_status_rejected": {
+    "message": "The bridge refused the token"
+  },
+  "options_remote_status_unreachable": {
+    "message": "Cannot reach the bridge, retrying"
+  },
+  "options_remote_insecure": {
+    "message": "This address is not encrypted: the token and everything the agent reads would cross the network in the clear."
+  },
+  "options_remote_confirm_note": {
+    "message": "Actions that need your approval wait in the side panel. With the side panel closed they are declined."
   }
 }

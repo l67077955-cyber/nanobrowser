@@ -6,3 +6,4 @@ export * from './firewall';
 export * from './speechToText';
 export * from './captcha';
 export * from './analyticsSettings';
+export * from './remoteControl';

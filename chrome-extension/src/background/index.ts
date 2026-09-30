@@ -9,13 +9,14 @@ import {
   memoryStore,
   chatHistoryStore,
   captchaModelStore,
+  remoteControlStore,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
 import { Executor, type ExecutorSnapshot } from './agent/executor';
 import { snapshotFromChat } from './agent/resume';
 import { createLogger } from './log';
-import { ExecutionState } from './agent/event/types';
+import { ExecutionState, type AgentEvent } from './agent/event/types';
 import { createChatModel } from './agent/helper';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { DEFAULT_AGENT_OPTIONS } from './agent/types';
@@ -23,6 +24,7 @@ import { SpeechToTextService } from './services/speechToText';
 import { injectBuildDomTreeScripts } from './browser/dom/service';
 import { analytics } from './services/analytics';
 import { formatMemoryContext, memoryInstructions, rememberFromMessages, rememberFromText } from './services/memory';
+import { RemoteControl, type RemoteTaskEnd } from './services/remote';
 
 const logger = createLogger('background');
 
@@ -31,6 +33,8 @@ let currentExecutor: Executor | null = null;
 /** the Planner model of the current executor: it also reads the user's messages for things to remember */
 let memoryLLM: BaseChatModel | null = null;
 let currentPort: chrome.runtime.Port | null = null;
+/** The task being worked on now and who asked for it: the side panel, or an agent through the bridge */
+let activeTask: { taskId: string; source: 'panel' | 'remote' } | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
@@ -85,7 +89,14 @@ analyticsSettingsStore.subscribe(() => {
 
 // Listen for simple messages (e.g., from options page)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== 'memory_import' || sender.id !== chrome.runtime.id || !sender.url?.startsWith(OPTIONS_URL)) {
+  if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(OPTIONS_URL)) {
+    return false;
+  }
+  if (message?.type === 'remote_status') {
+    sendResponse({ status: remoteControl.status });
+    return false;
+  }
+  if (message?.type !== 'memory_import') {
     return false;
   }
   importMemories(String(message.text ?? ''))
@@ -130,7 +141,7 @@ chrome.runtime.onConnect.addListener(port => {
             currentExecutor = await setupExecutor(message.taskId, message.task, browserContext);
             subscribeToExecutorEvents(currentExecutor);
 
-            const result = await currentExecutor.execute();
+            const result = await executeForPanel(currentExecutor, message.taskId);
             logger.info('new_task execution result', message.tabId, result);
             void updateMemories(currentExecutor);
             break;
@@ -162,7 +173,7 @@ chrome.runtime.onConnect.addListener(port => {
             }
             // Re-subscribe to events in case the previous subscription was cleaned up
             subscribeToExecutorEvents(currentExecutor);
-            const result = await currentExecutor.execute();
+            const result = await executeForPanel(currentExecutor, message.taskId);
             logger.info('follow_up_task execution result', message.tabId, result);
             void updateMemories(currentExecutor);
             break;
@@ -306,10 +317,138 @@ chrome.runtime.onConnect.addListener(port => {
       // this event is also triggered when the side panel is closed, so we need to cancel the task
       console.log('Side panel disconnected');
       currentPort = null;
-      currentExecutor?.cancel();
+      // a task run for a remote agent does not need the side panel
+      if (activeTask?.source !== 'remote') currentExecutor?.cancel();
     });
   }
 });
+
+/** Run a task the side panel asked for. It takes over from whatever task was running. */
+async function executeForPanel(executor: Executor, taskId: string): Promise<void> {
+  const claim = { taskId, source: 'panel' as const };
+  activeTask = claim;
+  try {
+    await executor.execute();
+  } finally {
+    if (activeTask === claim) activeTask = null;
+  }
+}
+
+/**
+ * Start a task for an agent on the bridge and return its id; the task goes on after that and its end is
+ * reported to the bridge. The user comes first: a task of theirs is not interrupted, and one they start
+ * from the side panel takes over.
+ */
+async function startRemoteTask(task: string): Promise<string> {
+  if (activeTask) throw new Error('The browser is busy with another task');
+  const taskId = `remote-${crypto.randomUUID()}`;
+  const claim = { taskId, source: 'remote' as const };
+  activeTask = claim;
+  let executor: Executor;
+  try {
+    await currentExecutor?.cancel();
+    executor = await setupExecutor(taskId, task, browserContext);
+    if (activeTask !== claim) throw new Error('The user started a task of their own');
+  } catch (error) {
+    if (activeTask === claim) activeTask = null;
+    throw error;
+  }
+  currentExecutor = executor;
+  subscribeToExecutorEvents(executor);
+  // an open side panel shows the task like one of its own, with its stop button
+  currentPort?.postMessage({ type: 'remote_task', taskId, task });
+
+  const end: RemoteTaskEnd = { taskId, status: 'failed', result: 'The task stopped before it was finished' };
+  executor.subscribeExecutionEvents(async (event: AgentEvent) => {
+    remoteControl.sendEvent({
+      taskId,
+      actor: event.actor,
+      state: event.state,
+      step: event.data.step,
+      details: event.data.details,
+      timestamp: event.timestamp,
+    });
+    switch (event.state) {
+      case ExecutionState.TASK_OK:
+        end.status = 'completed';
+        // a task that ends without an answer reports its id as the details
+        end.result = event.data.details === taskId ? '' : event.data.details;
+        break;
+      case ExecutionState.TASK_FAIL:
+      case ExecutionState.TASK_PAUSE:
+        end.status = 'failed';
+        end.result = event.data.details;
+        break;
+      case ExecutionState.TASK_CANCEL:
+        end.status = 'cancelled';
+        end.result = event.data.details;
+        break;
+      case ExecutionState.ACT_CONFIRM:
+        // Approval is the user's to give, in the side panel. With the panel closed nobody can, and the
+        // action is declined instead of left waiting.
+        if (!currentPort) executor.confirmAction(false);
+        break;
+    }
+  });
+
+  logger.info('remote task', taskId, task);
+  void executor
+    .execute()
+    .catch(error => {
+      end.status = 'failed';
+      end.result = error instanceof Error ? error.message : String(error);
+    })
+    .finally(() => {
+      if (activeTask === claim) activeTask = null;
+      remoteControl.sendTaskEnd(end);
+    });
+  return taskId;
+}
+
+const remoteControl = new RemoteControl(
+  {
+    run_task: async params => {
+      const task = typeof params.task === 'string' ? params.task.trim() : '';
+      if (!task) throw new Error(t('bg_cmd_newTask_noTask'));
+      return { taskId: await startRemoteTask(task) };
+    },
+    cancel_task: async params => {
+      if (activeTask?.source !== 'remote' || activeTask.taskId !== params.taskId || !currentExecutor) {
+        throw new Error(t('bg_errors_noRunningTask'));
+      }
+      await currentExecutor.cancel();
+      return { cancelled: true };
+    },
+    status: async () => ({
+      version: chrome.runtime.getManifest().version,
+      busy: activeTask !== null,
+      // a task of the user's own is none of the agent's business
+      taskId: activeTask?.source === 'remote' ? activeTask.taskId : null,
+    }),
+  },
+  chrome.runtime.getManifest().version,
+);
+
+// The bridge connection follows the settings. The alarm outlives the service worker, so a connection lost
+// while nothing else keeps the worker awake is made again.
+const REMOTE_ALARM = 'remote-control';
+async function applyRemoteControl() {
+  const config = await remoteControlStore.getConfig();
+  remoteControl.apply(config);
+  if (config.enabled) {
+    await chrome.alarms.create(REMOTE_ALARM, { periodInMinutes: 0.5 });
+  } else {
+    await chrome.alarms.clear(REMOTE_ALARM);
+  }
+}
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name !== REMOTE_ALARM) return;
+  // a worker woken by the alarm has not read the settings yet
+  if (remoteControl.enabled) remoteControl.ensureConnected();
+  else void applyRemoteControl();
+});
+remoteControlStore.subscribe(() => void applyRemoteControl());
+void applyRemoteControl().catch(error => logger.error('Failed to set up remote control:', error));
 
 /**
  * What the agents of a session knew when its last task ended; for a session without a stored context,

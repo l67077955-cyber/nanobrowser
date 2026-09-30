@@ -2,7 +2,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { RxDiscordLogo } from 'react-icons/rx';
 import { FiSettings, FiPlus, FiClock, FiChevronLeft } from 'react-icons/fi';
-import { type Message, Actors, chatHistoryStore, agentModelStore, generalSettingsStore } from '@extension/storage';
+import {
+  type Message,
+  Actors,
+  chatHistoryStore,
+  agentModelStore,
+  generalSettingsStore,
+  remoteControlStore,
+} from '@extension/storage';
 import favoritesStorage, { type FavoritePrompt } from '@extension/storage/lib/prompt/favorites';
 import { t } from '@extension/i18n';
 import MessageList from './components/MessageList';
@@ -285,6 +292,31 @@ const SidePanel = () => {
     [appendMessage],
   );
 
+  /** A task an agent started through the bridge: it gets a chat of its own, and the stop button ends it */
+  const showRemoteTask = useCallback(
+    async (task: string) => {
+      // what the task reports before its chat exists is shown, and not saved into the chat that was open
+      sessionIdRef.current = null;
+      setCurrentSessionId(null);
+      setMessages([]);
+      setIsFollowUpMode(false);
+      setIsHistoricalSession(false);
+      setInputEnabled(false);
+      setShowStopButton(true);
+      const userMessage = { actor: Actors.USER, content: t('chat_remote_task', [task]), timestamp: Date.now() };
+      try {
+        const title = userMessage.content;
+        const session = await chatHistoryStore.createSession(title.substring(0, 50) + (title.length > 50 ? '...' : ''));
+        setCurrentSessionId(session.id);
+        sessionIdRef.current = session.id;
+      } catch (err) {
+        console.error('Failed to create a chat for the remote task:', err);
+      }
+      appendMessage(userMessage, sessionIdRef.current);
+    },
+    [appendMessage],
+  );
+
   // Stop heartbeat and close connection
   const stopConnection = useCallback(() => {
     if (heartbeatIntervalRef.current) {
@@ -345,6 +377,8 @@ const SidePanel = () => {
             content: kept.length > 0 ? t('chat_memory_updated', [kept.join('; ')]) : t('chat_memory_unchanged'),
             timestamp: Date.now(),
           });
+        } else if (message && message.type === 'remote_task') {
+          void showRemoteTask(String(message.task ?? ''));
         } else if (message && message.type === 'heartbeat_ack') {
           console.log('Heartbeat acknowledged');
         }
@@ -389,7 +423,7 @@ const SidePanel = () => {
       // Clear any references since connection failed
       portRef.current = null;
     }
-  }, [handleTaskState, appendMessage, stopConnection]);
+  }, [handleTaskState, appendMessage, stopConnection, showRemoteTask]);
 
   // Add safety check for message sending
   const sendMessage = useCallback(
@@ -826,6 +860,17 @@ const SidePanel = () => {
 
     loadFavorites();
   }, []);
+
+  // With remote control on, an open side panel listens from the start: a task an agent starts shows up here,
+  // and its sensitive actions can be approved
+  useEffect(() => {
+    remoteControlStore
+      .getConfig()
+      .then(config => {
+        if (config.enabled) setupConnection();
+      })
+      .catch(err => console.error('Failed to read the remote control settings:', err));
+  }, [setupConnection]);
 
   // Cleanup on unmount
   useEffect(() => {

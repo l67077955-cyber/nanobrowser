@@ -2,19 +2,21 @@ import { useState } from 'react';
 import '@src/Options.css';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { t } from '@extension/i18n';
-import { FiSettings, FiCpu, FiShield, FiBookmark } from 'react-icons/fi';
+import { FiSettings, FiCpu, FiShield, FiBookmark, FiLink } from 'react-icons/fi';
 import { GeneralSettings } from './components/GeneralSettings';
 import { ModelSettings } from './components/ModelSettings';
 import { FirewallSettings } from './components/FirewallSettings';
 import { MemorySettings } from './components/MemorySettings';
+import { RemoteSettings } from './components/RemoteSettings';
 
-type TabTypes = 'general' | 'models' | 'firewall' | 'memory';
+type TabTypes = 'general' | 'models' | 'firewall' | 'memory' | 'remote';
 
 const TABS: { id: TabTypes; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
   { id: 'general', icon: FiSettings, label: t('options_tabs_general') },
   { id: 'models', icon: FiCpu, label: t('options_tabs_models') },
   { id: 'firewall', icon: FiShield, label: t('options_tabs_firewall') },
   { id: 'memory', icon: FiBookmark, label: t('options_tabs_memory') },
+  { id: 'remote', icon: FiLink, label: t('options_tabs_remote') },
 ];
 
 const Options = () => {
@@ -30,6 +32,8 @@ const Options = () => {
         return <FirewallSettings />;
       case 'memory':
         return <MemorySettings />;
+      case 'remote':
+        return <RemoteSettings />;
       default:
         return null;
     }
