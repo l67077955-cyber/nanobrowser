@@ -21,6 +21,7 @@ import {
   type BrowserContextConfig,
   DEFAULT_BROWSER_CONTEXT_CONFIG,
   ElementChangedError,
+  ElementNotFoundError,
   type PageState,
   URLNotAllowedError,
 } from './views';
@@ -32,6 +33,9 @@ const logger = createLogger('Page');
 
 // Attributes that say what an element is; if one differs at action time, the locator found a different element.
 // ids are left out because many sites regenerate them on every render.
+const CLICK_TIMEOUT = 'Click timeout';
+const PRESSED_FLAG = '__nanobrowserPressed';
+
 const IDENTITY_ATTRIBUTES = ['role', 'type', 'name', 'aria-label', 'data-testid', 'placeholder', 'href'];
 
 const collapseLabel = (text: string) => {
@@ -1308,7 +1312,7 @@ export default class Page {
 
       const element = await this.locateElement(elementNode);
       if (!element) {
-        throw new Error(`Element: ${elementNode} not found`);
+        throw new ElementNotFoundError(`Element: ${elementNode} not found`);
       }
       await this.assertSameElement(element, elementNode);
 
@@ -1324,16 +1328,34 @@ export default class Page {
           await this._checkAndHandleNavigation();
           return;
         }
-        // First attempt: Use Puppeteer's click method with timeout
+        // First attempt: a mouse click at the element's center. Not element.click(): it first waits on an
+        // IntersectionObserver, which stalls for seconds whenever the tab is not being rendered (e.g. covered
+        // by the devtools window); the element was already scrolled into view above.
+        const box = await element.boundingBox();
+        if (!box) throw new Error('Element has no layout box');
+        await element.evaluate((el, flag) => {
+          const w = window as unknown as Record<string, boolean>;
+          w[flag] = false;
+          const onPress = (e: Event) => {
+            if (e.composedPath().includes(el)) w[flag] = true;
+          };
+          document.addEventListener('pointerdown', onPress, { capture: true, once: true });
+        }, PRESSED_FLAG);
         await Promise.race([
-          element.click(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Click timeout')), 2000)),
+          this._puppeteerPage.mouse.click(box.x + box.width / 2, box.y + box.height / 2),
+          new Promise((_, reject) => setTimeout(() => reject(new Error(CLICK_TIMEOUT)), 2000)),
         ]);
         await this._checkAndHandleNavigation();
       } catch (error) {
         // if URLNotAllowedError, throw it
         if (error instanceof URLNotAllowedError) {
           throw error;
+        }
+        // If the press already reached the element, clicking again would close the menu the first click
+        // opened, or confirm a dialog twice
+        if (error instanceof Error && error.message === CLICK_TIMEOUT && (await this.wasPressed(element))) {
+          logger.info('Click reached the element but was acknowledged late, not clicking again');
+          return;
         }
         // Second attempt: Use evaluate to perform a direct click
         logger.info('Failed to click element, trying again', error);
@@ -1350,7 +1372,7 @@ export default class Page {
         }
       }
     } catch (error) {
-      if (error instanceof ElementChangedError) throw error;
+      if (error instanceof ElementChangedError || error instanceof ElementNotFoundError) throw error;
       throw new Error(
         `Failed to click element: ${elementNode}. Error: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1379,6 +1401,35 @@ export default class Page {
       throw new ElementChangedError(
         `Element [${node.highlightIndex}] "${collapseLabel(label)}" changed since the page was read (now ${mismatch}); nothing was done. Look at the page again before acting.`,
       );
+    }
+  }
+
+  /**
+   * Find an element again in a fresh DOM read, after the page re-rendered it (its path changed).
+   * Only a single element with the same tag, identity attributes and text counts; otherwise null.
+   */
+  async relocateElement(node: DOMElementNode): Promise<DOMElementNode | null> {
+    const identity = (n: DOMElementNode) =>
+      JSON.stringify([
+        n.tagName?.toLowerCase(),
+        IDENTITY_ATTRIBUTES.map(name => n.attributes[name] ?? null),
+        n.getAllTextTillNextClickableElement(2),
+      ]);
+    const wanted = identity(node);
+    const state = await this.getState();
+    const matches = [...state.selectorMap.values()].filter(n => identity(n) === wanted);
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  /** Whether the pointerdown armed before a click reached the element; assume it did if the page went away */
+  private async wasPressed(handle: ElementHandle): Promise<boolean> {
+    try {
+      return await handle.evaluate(
+        (_, flag) => (window as unknown as Record<string, boolean>)[flag] === true,
+        PRESSED_FLAG,
+      );
+    } catch {
+      return true;
     }
   }
 

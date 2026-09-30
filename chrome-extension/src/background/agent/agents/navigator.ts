@@ -194,7 +194,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
       const recovered = this.parseRawStructuredResponse(response?.raw);
       if (recovered) {
-        logger.warning(`[${this.modelName}] Recovered navigator output from raw response`);
+        logger.info(`[${this.modelName}] Recovered navigator output from raw response`);
         return recovered;
       }
 

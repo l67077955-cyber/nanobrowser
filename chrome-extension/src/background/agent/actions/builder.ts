@@ -29,7 +29,7 @@ import { ExecutionState, Actors } from '../event/types';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { wrapUntrustedContent } from '../messages/utils';
 import type { DOMElementNode } from '@src/background/browser/dom/views';
-import { ElementChangedError } from '@src/background/browser/views';
+import { ElementChangedError, ElementNotFoundError } from '@src/background/browser/views';
 
 const logger = createLogger('Action');
 
@@ -255,7 +255,18 @@ export class ActionBuilder {
 
         try {
           const initialTabIds = await this.context.browserContext.getAllTabIds();
-          await page.clickElementNode(this.context.options.useVision, elementNode);
+          try {
+            await page.clickElementNode(this.context.options.useVision, elementNode);
+          } catch (error) {
+            // The page re-rendered the element (e.g. a menu that animated in); retry once if it is unambiguous
+            if (!(error instanceof ElementNotFoundError)) throw error;
+            const relocated = await page.relocateElement(elementNode);
+            if (!relocated) throw error;
+            logger.info(
+              `Element ${input.index} was re-rendered, clicking it at its new index ${relocated.highlightIndex}`,
+            );
+            await page.clickElementNode(this.context.options.useVision, relocated);
+          }
           let msg = t('act_click_ok', [
             input.index.toString(),
             elementNode.getAllTextTillNextClickableElement(2) || elementNode.attributes['aria-label'] || '',

@@ -148,6 +148,14 @@ export class ElementChangedError extends BrowserError {
   }
 }
 
+/** The element the model chose is no longer where the observed DOM said it was */
+export class ElementNotFoundError extends BrowserError {
+  constructor(message?: string) {
+    super(message);
+    this.name = 'ElementNotFoundError';
+  }
+}
+
 export class URLNotAllowedError extends BrowserError {
   /**
    * Error raised when a URL is not allowed

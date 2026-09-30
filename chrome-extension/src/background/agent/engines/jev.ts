@@ -161,6 +161,34 @@ function elementLabel(node: DOMElementNode): string {
   return collapse(label, MAX_LABEL_LENGTH);
 }
 
+const CONTAINER_TAGS = new Set(['article', 'li', 'tr']);
+const CONTAINER_ROLES = new Set(['article', 'listitem', 'row']);
+
+function* ancestors(node: DOMElementNode): Generator<DOMElementNode> {
+  let current = node.parent;
+  while (current) {
+    yield current;
+    current = current.parent;
+  }
+}
+
+/** Text of the enclosing post/list item/row, so identical buttons (e.g. each post's "More") can be told apart */
+function containerContext(node: DOMElementNode): string {
+  for (const container of ancestors(node)) {
+    const tag = (container.tagName ?? '').toLowerCase();
+    if (!CONTAINER_TAGS.has(tag) && !CONTAINER_ROLES.has(container.attributes.role ?? '')) continue;
+    const parts: string[] = [];
+    const walk = (n: DOMBaseNode) => {
+      if (n instanceof DOMTextNode) parts.push(n.text);
+      // skip the item's own buttons and links: their labels ("Reply", "Follow") do not tell items apart
+      else if (n instanceof DOMElementNode && (n === container || n.highlightIndex == null)) n.children.forEach(walk);
+    };
+    walk(container);
+    return collapse(parts.join(' '), MAX_LABEL_LENGTH);
+  }
+  return '';
+}
+
 function selectOptions(node: DOMElementNode): string[] {
   const options: string[] = [];
   const walk = (n: DOMBaseNode) => {
@@ -191,12 +219,19 @@ export function buildActionSpace(selectorMap: Map<number, DOMElementNode>): JevA
   };
 
   const indices = [...selectorMap.keys()].sort((a, b) => a - b).slice(0, MAX_ELEMENTS);
+  const labels = new Map(indices.map(i => [i, elementLabel(selectorMap.get(i)!)]));
+  const labelCounts = new Map<string, number>();
+  labels.forEach(label => labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1));
   for (const highlightIndex of indices) {
     const node = selectorMap.get(highlightIndex)!;
     const attrs = node.attributes;
     const index = String(highlightIndex);
     const role = elementRole(node);
-    const label = elementLabel(node);
+    let label = labels.get(highlightIndex)!;
+    if (label && labelCounts.get(label)! > 1) {
+      const context = containerContext(node);
+      if (context) label = `${label} (in: ${context})`;
+    }
     // An unlabeled clickable (e.g. a wrapper div) cannot be told apart by Jev and gets picked by mistake
     if (!label && !isTextEditable(node) && (node.tagName ?? '').toLowerCase() !== 'select') continue;
     const element: JevElement = { index, role, label, operations: [] };
@@ -355,12 +390,10 @@ export function traceChoice(choice: JevChoice, space: JevActionSpace, model: str
     confidence: choice.confidence,
     targetConfidence: choice.targetConfidence,
     margin: (ranked[0]?.[1] ?? 0) - (ranked[1]?.[1] ?? 0),
-    alternatives: ranked
-      .slice(0, MAX_ALTERNATIVES)
-      .map(([key, p]) => ({
-        label: key === NO_TARGET ? NO_TARGET : `[${candidates[key].index}] ${candidates[key].label}`,
-        p,
-      })),
+    alternatives: ranked.slice(0, MAX_ALTERNATIVES).map(([key, p]) => ({
+      label: key === NO_TARGET ? NO_TARGET : `[${candidates[key].index}] ${candidates[key].label}`,
+      p,
+    })),
   };
 }
 

@@ -94,6 +94,26 @@ describe('Jev action space', () => {
     expect(space.elements.map(e => e.index)).toEqual(['5']);
   });
 
+  it('tells identical buttons apart by the post they sit in', () => {
+    const more1 = el('button', { 'aria-label': 'More' }, 1);
+    const more2 = el('button', { 'aria-label': 'More' }, 2);
+    const follow = el('button', {}, 3, [text('Follow')]);
+    el('article', {}, null, [text('Ripple defeats SEC #XRP'), more1]);
+    el('article', {}, null, [text('My cat photos'), more2, follow]);
+    const space = buildActionSpace(
+      new Map([
+        [1, more1],
+        [2, more2],
+        [3, follow],
+      ]),
+    );
+    expect(space.elements.map(e => e.label)).toEqual([
+      'More (in: Ripple defeats SEC #XRP)',
+      'More (in: My cat photos)',
+      'Follow',
+    ]);
+  });
+
   it('builds one question per operation plus the operation question', () => {
     const state = signupPage();
     const body = buildJevRequest(state, buildActionSpace(state.selectorMap), 'goal', [], 'm');
