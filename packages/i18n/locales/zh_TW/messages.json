@@ -206,7 +206,7 @@
     "message": "模型"
   },
   "options_tabs_firewall": {
-    "message": "防火牆"
+    "message": "網站權限"
   },
   "options_tabs_help": {
     "message": "說明"
@@ -416,28 +416,28 @@
     }
   },
   "options_firewall_header": {
-    "message": "防火牆"
+    "message": "網站權限"
   },
   "options_firewall_enableToggle": {
-    "message": "啟用防火牆"
+    "message": "啟用網站權限規則"
   },
   "options_firewall_toggleFirewall_a11y": {
-    "message": "切換防火牆"
+    "message": "切換網站權限規則"
   },
   "options_firewall_allowList_header": {
-    "message": "允許清單"
+    "message": "允許的網站"
   },
   "options_firewall_allowList_empty": {
-    "message": "允許清單中沒有網域。若允許清單為空，則表示所有未在拒絕清單中的網域都將被允許。"
+    "message": "沒有允許的網站。清單為空時，所有未封鎖的網站都可存取。"
   },
   "options_firewall_denyList_header": {
-    "message": "拒絕清單"
+    "message": "封鎖的網站"
   },
   "options_firewall_denyList_empty": {
-    "message": "拒絕清單中沒有網域"
+    "message": "沒有封鎖的網站"
   },
   "options_firewall_placeholders_domainUrl": {
-    "message": "請輸入網域或 URL (例如 example.com, localhost, 127.0.0.1)"
+    "message": "網域或 URL（例如 example.com、github.com/org、localhost:3000）"
   },
   "options_firewall_btnAdd": {
     "message": "新增"
@@ -446,10 +446,28 @@
     "message": "移除"
   },
   "options_firewall_howItWorks_header": {
-    "message": "防火牆運作原理"
+    "message": "網站權限運作方式"
   },
   "options_firewall_howItWorks": {
-    "message": "防火牆包含一個拒絕清單和一個允許清單。\n- 如果兩個清單都為空，則允許所有 URL。\n- 拒絕清單具有較高優先順序。如果一個 URL 符合任何拒絕清單中的項目，它將被封鎖。\n- 當允許清單為空時，所有未被拒絕的 URL 都會被允許。\n- 當允許清單不為空時，只有符合清單中項目的 URL 才被允許。\n- 目前尚不支援萬用字元。\n- 建議優先使用允許清單，而非拒絕清單。"
+    "message": "封鎖永遠優先：封鎖清單中的項目會壓過任何允許項目。\n允許清單為空時，所有未封鎖的網站都可存取。\n允許清單有項目時，代理只能開啟符合其中一項的網站。\nexample.com 也涵蓋所有子網域（www.example.com、a.b.example.com）；寫成 *.example.com 效果相同。\ngithub.com/org 涵蓋該路徑及其下所有頁面，但不含 github.com/organic。\n加上連接埠（localhost:3000）則只符合該連接埠。\n同一個網站只會在一個清單中；加入其中一個清單會將它從另一個移除。\nchrome://、file:、data: 與 Chrome 線上應用程式商店一律封鎖。"
+  },
+  "options_firewall_movedToAllow": {
+    "message": "$ENTRY$ 原本在封鎖清單，已移到允許清單。",
+    "placeholders": {
+      "entry": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "options_firewall_movedToDeny": {
+    "message": "$ENTRY$ 原本在允許清單，已移到封鎖清單。",
+    "placeholders": {
+      "entry": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
   },
   "bg_errors_noTabId": {
     "message": "未提供分頁 ID"

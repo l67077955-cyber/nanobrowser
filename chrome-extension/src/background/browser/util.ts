@@ -1,8 +1,33 @@
+import { normalizeSiteEntry } from '@extension/storage';
+
 /**
- * Checks if a URL is allowed based on firewall configuration
+ * Checks whether one site-access entry covers a parsed URL.
+ * - `example.com` covers example.com and every subdomain, on any path
+ * - `localhost:3000` also pins the port
+ * - `github.com/foo` covers /foo and anything below it, not /foobar
+ */
+function entryMatches(entry: string, url: URL): boolean {
+  const slash = entry.indexOf('/');
+  const entryHost = slash === -1 ? entry : entry.slice(0, slash);
+  const entryPath = slash === -1 ? '' : entry.slice(slash);
+
+  const host = entryHost.includes(':') ? url.host : url.hostname;
+  if (host !== entryHost && !host.endsWith(`.${entryHost}`)) {
+    return false;
+  }
+  if (!entryPath) {
+    return true;
+  }
+  const path = url.pathname.toLowerCase();
+  return path === entryPath || path.startsWith(`${entryPath}/`);
+}
+
+/**
+ * Checks if a URL is allowed by the site-access lists.
+ * Blocked sites always win; when the allowed list is non-empty, only sites on it are reachable.
  * @param url The URL to check
- * @param allowList The allow list
- * @param denyList The deny list
+ * @param allowList Allowed sites
+ * @param denyList Blocked sites
  * @returns True if the URL is allowed, false otherwise
  */
 export function isUrlAllowed(url: string, allowList: string[], denyList: string[]): boolean {
@@ -14,7 +39,7 @@ export function isUrlAllowed(url: string, allowList: string[], denyList: string[
 
   const lowerCaseUrl = trimmedUrl.toLowerCase();
 
-  // ALWAYS block dangerous/forbidden URLs, even if firewall is disabled
+  // ALWAYS block dangerous/forbidden URLs, even with site access turned off
   const DANGEROUS_PREFIXES = [
     'https://chromewebstore.google.com', // scripts are not allowed to be injected into chrome web store
     'chrome-extension://',
@@ -31,8 +56,11 @@ export function isUrlAllowed(url: string, allowList: string[], denyList: string[
     return false;
   }
 
-  // If firewall is disabled, allow all other URLs
-  if (allowList.length === 0 && denyList.length === 0) {
+  const allowed = allowList.map(normalizeSiteEntry).filter(Boolean);
+  const denied = denyList.map(normalizeSiteEntry).filter(Boolean);
+
+  // No rules (or site access turned off, which passes empty lists): allow everything else
+  if (allowed.length === 0 && denied.length === 0) {
     return true;
   }
 
@@ -44,48 +72,13 @@ export function isUrlAllowed(url: string, allowList: string[], denyList: string[
   try {
     const parsedUrl = new URL(trimmedUrl);
 
-    // 1. Remove protocol prefix for further comparisons
-    const urlWithoutProtocol = lowerCaseUrl.replace(/^https?:\/\//, '');
-
-    // 2. First check full URL against deny list
-    for (const deniedEntry of denyList) {
-      if (urlWithoutProtocol === deniedEntry) {
-        return false;
-      }
+    if (denied.some(entry => entryMatches(entry, parsedUrl))) {
+      return false;
     }
-
-    // 3. Check full URL against allow list
-    for (const allowedEntry of allowList) {
-      if (urlWithoutProtocol === allowedEntry) {
-        return true;
-      }
+    if (allowed.length === 0) {
+      return true;
     }
-
-    // 4. Extract domain for domain-based checks
-    let domain = parsedUrl.hostname.toLowerCase();
-
-    // Remove port number if present
-    const portIndex = domain.indexOf(':');
-    if (portIndex > -1) {
-      domain = domain.substring(0, portIndex);
-    }
-
-    // 5. Check domain against deny list
-    for (const deniedEntry of denyList) {
-      if (domain === deniedEntry || domain.endsWith(`.${deniedEntry}`)) {
-        return false;
-      }
-    }
-
-    // 6. Check domain against allow list
-    for (const allowedEntry of allowList) {
-      if (domain === allowedEntry || domain.endsWith(`.${allowedEntry}`)) {
-        return true;
-      }
-    }
-
-    // Default policy
-    return allowList.length === 0;
+    return allowed.some(entry => entryMatches(entry, parsedUrl));
   } catch (error) {
     // Invalid URL format - deny by default
     return false;

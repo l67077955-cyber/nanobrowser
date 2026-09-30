@@ -10,24 +10,30 @@ export interface FirewallConfig {
 }
 
 /**
- * Normalizes a URL by trimming whitespace and converting to lowercase
- * @param url The URL to normalize
- * @returns The normalized URL
+ * Normalizes a site-access entry: lowercase, no protocol, no `*.` wildcard
+ * (bare domains already cover subdomains), no query/hash, no trailing slash.
+ * @param url The domain or URL to normalize
+ * @returns The normalized entry
  */
-function normalizeUrl(url: string): string {
+export function normalizeSiteEntry(url: string): string {
   return url
     .trim()
     .toLowerCase()
-    .replace(/^https?:\/\//, '');
+    .replace(/^https?:\/\//, '')
+    .replace(/^\*\./, '')
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '');
 }
 
 export type FirewallStorage = BaseStorage<FirewallConfig> & {
   updateFirewall: (settings: Partial<FirewallConfig>) => Promise<void>;
   getFirewall: () => Promise<FirewallConfig>;
   resetToDefaults: () => Promise<void>;
-  addToAllowList: (url: string) => Promise<void>;
+  /** Resolves true when the entry was moved over from the blocked list. */
+  addToAllowList: (url: string) => Promise<boolean>;
   removeFromAllowList: (url: string) => Promise<void>;
-  addToDenyList: (url: string) => Promise<void>;
+  /** Resolves true when the entry was moved over from the allowed list. */
+  addToDenyList: (url: string) => Promise<boolean>;
   removeFromDenyList: (url: string) => Promise<void>;
 };
 
@@ -60,42 +66,44 @@ export const firewallStore: FirewallStorage = {
     await storage.set(DEFAULT_FIREWALL_SETTINGS);
   },
   async addToAllowList(url: string) {
-    const normalizedUrl = normalizeUrl(url);
+    const normalizedUrl = normalizeSiteEntry(url);
     const currentSettings = await this.getFirewall();
-
-    if (!currentSettings.allowList.includes(normalizedUrl)) {
-      // Remove from deny list if it exists there
-      const denyList = currentSettings.denyList.filter(item => item !== normalizedUrl);
-      // Add to allow list
-      await this.updateFirewall({
-        allowList: [...currentSettings.allowList, normalizedUrl],
-        denyList,
-      });
+    if (!normalizedUrl || currentSettings.allowList.includes(normalizedUrl)) {
+      return false;
     }
+
+    // An entry lives on one list only; adding it here takes it off the other
+    const moved = currentSettings.denyList.includes(normalizedUrl);
+    await this.updateFirewall({
+      allowList: [...currentSettings.allowList, normalizedUrl],
+      denyList: currentSettings.denyList.filter(item => item !== normalizedUrl),
+    });
+    return moved;
   },
   async removeFromAllowList(url: string) {
-    const normalizedUrl = normalizeUrl(url);
+    const normalizedUrl = normalizeSiteEntry(url);
     const currentSettings = await this.getFirewall();
     await this.updateFirewall({
       allowList: currentSettings.allowList.filter(item => item !== normalizedUrl),
     });
   },
   async addToDenyList(url: string) {
-    const normalizedUrl = normalizeUrl(url);
+    const normalizedUrl = normalizeSiteEntry(url);
     const currentSettings = await this.getFirewall();
-
-    if (!currentSettings.denyList.includes(normalizedUrl)) {
-      // Remove from allow list if it exists there
-      const allowList = currentSettings.allowList.filter(item => item !== normalizedUrl);
-      // Add to deny list
-      await this.updateFirewall({
-        denyList: [...currentSettings.denyList, normalizedUrl],
-        allowList,
-      });
+    if (!normalizedUrl || currentSettings.denyList.includes(normalizedUrl)) {
+      return false;
     }
+
+    // An entry lives on one list only; adding it here takes it off the other
+    const moved = currentSettings.allowList.includes(normalizedUrl);
+    await this.updateFirewall({
+      denyList: [...currentSettings.denyList, normalizedUrl],
+      allowList: currentSettings.allowList.filter(item => item !== normalizedUrl),
+    });
+    return moved;
   },
   async removeFromDenyList(url: string) {
-    const normalizedUrl = normalizeUrl(url);
+    const normalizedUrl = normalizeSiteEntry(url);
     const currentSettings = await this.getFirewall();
     await this.updateFirewall({
       denyList: currentSettings.denyList.filter(item => item !== normalizedUrl),

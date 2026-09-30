@@ -206,7 +206,7 @@
     "message": "Modelos"
   },
   "options_tabs_firewall": {
-    "message": "Firewall"
+    "message": "Acesso a sites"
   },
   "options_tabs_help": {
     "message": "Ajuda"
@@ -421,28 +421,28 @@
   },
 
   "options_firewall_header": {
-    "message": "Firewall"
+    "message": "Acesso a sites"
   },
   "options_firewall_enableToggle": {
-    "message": "Ativar Firewall"
+    "message": "Ativar regras de acesso a sites"
   },
   "options_firewall_toggleFirewall_a11y": {
-    "message": "Ativar/Desativar Firewall"
+    "message": "Ativar/desativar regras de acesso a sites"
   },
   "options_firewall_allowList_header": {
-    "message": "Lista de Permissões"
+    "message": "Sites permitidos"
   },
   "options_firewall_allowList_empty": {
-    "message": "Nenhum domínio na lista de permissões. Uma lista de permissões vazia significa que todos os domínios não negados são permitidos."
+    "message": "Nenhum site permitido. Com a lista vazia, todo site não bloqueado fica acessível."
   },
   "options_firewall_denyList_header": {
-    "message": "Lista de Negações"
+    "message": "Sites bloqueados"
   },
   "options_firewall_denyList_empty": {
-    "message": "Nenhum domínio na lista de negações"
+    "message": "Nenhum site bloqueado"
   },
   "options_firewall_placeholders_domainUrl": {
-    "message": "Insira domínio ou URL (ex: example.com, localhost, 127.0.0.1)"
+    "message": "Domínio ou URL (ex: example.com, github.com/org, localhost:3000)"
   },
   "options_firewall_btnAdd": {
     "message": "Adicionar"
@@ -451,10 +451,28 @@
     "message": "Remover"
   },
   "options_firewall_howItWorks_header": {
-    "message": "Como o Firewall Funciona"
+    "message": "Como funciona o acesso a sites"
   },
   "options_firewall_howItWorks": {
-    "message": "O firewall contém uma lista de negações e uma lista de permissões.\nSe ambas as listas estiverem vazias, todos os URLs são permitidos\nA lista de negações tem prioridade - se um URL corresponder a qualquer entrada da lista de negações, ele será bloqueado\nQuando a lista de permissões está vazia, todos os URLs não negados são permitidos\nQuando a lista de permissões não está vazia, apenas os URLs correspondentes são permitidos\nCuringas ainda NÃO são suportados\nA lista de permissões é preferível à lista de negações"
+    "message": "Bloqueios sempre vencem: uma entrada bloqueada prevalece sobre qualquer permissão.\nSe a lista de permitidos estiver vazia, todo site não bloqueado fica acessível.\nSe a lista de permitidos tiver entradas, o agente só abre sites que correspondam a uma delas.\nexample.com também cobre todos os subdomínios; *.example.com significa o mesmo.\ngithub.com/org cobre esse caminho e tudo abaixo dele, mas não github.com/organic.\nAdicione uma porta (localhost:3000) para corresponder só a ela.\nUm site fica em uma lista por vez; adicioná-lo a uma remove da outra.\nchrome://, file:, data: e a Chrome Web Store são sempre bloqueados."
+  },
+  "options_firewall_movedToAllow": {
+    "message": "$ENTRY$ estava em Sites bloqueados; foi movido para Sites permitidos.",
+    "placeholders": {
+      "entry": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "options_firewall_movedToDeny": {
+    "message": "$ENTRY$ estava em Sites permitidos; foi movido para Sites bloqueados.",
+    "placeholders": {
+      "entry": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
   },
 
   "bg_errors_noTabId": {

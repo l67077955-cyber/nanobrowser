@@ -206,7 +206,7 @@
     "message": "Models"
   },
   "options_tabs_firewall": {
-    "message": "Firewall"
+    "message": "Site Access"
   },
   "options_tabs_help": {
     "message": "Help"
@@ -422,28 +422,28 @@
   },
 
   "options_firewall_header": {
-    "message": "Firewall"
+    "message": "Site Access"
   },
   "options_firewall_enableToggle": {
-    "message": "Enable Firewall"
+    "message": "Enable site access rules"
   },
   "options_firewall_toggleFirewall_a11y": {
-    "message": "Toggle Firewall"
+    "message": "Toggle site access rules"
   },
   "options_firewall_allowList_header": {
-    "message": "Allow List"
+    "message": "Allowed sites"
   },
   "options_firewall_allowList_empty": {
-    "message": "No domains in allow list. Empty allow list means all non-denied domains are allowed."
+    "message": "No allowed sites. While this list is empty, every site that isn't blocked is reachable."
   },
   "options_firewall_denyList_header": {
-    "message": "Deny List"
+    "message": "Blocked sites"
   },
   "options_firewall_denyList_empty": {
-    "message": "No domains in deny list"
+    "message": "No blocked sites"
   },
   "options_firewall_placeholders_domainUrl": {
-    "message": "Enter domain or URL (e.g. example.com, localhost, 127.0.0.1)"
+    "message": "Domain or URL (e.g. example.com, github.com/org, localhost:3000)"
   },
   "options_firewall_btnAdd": {
     "message": "Add"
@@ -452,10 +452,28 @@
     "message": "Remove"
   },
   "options_firewall_howItWorks_header": {
-    "message": "How the Firewall Works"
+    "message": "How site access works"
   },
   "options_firewall_howItWorks": {
-    "message": "The firewall contains a deny list and an allow list.\nIf both lists are empty, all URLs are allowed\nDeny list takes priority - if a URL matches any deny list entry, it's blocked\nWhen allow list is empty, all non-denied URLs are allowed\nWhen allow list is not empty, only matching URLs are allowed\nWildcards are NOT supported yet\nAllow list is preferred over deny list"
+    "message": "Blocked sites always win: a blocked entry beats any allowed entry.\nIf the allowed list is empty, every site that isn't blocked is reachable.\nIf the allowed list has entries, the agent can only open sites that match one.\nexample.com also covers every subdomain (www.example.com, a.b.example.com); *.example.com means the same.\ngithub.com/org covers that path and everything below it, but not github.com/organic.\nAdd a port (localhost:3000) to match only that port.\nA site sits on one list at a time; adding it to one list takes it off the other.\nchrome://, file:, data: and the Chrome Web Store are always blocked."
+  },
+  "options_firewall_movedToAllow": {
+    "message": "$ENTRY$ was on Blocked sites; it moved to Allowed sites.",
+    "placeholders": {
+      "entry": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
+  },
+  "options_firewall_movedToDeny": {
+    "message": "$ENTRY$ was on Allowed sites; it moved to Blocked sites.",
+    "placeholders": {
+      "entry": {
+        "content": "$1",
+        "example": "example.com"
+      }
+    }
   },
 
   "bg_errors_noTabId": {

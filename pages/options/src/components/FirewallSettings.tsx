@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { firewallStore } from '@extension/storage';
+import { firewallStore, normalizeSiteEntry } from '@extension/storage';
 import { Button } from '@extension/ui';
 import { t } from '@extension/i18n';
 
@@ -9,6 +9,7 @@ export const FirewallSettings = () => {
   const [denyList, setDenyList] = useState<string[]>([]);
   const [newUrl, setNewUrl] = useState('');
   const [activeList, setActiveList] = useState<'allow' | 'deny'>('allow');
+  const [notice, setNotice] = useState('');
 
   const loadFirewallSettings = useCallback(async () => {
     const settings = await firewallStore.getFirewall();
@@ -27,15 +28,16 @@ export const FirewallSettings = () => {
   };
 
   const handleAddUrl = async () => {
-    // Remove http:// or https:// prefixes
-    const cleanUrl = newUrl.trim().replace(/^https?:\/\//, '');
-    if (!cleanUrl) return;
+    const entry = normalizeSiteEntry(newUrl);
+    if (!entry) return;
 
-    if (activeList === 'allow') {
-      await firewallStore.addToAllowList(cleanUrl);
-    } else {
-      await firewallStore.addToDenyList(cleanUrl);
-    }
+    const moved =
+      activeList === 'allow' ? await firewallStore.addToAllowList(entry) : await firewallStore.addToDenyList(entry);
+    setNotice(
+      moved
+        ? t(activeList === 'allow' ? 'options_firewall_movedToAllow' : 'options_firewall_movedToDeny', entry)
+        : '',
+    );
     await loadFirewallSettings();
     setNewUrl('');
   };
@@ -125,6 +127,11 @@ export const FirewallSettings = () => {
               {t('options_firewall_btnAdd')}
             </Button>
           </div>
+          {notice && (
+            <p role="status" className="-mt-2 mb-4 text-sm text-nb-ink-2">
+              {notice}
+            </p>
+          )}
 
           <div className="max-h-64 overflow-y-auto">
             {activeList === 'allow' ? (
@@ -158,7 +165,7 @@ export const FirewallSettings = () => {
                       onClick={() => handleRemoveUrl(url, 'deny')}
                       variant="danger"
                       className="rounded-l-none px-2 py-1 text-xs">
-                      Remove
+                      {t('options_firewall_btnRemove')}
                     </Button>
                   </li>
                 ))}
