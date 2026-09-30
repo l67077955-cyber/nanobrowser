@@ -19,6 +19,9 @@ declare global {
   }
 }
 
+// Rows for these are shown as failures whatever their wording
+const FAILURE_STATES = [ExecutionState.TASK_FAIL, ExecutionState.STEP_FAIL, ExecutionState.ACT_FAIL];
+
 const SidePanel = () => {
   const progressMessage = 'Showing progress...';
   const [messages, setMessages] = useState<Message[]>([]);
@@ -267,6 +270,7 @@ const SidePanel = () => {
           content: content || '',
           timestamp: timestamp,
           ...(data?.meta ? { meta: data.meta } : {}),
+          ...(FAILURE_STATES.includes(state) ? { failed: true } : {}),
         });
       }
 
@@ -314,6 +318,7 @@ const SidePanel = () => {
             actor: Actors.SYSTEM,
             content: message.error || t('errors_unknown'),
             timestamp: Date.now(),
+            failed: true,
           });
           setInputEnabled(true);
           setShowStopButton(false);

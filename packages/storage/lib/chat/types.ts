@@ -47,7 +47,10 @@ export type StepMeta =
       engine: 'jev' | 'llm';
       model: string; // model that made the executed decision
       latencyMs: number; // decision time, including a deferred Jev call
+      observeMs?: number; // reading the page before the decision
+      actMs?: number; // running the actions
       actions: StepAction[];
+      notes?: string[]; // what the step told the model besides the action results, e.g. that it is going round in circles
       goal?: string;
       jev?: JevTrace;
     };
@@ -57,6 +60,7 @@ export interface Message {
   content: string;
   timestamp: number; // Unix timestamp in milliseconds
   meta?: StepMeta;
+  failed?: boolean; // reports a failed action, step or task
 }
 
 export interface ChatMessage extends Message {

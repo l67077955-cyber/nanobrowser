@@ -217,7 +217,8 @@ function MessageRow({ message, step, isLast }: { message: Message; step: number;
   }
   // Messages without meta: system notices, failures, and history saved before step records existed
   const actor = ACTOR_PROFILES[message.actor as keyof typeof ACTOR_PROFILES];
-  const failed = /fail|error/i.test(message.content);
+  // history saved before failures were marked is told apart by its wording
+  const failed = message.failed ?? /fail|error/i.test(message.content);
   return (
     <div className={`nb-plain${failed ? ' bad' : ''}`}>
       <span className="nb-label">{actor?.name ?? message.actor}</span>
@@ -277,6 +278,11 @@ function NavigatorRow({ meta, step }: { meta: NavigatorMeta; step: number }) {
           {OPERATION_NAMES[action.name] ?? action.name} {action.target}: {action.error}
         </div>
       ))}
+      {meta.notes?.map((note, i) => (
+        <div key={i} className="nb-note warn">
+          {note}
+        </div>
+      ))}
       {open && (
         <div className="nb-detail">
           {jev && <JevDetail trace={jev} deferred={!byJev} />}
@@ -285,6 +291,18 @@ function NavigatorRow({ meta, step }: { meta: NavigatorMeta; step: number }) {
             <span>{meta.model}</span>
             <span>{t('chat_steps_detail_time')}</span>
             <span className="nb-num">{formatMs(meta.latencyMs)}</span>
+            {meta.observeMs !== undefined && (
+              <>
+                <span>{t('chat_steps_detail_observe')}</span>
+                <span className="nb-num">{formatMs(meta.observeMs)}</span>
+              </>
+            )}
+            {meta.actMs !== undefined && (
+              <>
+                <span>{t('chat_steps_detail_act')}</span>
+                <span className="nb-num">{formatMs(meta.actMs)}</span>
+              </>
+            )}
             {meta.goal && (
               <>
                 <span>{t('chat_steps_detail_goal')}</span>

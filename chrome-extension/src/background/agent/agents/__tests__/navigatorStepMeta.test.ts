@@ -57,4 +57,36 @@ describe('navigatorStepMeta', () => {
       error: 'Element not found',
     });
   });
+
+  it('carries the step timings and what the model was told besides the action results', () => {
+    const meta = navigatorStepMeta({
+      engineResult: { decision: null },
+      llmModel: 'deepseek-flash',
+      decisionMs: 1800,
+      observeMs: 3,
+      actMs: 51985,
+      actions: [{ input_text: { index: 21, text: 'x' } }, { click_element: { index: 22 } }],
+      results: [new ActionResult({ error: 'Failed to input text' })],
+      notes: ['Something new appeared after action 1 / 2, so the remaining 1 were not run'],
+    });
+    expect(meta).toMatchObject({
+      observeMs: 3,
+      actMs: 51985,
+      notes: ['Something new appeared after action 1 / 2, so the remaining 1 were not run'],
+    });
+    // the action that was left out is not listed as one that ran
+    expect(meta.kind === 'navigator' && meta.actions.map(a => a.name)).toEqual(['input_text']);
+  });
+
+  it('leaves out notes when there are none', () => {
+    const meta = navigatorStepMeta({
+      engineResult: { decision: null },
+      llmModel: 'deepseek-flash',
+      decisionMs: 10,
+      actions: [],
+      results: [],
+      notes: [],
+    });
+    expect(meta).not.toHaveProperty('notes');
+  });
 });

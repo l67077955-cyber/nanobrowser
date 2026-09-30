@@ -1103,6 +1103,12 @@
   "chat_steps_detail_time": {
     "message": "決策耗時"
   },
+  "chat_steps_detail_observe": {
+    "message": "Page read"
+  },
+  "chat_steps_detail_act": {
+    "message": "Actions"
+  },
   "chat_steps_detail_goal": {
     "message": "目標"
   },

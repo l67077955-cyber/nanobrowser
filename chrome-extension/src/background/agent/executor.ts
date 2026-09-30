@@ -31,6 +31,12 @@ import { JevDecisionEngine } from './engines/jev';
 
 const logger = createLogger('Executor');
 
+/** The task gives up after failing several times in a row; the last failure says why */
+function maxFailuresMessage(lastError: unknown): string {
+  const reason = lastError instanceof Error ? lastError.message : String(lastError);
+  return `${t('exec_errors_maxFailuresReached')}: ${reason}`;
+}
+
 /** A planner run going on alongside navigation */
 interface BackgroundPlan {
   promise: Promise<AgentOutput<PlannerOutput> | null>;
@@ -444,7 +450,7 @@ export class Executor {
     }
     context.consecutiveFailures++;
     if (context.consecutiveFailures >= context.options.maxFailures) {
-      throw new MaxFailuresReachedError(t('exec_errors_maxFailuresReached'));
+      throw new MaxFailuresReachedError(maxFailuresMessage(error));
     }
     return null;
   }
@@ -486,7 +492,7 @@ export class Executor {
       context.consecutiveFailures++;
       logger.error(`Failed to execute step: ${error}`);
       if (context.consecutiveFailures >= context.options.maxFailures) {
-        throw new MaxFailuresReachedError(t('exec_errors_maxFailuresReached'));
+        throw new MaxFailuresReachedError(maxFailuresMessage(error));
       }
     }
     return false;

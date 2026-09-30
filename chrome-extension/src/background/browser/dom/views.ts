@@ -181,6 +181,25 @@ export class DOMElementNode extends DOMBaseNode {
     this._hashPromise = undefined;
   }
 
+  /** How the element reads in an error message, e.g. `[21] <input> "Keyword"` */
+  toString(): string {
+    const label =
+      [
+        this.attributes['aria-label'],
+        this.getAllTextTillNextClickableElement(2),
+        this.attributes.placeholder,
+        this.attributes.name,
+      ].find(c => c && c.trim()) ?? '';
+    const flat = label.replace(/\s+/g, ' ').trim();
+    return [
+      this.highlightIndex !== null ? `[${this.highlightIndex}]` : '',
+      `<${this.tagName ?? 'unknown'}>`,
+      flat ? `"${flat.length > 60 ? `${flat.slice(0, 59)}…` : flat}"` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
   getAllTextTillNextClickableElement(maxDepth = -1): string {
     const textParts: string[] = [];
 

@@ -94,20 +94,27 @@ interface NavigatorStepMetaInput {
   engineResult: EngineResult;
   llmModel: string;
   decisionMs: number;
+  observeMs?: number;
+  actMs?: number;
   goal?: string;
   actions: Record<string, unknown>[];
   results: ActionResult[];
+  /** what the step told the model besides the results of its actions */
+  notes?: string[];
 }
 
 /** Side-panel record of a finished navigator step: who decided, how fast, and what ran */
 export function navigatorStepMeta(input: NavigatorStepMetaInput): StepMeta {
-  const { engineResult, llmModel, decisionMs, goal, actions, results } = input;
+  const { engineResult, llmModel, decisionMs, observeMs, actMs, goal, actions, results, notes } = input;
   const byEngine = engineResult.decision !== null;
   return {
     kind: 'navigator',
     engine: byEngine ? 'jev' : 'llm',
     model: byEngine && engineResult.trace ? engineResult.trace.model : llmModel,
     latencyMs: decisionMs,
+    ...(observeMs !== undefined ? { observeMs } : {}),
+    ...(actMs !== undefined ? { actMs } : {}),
+    ...(notes?.length ? { notes } : {}),
     goal: byEngine ? undefined : goal || undefined,
     jev: engineResult.trace,
     // only actions that ran; doMultiAction stops early on errors or page changes
@@ -201,6 +208,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   private _stateHistory: BrowserStateHistory | null = null;
   private decisionEngine: NavigatorDecisionEngine | null = null;
   private readonly repeats = new RepeatedActionTracker();
+  /** Set when a step left its remaining actions out because the page changed under them */
+  private cutShort: ActionResult | null = null;
 
   constructor(
     actionRegistry: NavigatorActionRegistry,
@@ -351,6 +360,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         `${currentState.url}\n${currentState.scrollY}\n${currentState.elementTree.clickableElementsToString(this.context.options.includeAttributes)}`,
       );
       if (repeatNote) logger.warning(repeatNote);
+      const cutShort = this.cutShort;
       this.context.actionResults = repeatNote
         ? [...actionResults, new ActionResult({ extractedContent: repeatNote, includeInMemory: true })]
         : actionResults;
@@ -369,9 +379,13 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           engineResult,
           llmModel: this.modelName,
           decisionMs,
+          observeMs,
+          actMs,
           goal: modelOutput.current_state?.next_goal,
           actions,
-          results: actionResults,
+          // the note about the page changing stands for no action
+          results: actionResults.filter(result => result !== cutShort),
+          notes: [cutShort?.extractedContent, repeatNote].filter((note): note is string => !!note),
         }),
       );
       let done = false;
@@ -578,6 +592,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   private async doMultiAction(actions: Record<string, unknown>[], browserState: BrowserState): Promise<ActionResult[]> {
     const results: ActionResult[] = [];
     let errCount = 0;
+    this.cutShort = null;
     logger.info('Actions', actions);
 
     const browserContext = this.context.browserContext;
@@ -606,14 +621,13 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           const newPathHashes = await calcBranchPathHashSet(newState);
           // next action requires index but there are new elements on the page
           if (!newPathHashes.isSubsetOf(cachedPathHashes)) {
-            const msg = `Something new appeared after action ${i} / ${actions.length}`;
+            const msg = `Something new appeared after action ${i} / ${actions.length}, so the remaining ${actions.length - i} were not run`;
             logger.info(msg);
-            results.push(
-              new ActionResult({
-                extractedContent: msg,
-                includeInMemory: true,
-              }),
-            );
+            this.cutShort = new ActionResult({
+              extractedContent: msg,
+              includeInMemory: true,
+            });
+            results.push(this.cutShort);
             break;
           }
         }
