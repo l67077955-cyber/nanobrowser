@@ -7,7 +7,7 @@ import { createLogger } from '@src/background/log';
 import type { Action } from '../actions/builder';
 import { convertInputMessages, extractJsonFromModelOutput, removeThinkTags } from '../messages/utils';
 import { repairJsonString } from '@src/background/utils';
-import { isAbortedError, ResponseParseError } from './errors';
+import { isAbortedError, ModelTimeoutError, ResponseParseError, withModelTimeout } from './errors';
 import { ProviderTypeEnum } from '@extension/storage';
 
 const logger = createLogger('agent');
@@ -139,10 +139,12 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
       let response = undefined;
       try {
         logger.debug(`[${this.modelName}] Invoking LLM with structured output...`);
-        response = await structuredLlm.invoke(inputMessages, {
-          signal,
-          ...this.callOptions,
-        });
+        response = await withModelTimeout(this.modelName, signal, callSignal =>
+          structuredLlm.invoke(inputMessages, {
+            signal: callSignal,
+            ...this.callOptions,
+          }),
+        );
 
         logger.debug(`[${this.modelName}] LLM response received:`, {
           hasParsed: !!response.parsed,
@@ -166,7 +168,7 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
           `Could not parse response with structured output (${this.getRawResponseDebugInfo(response.raw)})`,
         );
       } catch (error) {
-        if (isAbortedError(error)) {
+        if (isAbortedError(error) || error instanceof ModelTimeoutError) {
           throw error;
         }
 
@@ -201,10 +203,12 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
     const convertedInputMessages = convertInputMessages(inputMessages, this.modelName);
 
     try {
-      const response = await this.chatLLM.invoke(convertedInputMessages, {
-        signal,
-        ...this.callOptions,
-      });
+      const response = await withModelTimeout(this.modelName, signal, callSignal =>
+        this.chatLLM.invoke(convertedInputMessages, {
+          signal: callSignal,
+          ...this.callOptions,
+        }),
+      );
 
       if (typeof response.content === 'string') {
         const parsed = this.manuallyParseResponse(response.content);

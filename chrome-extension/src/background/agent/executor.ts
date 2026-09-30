@@ -17,6 +17,7 @@ import {
   ChatModelBadRequestError,
   ChatModelForbiddenError,
   ExtensionConflictError,
+  ModelTimeoutError,
   RequestCancelledError,
   MaxStepsReachedError,
   MaxFailuresReachedError,
@@ -359,6 +360,7 @@ export class Executor {
       error instanceof ChatModelBadRequestError ||
       error instanceof ChatModelForbiddenError ||
       error instanceof URLNotAllowedError ||
+      error instanceof ModelTimeoutError ||
       error instanceof RequestCancelledError ||
       error instanceof ExtensionConflictError
     ) {
@@ -399,6 +401,7 @@ export class Executor {
         error instanceof ChatModelBadRequestError ||
         error instanceof ChatModelForbiddenError ||
         error instanceof URLNotAllowedError ||
+        error instanceof ModelTimeoutError ||
         error instanceof RequestCancelledError ||
         error instanceof ExtensionConflictError
       ) {

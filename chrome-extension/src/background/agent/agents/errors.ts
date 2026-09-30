@@ -197,6 +197,38 @@ export class RequestCancelledError extends Error {
   }
 }
 
+/** How long one model call may take, retries included. Generous: thinking and local models are slow. */
+export const MODEL_TIMEOUT_MS = 120000;
+
+/** The model never answered: the provider is unreachable or stalled, so retrying the step would only hang again */
+export class ModelTimeoutError extends Error {
+  constructor(modelName: string, timeoutMs: number) {
+    super(
+      `${modelName} did not answer within ${Math.round(timeoutMs / 1000)} seconds. Check your network connection and the provider's base URL and model in Settings.`,
+    );
+    this.name = 'ModelTimeoutError';
+  }
+}
+
+/**
+ * Run a model call that fails with ModelTimeoutError instead of leaving the task waiting forever.
+ * A cancelled task still rejects with its own abort error.
+ */
+export async function withModelTimeout<T>(
+  modelName: string,
+  taskSignal: AbortSignal,
+  call: (signal: AbortSignal) => Promise<T>,
+  timeoutMs = MODEL_TIMEOUT_MS,
+): Promise<T> {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  try {
+    return await call(AbortSignal.any([taskSignal, timeout]));
+  } catch (error) {
+    if (timeout.aborted && !taskSignal.aborted) throw new ModelTimeoutError(modelName, timeoutMs);
+    throw error;
+  }
+}
+
 export class ExtensionConflictError extends Error {
   /**
    * Creates a new ExtensionConflictError

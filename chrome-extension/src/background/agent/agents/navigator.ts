@@ -20,7 +20,9 @@ import {
   isForbiddenError,
   ResponseParseError,
   LLM_FORBIDDEN_ERROR_MESSAGE,
+  ModelTimeoutError,
   RequestCancelledError,
+  withModelTimeout,
 } from './errors';
 import { calcBranchPathHashSet } from '@src/background/browser/dom/views';
 import { type BrowserState, BrowserStateHistory, URLNotAllowedError } from '@src/background/browser/views';
@@ -166,16 +168,18 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         const messages = isAnthropicAdaptiveThinkingModel(this.modelName)
           ? convertMessagesForPlanner(inputMessages)
           : inputMessages;
-        response = await structuredLlm.invoke(messages, {
-          signal,
-          ...this.callOptions,
-        });
+        response = await withModelTimeout(this.modelName, signal, callSignal =>
+          structuredLlm.invoke(messages, {
+            signal: callSignal,
+            ...this.callOptions,
+          }),
+        );
 
         if (response.parsed) {
           return response.parsed;
         }
       } catch (error) {
-        if (isAbortedError(error)) {
+        if (isAbortedError(error) || error instanceof ModelTimeoutError) {
           throw error;
         }
 
@@ -307,7 +311,9 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       this.removeLastStateMessageFromMemory();
       const errorMessage = error instanceof Error ? error.message : String(error);
       // Check if this is an authentication error
-      if (isAuthenticationError(error)) {
+      if (error instanceof ModelTimeoutError) {
+        throw error;
+      } else if (isAuthenticationError(error)) {
         throw new ChatModelAuthError(errorMessage, error);
       } else if (isBadRequestError(error)) {
         throw new ChatModelBadRequestError(errorMessage, error);

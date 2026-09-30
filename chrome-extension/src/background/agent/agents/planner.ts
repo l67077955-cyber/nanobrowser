@@ -13,6 +13,7 @@ import {
   isBadRequestError,
   isForbiddenError,
   LLM_FORBIDDEN_ERROR_MESSAGE,
+  ModelTimeoutError,
   RequestCancelledError,
 } from './errors';
 import { convertMessagesForPlanner, stripBoundaryTags } from '../messages/utils';
@@ -117,7 +118,9 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       // Check if this is an authentication error
-      if (isAuthenticationError(error)) {
+      if (error instanceof ModelTimeoutError) {
+        throw error;
+      } else if (isAuthenticationError(error)) {
         throw new ChatModelAuthError(errorMessage, error);
       } else if (isBadRequestError(error)) {
         throw new ChatModelBadRequestError(errorMessage, error);
