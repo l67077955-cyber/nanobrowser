@@ -123,6 +123,7 @@ chrome.runtime.onConnect.addListener(port => {
 
             // If executor exists, add follow-up task
             if (currentExecutor) {
+              await browserContext.resumeLastTab().catch(error => logger.warning('resumeLastTab failed', error));
               currentExecutor.addFollowUpTask(message.task);
               // Re-subscribe to events in case the previous subscription was cleaned up
               subscribeToExecutorEvents(currentExecutor);

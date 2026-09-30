@@ -127,6 +127,48 @@ export function navigatorStepMeta(input: NavigatorStepMetaInput): StepMeta {
   };
 }
 
+/**
+ * Ask the fast engine and the LLM at the same time and take what is usable first. An engine decision
+ * cancels the LLM call; an LLM answer that is ready while the engine is still working cancels the engine,
+ * so a slow or stalled engine never holds a finished answer back.
+ */
+export async function decideWithEngineOrLLM<T>(
+  taskSignal: AbortSignal,
+  engine: (signal: AbortSignal) => Promise<EngineResult>,
+  llm: (signal: AbortSignal) => Promise<T>,
+): Promise<{ engineResult: EngineResult; modelOutput: T }> {
+  const engineController = new AbortController();
+  const llmController = new AbortController();
+  const abortBoth = () => {
+    engineController.abort();
+    llmController.abort();
+  };
+  taskSignal.addEventListener('abort', abortBoth, { once: true });
+  const engineCall = engine(engineController.signal);
+  const llmCall = llm(llmController.signal);
+  // the cancelled call rejects with nobody waiting for it
+  engineCall.catch(() => {});
+  llmCall.catch(() => {});
+  try {
+    const engineResult = await Promise.race([
+      engineCall,
+      // a failed LLM call leaves the step to the engine
+      llmCall.then(
+        (): EngineResult => ({ decision: null }),
+        () => engineCall,
+      ),
+    ]);
+    if (engineResult.decision) {
+      llmController.abort();
+      return { engineResult, modelOutput: engineResult.decision as T };
+    }
+    engineController.abort();
+    return { engineResult, modelOutput: await llmCall };
+  } finally {
+    taskSignal.removeEventListener('abort', abortBoth);
+  }
+}
+
 export interface NavigatorResult {
   done: boolean;
 }
@@ -363,10 +405,6 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     this.decisionEngine = engine;
   }
 
-  /**
-   * Ask the fast engine and the LLM at the same time: the LLM's answer is only used when the engine
-   * defers, and is cancelled when it does not, so a deferral no longer costs the engine's latency on top.
-   */
   private async decide(
     state: BrowserState,
     inputMessages: BaseMessage[],
@@ -374,35 +412,23 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     if (!this.decisionEngine) {
       return { engineResult: { decision: null }, modelOutput: await this.invoke(inputMessages) };
     }
-    const taskSignal = this.context.controller.signal;
-    const llmController = new AbortController();
-    const abortLLM = () => llmController.abort();
-    taskSignal.addEventListener('abort', abortLLM, { once: true });
-    const llmCall = this.invoke(inputMessages, llmController.signal);
-    // when the engine wins, the cancelled call rejects with nobody waiting for it
-    llmCall.catch(() => {});
-    try {
-      const engineResult = await this.decideWithEngine(state);
-      if (engineResult.decision) {
-        llmController.abort();
-        return { engineResult, modelOutput: engineResult.decision as NavigatorAgent['ModelOutput'] };
-      }
-      return { engineResult, modelOutput: await llmCall };
-    } finally {
-      taskSignal.removeEventListener('abort', abortLLM);
-    }
+    return decideWithEngineOrLLM<NavigatorAgent['ModelOutput']>(
+      this.context.controller.signal,
+      signal => this.decideWithEngine(state, signal),
+      signal => this.invoke(inputMessages, signal),
+    );
   }
 
   /**
-   * Ask the fast decision engine first; null means this step goes to the LLM
+   * Ask the fast decision engine; null means this step goes to the LLM
    */
-  private async decideWithEngine(state: BrowserState): Promise<EngineResult> {
+  private async decideWithEngine(state: BrowserState, signal: AbortSignal): Promise<EngineResult> {
     if (!this.decisionEngine) return { decision: null };
     const started = performance.now();
     try {
-      return await this.decisionEngine.decide(state, this.context.controller.signal);
+      return await this.decisionEngine.decide(state, signal);
     } catch (error) {
-      if (this.context.controller.signal.aborted) throw error;
+      if (signal.aborted) throw error;
       logger.warning(`[${this.decisionEngine.name}] decision failed, falling back to LLM`, error);
       const message = error instanceof Error ? error.message : String(error);
       return {

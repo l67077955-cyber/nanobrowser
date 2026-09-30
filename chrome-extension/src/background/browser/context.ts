@@ -15,6 +15,8 @@ const logger = createLogger('BrowserContext');
 export default class BrowserContext {
   private _config: BrowserContextConfig;
   private _currentTabId: number | null = null;
+  /** tab the last task ended on */
+  private _lastTabId: number | null = null;
   private _attachedPages: Map<number, Page> = new Map();
 
   constructor(config: Partial<BrowserContextConfig>) {
@@ -53,7 +55,20 @@ export default class BrowserContext {
     return new Page(tab.id, tab.url || '', tab.title || '', this._config);
   }
 
+  /**
+   * A follow-up sent from a page the agent cannot work on (extensions page, new tab, ...) goes on
+   * in the tab the previous task ended on. From a normal web page it is about that page.
+   */
+  public async resumeLastTab(): Promise<void> {
+    if (this._currentTabId || !this._lastTabId) return;
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (activeTab?.id === this._lastTabId || /^https?:/i.test(activeTab?.url ?? '')) return;
+    const lastTab = await chrome.tabs.get(this._lastTabId).catch(() => null);
+    if (lastTab?.id) await this.switchTab(lastTab.id);
+  }
+
   public async cleanup(): Promise<void> {
+    if (this._currentTabId) this._lastTabId = this._currentTabId;
     const currentPage = await this.getCurrentPage();
     currentPage?.removeHighlight();
     // detach all pages

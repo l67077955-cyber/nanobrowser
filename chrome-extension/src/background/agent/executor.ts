@@ -134,6 +134,11 @@ export class Executor {
     this.tasks.push(task);
     // the plan belonged to the previous task
     this.latestNextSteps = null;
+    // the page the planner finished on is read again: the user may be on another tab or page by now
+    if (this.context.stateMessageAdded) {
+      this.context.messageManager.removeLastStateMessage();
+      this.context.stateMessageAdded = false;
+    }
     this.context.messageManager.addNewTask(task);
 
     // need to reset previous action results that are not included in memory
@@ -223,9 +228,10 @@ export class Executor {
           // The first plan steers the first steps, and a claimed finish needs checking before going on:
           // both wait for the planner
           navigatorDone = false;
-          if (backgroundPlan) await backgroundPlan.promise.catch(() => null);
+          // a plan already under way that also finds the task done confirms the finish without a second call
+          const pendingPlan = backgroundPlan ? await backgroundPlan.promise.catch(() => null) : null;
           backgroundPlan = null;
-          latestPlanOutput = await this.runPlanner();
+          latestPlanOutput = pendingPlan?.result?.done ? pendingPlan : await this.runPlanner();
           if (this.checkTaskCompletion(latestPlanOutput)) {
             break;
           }
