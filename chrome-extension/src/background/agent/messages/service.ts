@@ -177,7 +177,8 @@ export default class MessageManager {
 
     // Filter and wrap user text
     const cleanedTask = filterExternalContent(userText);
-    const content = `Your new ultimate task is: """${cleanedTask}""". This is a follow-up of the previous tasks. Make sure to take all of the previous context into account and finish your new ultimate task.`;
+    // a follow-up is often only an answer to a question the planner asked, and means nothing on its own
+    const content = `The user sent a follow-up message: """${cleanedTask}""". Read it together with the previous tasks and your previous answers. If it answers a question you asked, confirms something (for example that they have signed in) or corrects the previous task, your ultimate task is the previous task continued with this information. Otherwise the message is your new ultimate task. Take all of the previous context into account and finish your ultimate task.`;
     const wrappedUser = wrapUserRequest(content, false);
 
     // Filter and wrap attachments as untrusted content

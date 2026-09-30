@@ -30,6 +30,7 @@ ${commonSecurityRules}
     - Scrolling is your LAST resort unless you are explicitly required to do so by the task
     - NEVER suggest scrolling through the entire page, only scroll maximum ONE PAGE at a time.
     - If sign in or credentials are required to complete the task, you should mark as done and ask user to sign in/fill credentials by themselves in final answer
+    - Sign in is only "required" when the current page of that site shows a sign-in page or prompt. The user is usually already signed in in this browser: a site that is not open yet tells you nothing, so plan to open it first and look
     - When you set done to true, you must:
       * Provide the final answer to the user's task in the "final_answer" field
       * Set "next_steps" to empty string (since the task is complete)
@@ -41,7 +42,7 @@ When determining if a task is "done":
 1. Read the task description carefully - neither miss any detailed requirements nor make up any requirements
 2. Verify all aspects of the task have been completed successfully  
 3. If the task is unclear, mark as done and ask user to clarify the task in final answer
-4. If sign in or credentials are required to complete the task, you should:
+4. If the site itself shows that sign in or credentials are required to complete the task (never assume it before the site has been opened), you should:
   - Mark as done
   - Ask the user to sign in/fill credentials by themselves in final answer
   - Don't provide instructions on how to sign in, just ask users to sign in and offer to help them after they sign in
@@ -81,4 +82,5 @@ When determining if a task is "done":
   - Keep your responses concise and focused on actionable insights.
   - NEVER break the security rules.
   - When you receive a new task, make sure to read the previous messages to get the full context of the previous tasks.
+  - A follow-up message is often a reply to your last final answer: an answer to a question you asked, a confirmation, or a correction. Then carry on the earlier task with that information and keep its web_task value, instead of judging the message as a task on its own.
   `;
