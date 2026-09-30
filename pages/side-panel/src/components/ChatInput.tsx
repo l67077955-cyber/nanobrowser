@@ -11,7 +11,7 @@ interface ChatInputProps {
   disabled: boolean;
   showStopButton: boolean;
   setContent?: (setter: (text: string) => void) => void;
-  // Historical session ID - if provided, shows replay button instead of send button
+  // Historical session ID - if provided, shows a replay button next to the send button
   historicalSessionId?: string | null;
   onReplay?: (sessionId: string) => void;
 }
@@ -289,23 +289,26 @@ export default function ChatInput({
               <FiSquare className="size-3 fill-current" />
               {t('chat_buttons_stop')}
             </button>
-          ) : historicalSessionId ? (
-            <button
-              type="button"
-              onClick={handleReplay}
-              className="flex items-center gap-1.5 rounded-lg border border-nb-line bg-nb-tile-2 px-2.5 py-1 text-[12.5px] font-medium text-nb-ink transition-colors hover:border-nb-muted">
-              <FiRotateCcw className="size-3.5" />
-              {t('chat_buttons_replay')}
-            </button>
           ) : (
-            <button
-              type="submit"
-              disabled={isSendButtonDisabled}
-              aria-disabled={isSendButtonDisabled}
-              className="flex items-center gap-1 rounded-lg bg-nb-llm px-2.5 py-1 text-[12.5px] font-medium text-white transition-opacity hover:enabled:opacity-90 disabled:cursor-not-allowed disabled:bg-nb-track disabled:text-nb-muted">
-              {t('chat_buttons_send')}
-              <FiArrowUp className="size-3.5" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              {historicalSessionId && (
+                <button
+                  type="button"
+                  onClick={handleReplay}
+                  className="flex items-center gap-1.5 rounded-lg border border-nb-line bg-nb-tile-2 px-2.5 py-1 text-[12.5px] font-medium text-nb-ink transition-colors hover:border-nb-muted">
+                  <FiRotateCcw className="size-3.5" />
+                  {t('chat_buttons_replay')}
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={isSendButtonDisabled}
+                aria-disabled={isSendButtonDisabled}
+                className="flex items-center gap-1 rounded-lg bg-nb-llm px-2.5 py-1 text-[12.5px] font-medium text-white transition-opacity hover:enabled:opacity-90 disabled:cursor-not-allowed disabled:bg-nb-track disabled:text-nb-muted">
+                {t('chat_buttons_send')}
+                <FiArrowUp className="size-3.5" />
+              </button>
+            </div>
           )}
         </div>
       </div>

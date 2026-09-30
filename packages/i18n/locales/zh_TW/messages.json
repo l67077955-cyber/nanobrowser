@@ -484,9 +484,6 @@
   "bg_cmd_followUpTask_noTask": {
     "message": "未提供後續任務"
   },
-  "bg_cmd_followUpTask_cleaned": {
-    "message": "執行器已被清理，無法新增後續任務。"
-  },
   "bg_cmd_resumeTask_noTask": {
     "message": "沒有可接續的任務。"
   },

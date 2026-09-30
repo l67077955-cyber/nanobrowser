@@ -1,4 +1,12 @@
-import { type BaseMessage, AIMessage, HumanMessage, type SystemMessage, ToolMessage } from '@langchain/core/messages';
+import {
+  type BaseMessage,
+  type StoredMessage,
+  AIMessage,
+  HumanMessage,
+  type SystemMessage,
+  ToolMessage,
+  mapStoredMessagesToChatMessages,
+} from '@langchain/core/messages';
 import { MessageHistory, MessageMetadata } from '@src/background/agent/messages/views';
 import { createLogger } from '@src/background/log';
 import {
@@ -41,6 +49,12 @@ export class MessageManagerSettings {
   }
 }
 
+/** One message of the history as plain JSON, so that it outlives the executor */
+export interface StoredManagedMessage {
+  message: StoredMessage;
+  type: string | null;
+}
+
 export default class MessageManager {
   private history: MessageHistory;
   private toolId: number;
@@ -56,13 +70,7 @@ export default class MessageManager {
     // Add system message
     this.addMessageWithTokens(systemMessage, 'init');
 
-    // Add context message if provided
-    if (messageContext && messageContext.length > 0) {
-      const contextMessage = new HumanMessage({
-        content: `Context for the task: ${messageContext}`,
-      });
-      this.addMessageWithTokens(contextMessage, 'init');
-    }
+    this.addContextMessage(messageContext);
 
     // Add task instructions
     const taskMessage = MessageManager.taskInstructions(task);
@@ -130,6 +138,41 @@ export default class MessageManager {
       });
       this.addMessageWithTokens(filepathsMsg, 'init');
     }
+  }
+
+  private addContextMessage(messageContext?: string): void {
+    if (messageContext && messageContext.length > 0) {
+      const contextMessage = new HumanMessage({
+        content: `Context for the task: ${messageContext}`,
+      });
+      this.addMessageWithTokens(contextMessage, 'context');
+    }
+  }
+
+  /**
+   * The history as plain JSON, without the system prompt and the context message: those are built again on restore
+   */
+  public exportMessages(): StoredManagedMessage[] {
+    return this.history.messages
+      .slice(1)
+      .filter(m => m.metadata.message_type !== 'context')
+      .map(m => ({ message: m.message.toDict(), type: m.metadata.message_type }));
+  }
+
+  /**
+   * Rebuilds an exported history behind a fresh system prompt and context message
+   */
+  public restoreMessages(systemMessage: SystemMessage, stored: StoredManagedMessage[], messageContext?: string): void {
+    this.addMessageWithTokens(systemMessage, 'init');
+    this.addContextMessage(messageContext);
+    const messages = mapStoredMessagesToChatMessages(stored.map(s => s.message));
+    messages.forEach((message, i) => {
+      this.addMessageWithTokens(message, stored[i].type);
+      // new tool calls are numbered after the restored ones
+      if (message instanceof ToolMessage) {
+        this.toolId = Math.max(this.toolId, Number(message.tool_call_id) + 1 || 0);
+      }
+    });
   }
 
   public nextToolId(): number {

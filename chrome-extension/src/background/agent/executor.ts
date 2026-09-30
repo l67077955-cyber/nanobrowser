@@ -1,12 +1,12 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { type ActionResult, AgentContext, type AgentOptions, type AgentOutput } from './types';
+import { ActionResult, AgentContext, type AgentOptions, type AgentOutput } from './types';
 import { t } from '@extension/i18n';
 import { NavigatorAgent, NavigatorActionRegistry } from './agents/navigator';
 import { PlannerAgent, type PlannerOutput } from './agents/planner';
 import { NavigatorPrompt } from './prompts/navigator';
 import { PlannerPrompt } from './prompts/planner';
 import { createLogger } from '@src/background/log';
-import MessageManager from './messages/service';
+import MessageManager, { type StoredManagedMessage } from './messages/service';
 import { splitUserTextAndAttachments } from './messages/utils';
 import type BrowserContext from '../browser/context';
 import { ActionBuilder } from './actions/builder';
@@ -37,6 +37,14 @@ interface BackgroundPlan {
   settled: boolean;
 }
 
+/** What an executor knows, as plain JSON: a later executor of the same session goes on from it */
+export interface ExecutorSnapshot {
+  tasks: string[];
+  messages: StoredManagedMessage[];
+  /** results the navigator has not written into the messages yet */
+  actionResults: Pick<ActionResult, 'extractedContent' | 'error'>[];
+}
+
 export interface ExecutorExtraArgs {
   plannerLLM?: BaseChatModel;
   extractorLLM?: BaseChatModel;
@@ -44,6 +52,8 @@ export interface ExecutorExtraArgs {
   generalSettings?: GeneralSettingsConfig;
   /** what is remembered about the user from earlier conversations */
   memoryContext?: string;
+  /** an earlier executor of this session: the task is then a follow-up to what that one knew */
+  snapshot?: ExecutorSnapshot;
 }
 
 export class Executor {
@@ -80,7 +90,6 @@ export class Executor {
     );
 
     this.generalSettings = extraArgs?.generalSettings;
-    this.tasks.push(task);
     this.navigatorPrompt = new NavigatorPrompt(context.options.maxActionsPerStep);
     this.plannerPrompt = new PlannerPrompt();
 
@@ -113,12 +122,46 @@ export class Executor {
     });
 
     this.context = context;
+    const snapshot = extraArgs?.snapshot;
+    if (snapshot) {
+      this.tasks = [...snapshot.tasks];
+      this.tasksRemembered = this.tasks.length;
+      context.messageManager.restoreMessages(
+        this.navigatorPrompt.getSystemMessage(),
+        snapshot.messages,
+        extraArgs?.memoryContext,
+      );
+      context.actionResults = snapshot.actionResults.map(
+        result => new ActionResult({ ...result, includeInMemory: true }),
+      );
+      this.addFollowUpTask(task);
+      return;
+    }
+    this.tasks.push(task);
     // Initialize message history
     this.context.messageManager.initTaskMessages(
       this.navigatorPrompt.getSystemMessage(),
       task,
       extraArgs?.memoryContext,
     );
+  }
+
+  snapshot(): ExecutorSnapshot {
+    const messages = this.context.messageManager.exportMessages();
+    // the page is read again when the session goes on
+    if (this.context.stateMessageAdded) messages.pop();
+    return {
+      tasks: [...this.tasks],
+      messages,
+      actionResults: this.context.actionResults
+        .filter(result => result.includeInMemory)
+        .map(({ extractedContent, error }) => ({ extractedContent, error })),
+    };
+  }
+
+  /** A cancelled executor takes no more tasks */
+  get stopped(): boolean {
+    return this.context.stopped;
   }
 
   subscribeExecutionEvents(callback: EventCallback): void {
@@ -297,6 +340,10 @@ export class Executor {
       if (import.meta.env.DEV) {
         logger.debug('Executor history', JSON.stringify(this.context.history, null, 2));
       }
+      // kept so that the session can go on after this executor is gone
+      await chatHistoryStore
+        .storeAgentContext(this.context.taskId, JSON.stringify(this.snapshot()))
+        .catch(error => logger.error('Failed to store the session context:', error));
       // store the history only if replay is enabled
       if (this.generalSettings?.replayHistoricalTasks) {
         const historyString = JSON.stringify(this.context.history);

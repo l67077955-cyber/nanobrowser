@@ -7,10 +7,12 @@ import {
   llmProviderStore,
   analyticsSettingsStore,
   memoryStore,
+  chatHistoryStore,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
-import { Executor } from './agent/executor';
+import { Executor, type ExecutorSnapshot } from './agent/executor';
+import { snapshotFromChat } from './agent/resume';
 import { createLogger } from './log';
 import { ExecutionState } from './agent/event/types';
 import { createChatModel } from './agent/helper';
@@ -119,22 +121,30 @@ chrome.runtime.onConnect.addListener(port => {
             if (!message.task) return port.postMessage({ type: 'error', error: t('bg_cmd_followUpTask_noTask') });
             if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
 
+            if (!message.taskId) return port.postMessage({ type: 'error', error: t('bg_errors_noTaskId') });
+
             logger.info('follow_up_task', message.tabId, message.task);
 
-            // If executor exists, add follow-up task
-            if (currentExecutor) {
-              await browserContext.resumeLastTab().catch(error => logger.warning('resumeLastTab failed', error));
+            await browserContext.resumeLastTab().catch(error => logger.warning('resumeLastTab failed', error));
+            const sameSession = currentExecutor && (await currentExecutor.getCurrentTaskId()) === message.taskId;
+            if (currentExecutor && sameSession && !currentExecutor.stopped) {
               currentExecutor.addFollowUpTask(message.task);
-              // Re-subscribe to events in case the previous subscription was cleaned up
-              subscribeToExecutorEvents(currentExecutor);
-              const result = await currentExecutor.execute();
-              logger.info('follow_up_task execution result', message.tabId, result);
-              void updateMemories(currentExecutor);
             } else {
-              // executor was cleaned up, can not add follow-up task
-              logger.info('follow_up_task: executor was cleaned up, can not add follow-up task');
-              return port.postMessage({ type: 'error', error: t('bg_cmd_followUpTask_cleaned') });
+              // The executor of this session is gone (side panel closed, service worker restarted, another
+              // session ran since) or was cancelled: a new one goes on from what that one knew
+              const snapshot =
+                currentExecutor && sameSession
+                  ? currentExecutor.snapshot()
+                  : await loadSessionSnapshot(message.taskId, message.sentAt);
+              logger.info('follow_up_task: reloading the session context', snapshot?.messages.length ?? 0);
+              await currentExecutor?.cancel();
+              currentExecutor = await setupExecutor(message.taskId, message.task, browserContext, snapshot);
             }
+            // Re-subscribe to events in case the previous subscription was cleaned up
+            subscribeToExecutorEvents(currentExecutor);
+            const result = await currentExecutor.execute();
+            logger.info('follow_up_task execution result', message.tabId, result);
+            void updateMemories(currentExecutor);
             break;
           }
 
@@ -281,7 +291,28 @@ chrome.runtime.onConnect.addListener(port => {
   }
 });
 
-async function setupExecutor(taskId: string, task: string, browserContext: BrowserContext) {
+/**
+ * What the agents of a session knew when its last task ended; for a session without a stored context,
+ * what its chat up to the message sent at `before` tells.
+ */
+async function loadSessionSnapshot(sessionId: string, before = Date.now()): Promise<ExecutorSnapshot | null> {
+  try {
+    const stored = await chatHistoryStore.loadAgentContext(sessionId);
+    if (stored) return JSON.parse(stored) as ExecutorSnapshot;
+    const session = await chatHistoryStore.getSession(sessionId);
+    return session ? snapshotFromChat(session.messages.filter(message => message.timestamp < before)) : null;
+  } catch (error) {
+    logger.error('Failed to load the session context:', error);
+    return null;
+  }
+}
+
+async function setupExecutor(
+  taskId: string,
+  task: string,
+  browserContext: BrowserContext,
+  snapshot: ExecutorSnapshot | null = null,
+) {
   const providers = await llmProviderStore.getAllProviders();
   // if no providers, need to display the options page
   if (Object.keys(providers).length === 0) {
@@ -341,6 +372,7 @@ async function setupExecutor(taskId: string, task: string, browserContext: Brows
   const executor = new Executor(task, taskId, browserContext, navigatorLLM, {
     plannerLLM: plannerLLM ?? navigatorLLM,
     memoryContext,
+    snapshot: snapshot ?? undefined,
     agentOptions: {
       maxSteps: generalSettings.maxSteps,
       maxFailures: generalSettings.maxFailures,

@@ -491,9 +491,6 @@
   "bg_cmd_followUpTask_noTask": {
     "message": "No follow up task provided"
   },
-  "bg_cmd_followUpTask_cleaned": {
-    "message": "Executor was cleaned up, can not add follow-up task"
-  },
   "bg_cmd_resumeTask_noTask": {
     "message": "No task to resume"
   },

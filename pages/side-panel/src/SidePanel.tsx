@@ -563,12 +563,6 @@ const SidePanel = () => {
       if (wasHandled) return;
     }
 
-    // Block sending messages in historical sessions
-    if (isHistoricalSession) {
-      console.log('Cannot send messages in historical sessions');
-      return;
-    }
-
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       const tabId = tabs[0]?.id;
@@ -616,6 +610,8 @@ const SidePanel = () => {
           task: text,
           taskId: sessionIdRef.current,
           tabId,
+          // when the background has to rebuild the session from the chat, this message is not part of it
+          sentAt: userMessage.timestamp,
         });
         console.log('follow_up_task sent', text, tabId, sessionIdRef.current);
       } else {
@@ -709,7 +705,8 @@ const SidePanel = () => {
       if (fullSession && fullSession.messages.length > 0) {
         setCurrentSessionId(fullSession.id);
         setMessages(fullSession.messages);
-        setIsFollowUpMode(false);
+        // A message sent from here continues the session: the background reloads its context
+        setIsFollowUpMode(true);
         setIsHistoricalSession(true); // Mark this as a historical session
         console.log('history session selected', sessionId);
       }
@@ -1031,7 +1028,7 @@ const SidePanel = () => {
         onMicClick={handleMicClick}
         isRecording={isRecording}
         isProcessingSpeech={isProcessingSpeech}
-        disabled={!inputEnabled || isHistoricalSession}
+        disabled={!inputEnabled}
         showStopButton={showStopButton}
         setContent={setter => {
           setInputTextRef.current = setter;

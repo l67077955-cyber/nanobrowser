@@ -490,9 +490,6 @@
   "bg_cmd_followUpTask_noTask": {
     "message": "Nenhuma tarefa de acompanhamento fornecida"
   },
-  "bg_cmd_followUpTask_cleaned": {
-    "message": "O executor foi limpo, não é possível adicionar tarefa de acompanhamento"
-  },
   "bg_cmd_resumeTask_noTask": {
     "message": "Nenhuma tarefa para resumir"
   },

@@ -83,6 +83,12 @@ export interface ChatAgentStepHistory {
   timestamp: number; // Unix timestamp in milliseconds
 }
 
+// ChatAgentContext is what the agents knew when the session's last task ended, kept so the session can go on later
+export interface ChatAgentContext {
+  context: string;
+  timestamp: number; // Unix timestamp in milliseconds
+}
+
 export interface ChatHistoryStorage {
   // Get all chat sessions (with empty message arrays for listing)
   getAllSessions: () => Promise<ChatSession[]>;
@@ -116,4 +122,10 @@ export interface ChatHistoryStorage {
 
   // Load the history of the agent's state
   loadAgentStepHistory: (sessionId: string) => Promise<ChatAgentStepHistory | null>;
+
+  // Store what the agents know at the end of a task
+  storeAgentContext: (sessionId: string, context: string) => Promise<void>;
+
+  // Load what the agents knew at the end of the session's last task
+  loadAgentContext: (sessionId: string) => Promise<string | null>;
 }

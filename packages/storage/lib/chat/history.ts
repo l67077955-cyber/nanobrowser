@@ -7,6 +7,7 @@ import type {
   Message,
   ChatSessionMetadata,
   ChatAgentStepHistory,
+  ChatAgentContext,
 } from './types';
 
 // Key for storing chat session metadata
@@ -48,6 +49,18 @@ const getSessionAgentStepHistoryStorage = (sessionId: string) => {
   );
 };
 
+// Helper function to get storage key for a specific session's agent context
+const getSessionAgentContextKey = (sessionId: string) => `chat_agent_context_${sessionId}`;
+
+const EMPTY_AGENT_CONTEXT: ChatAgentContext = { context: '', timestamp: 0 };
+
+// Helper function to get storage for a specific session's agent context
+const getSessionAgentContextStorage = (sessionId: string) => {
+  return createStorage<ChatAgentContext>(getSessionAgentContextKey(sessionId), EMPTY_AGENT_CONTEXT, {
+    storageEnum: StorageEnum.Local,
+  });
+};
+
 // Helper function to get current timestamp in milliseconds
 const getCurrentTimestamp = (): number => Date.now();
 
@@ -72,6 +85,7 @@ export function createChatHistoryStorage(): ChatHistoryStorage {
       for (const sessionMeta of sessionsMeta) {
         const messagesStorage = getSessionMessagesStorage(sessionMeta.id);
         await messagesStorage.set([]);
+        await getSessionAgentContextStorage(sessionMeta.id).set(EMPTY_AGENT_CONTEXT);
       }
       await chatSessionsMetaStorage.set([]);
     },
@@ -160,6 +174,9 @@ export function createChatHistoryStorage(): ChatHistoryStorage {
       // Remove the session's messages
       const messagesStorage = getSessionMessagesStorage(sessionId);
       await messagesStorage.set([]);
+
+      // Remove the session's agent context
+      await getSessionAgentContextStorage(sessionId).set(EMPTY_AGENT_CONTEXT);
     },
 
     addMessage: async (sessionId: string, message: Message): Promise<ChatMessage> => {
@@ -247,6 +264,21 @@ export function createChatHistoryStorage(): ChatHistoryStorage {
       if (!history || !history.task || !history.timestamp || history.history === '' || history.history === '[]')
         return null;
       return history;
+    },
+
+    storeAgentContext: async (sessionId: string, context: string): Promise<void> => {
+      // Check if session exists
+      const sessionsMeta = await chatSessionsMetaStorage.get();
+      if (!sessionsMeta.some(session => session.id === sessionId)) {
+        throw new Error(`Session with ID ${sessionId} not found`);
+      }
+
+      await getSessionAgentContextStorage(sessionId).set({ context, timestamp: getCurrentTimestamp() });
+    },
+
+    loadAgentContext: async (sessionId: string): Promise<string | null> => {
+      const stored = await getSessionAgentContextStorage(sessionId).get();
+      return stored?.context || null;
     },
   };
 }
