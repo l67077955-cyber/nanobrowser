@@ -86,6 +86,15 @@ export function isUrlAllowed(url: string, allowList: string[], denyList: string[
 }
 
 // Check if a URL is a new tab page (about:blank or chrome://new-tab-page).
+/**
+ * Whether the state last read from a tab describes a document that is no longer there: the tab shows the
+ * browser's own error page after a load that failed, or has gone to another address.
+ * @param frameUrl the address of the document itself; the tab keeps the address that failed to load
+ */
+export function isPageStateOutdated(stateUrl: string, tabUrl: string, frameUrl: string): boolean {
+  return frameUrl.startsWith('chrome-error://') || (tabUrl !== '' && tabUrl !== stateUrl);
+}
+
 export function isNewTabPage(url: string): boolean {
   return url === 'about:blank' || url === 'chrome://new-tab-page' || url === 'chrome://new-tab-page/';
 }

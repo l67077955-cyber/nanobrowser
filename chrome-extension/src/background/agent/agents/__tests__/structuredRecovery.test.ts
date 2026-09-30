@@ -45,6 +45,19 @@ describe('structured output recovery', () => {
     expect(output.final_answer).toBe('');
   });
 
+  it('takes a plan that leaves out done as not done', async () => {
+    const rest: Record<string, unknown> = { ...plan };
+    delete rest.done;
+    expect((await plannerReturning(rest).invoke([])).done).toBe(false);
+    expect((await plannerReturning({ ...plan, done: null }).invoke([])).done).toBe(false);
+  });
+
+  it('reports what the model sent for a field that fails the schema', async () => {
+    await expect(plannerReturning({ ...plan, web_task: 3 }).invoke([])).rejects.toThrow(
+      /schema: web_task: Invalid input \(got 3\)/,
+    );
+  });
+
   it('still fails on wrongly typed values, and reports the schema issue', async () => {
     await expect(plannerReturning({ ...plan, done: 'maybe' }).invoke([])).rejects.toThrow(
       /tool_calls=AgentOutput: .*schema: Invalid boolean string/,

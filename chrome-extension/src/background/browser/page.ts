@@ -27,7 +27,7 @@ import {
 } from './views';
 import { createLogger } from '@src/background/log';
 import { ClickableElementProcessor } from './dom/clickable/service';
-import { isUrlAllowed } from './util';
+import { isPageStateOutdated, isUrlAllowed } from './util';
 
 const logger = createLogger('Page');
 
@@ -456,10 +456,19 @@ export default class Page {
       this._state.scrollY = scrollY;
       this._state.visualViewportHeight = visualViewportHeight;
       this._state.scrollHeight = scrollHeight;
+      this._state.unreadable = false;
       return this._state;
     } catch (error) {
       logger.error('Failed to update state:', error);
-      // Return last known good state if available
+      // The last state is of a page that is gone once the tab has moved on, e.g. to the browser's error page
+      // after a failed load, where no script runs. Handing it back made the agent click on a page that was
+      // no longer there, step after step.
+      const tab = await chrome.tabs.get(this._tabId).catch(() => null);
+      if (tab && isPageStateOutdated(this._state.url, tab.url ?? '', this._puppeteerPage?.url() ?? '')) {
+        logger.warning(`Tab ${this._tabId} now shows ${tab.url}, which could not be read`);
+        this._state = { ...build_initial_state(this._tabId, tab.url, tab.title), unreadable: true };
+      }
+      // Otherwise return last known good state
       return this._state;
     }
   }

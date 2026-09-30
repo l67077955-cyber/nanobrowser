@@ -49,6 +49,9 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
   protected modelOutputToolName: string;
   declare ModelOutput: z.infer<T>;
 
+  /** Values for top-level fields the model left out or sent as null, used when its output fails the schema */
+  protected readonly fieldDefaults: Record<string, unknown> = {};
+
   constructor(modelOutputSchema: T, options: BaseAgentOptions, extraOptions?: Partial<ExtraAgentOptions>) {
     // base options
     this.modelOutputSchema = modelOutputSchema;
@@ -310,7 +313,7 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
       if (result.success) {
         return result.data;
       }
-      const patched = fillMissingStrings(candidate, result.error);
+      const patched = fillMissingFields(candidate, result.error, this.fieldDefaults);
       if (!patched) {
         return undefined;
       }
@@ -331,7 +334,7 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
       const result = this.modelOutputSchema.safeParse(args);
       return result.success
         ? ''
-        : ` schema: ${result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join(', ')}`;
+        : ` schema: ${result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message} (got ${describeValue(args, issue.path)})`).join(', ')}`;
     } catch (error) {
       return ` schema: ${error instanceof Error ? error.message : String(error)}`;
     }
@@ -374,22 +377,38 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
   }
 }
 
+// What the model sent at the place a schema issue points to, cut short: the args themselves are logged truncated
+function describeValue(args: unknown, path: (string | number)[]): string {
+  let value: unknown = args;
+  for (const key of path) {
+    if (typeof value !== 'object' || value === null) return 'undefined';
+    value = (value as Record<string | number, unknown>)[key];
+  }
+  return value === undefined ? 'undefined' : (JSON.stringify(value) ?? typeof value).slice(0, 40);
+}
+
 // Models often send null or omit top-level text fields that are empty for the current step
-// (e.g. the planner's final_answer before the task is done). Replace those with '' so the args validate.
-function fillMissingStrings(candidate: unknown, error: z.ZodError): Record<string, unknown> | undefined {
+// (e.g. the planner's final_answer before the task is done). Replace those with '' so the args validate;
+// other fields left out that way take the agent's default for them, when it has one.
+function fillMissingFields(
+  candidate: unknown,
+  error: z.ZodError,
+  defaults: Record<string, unknown>,
+): Record<string, unknown> | undefined {
   if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
     return undefined;
   }
   const patched: Record<string, unknown> = { ...(candidate as Record<string, unknown>) };
   let changed = false;
   for (const issue of error.issues) {
-    if (
-      issue.code === 'invalid_type' &&
-      issue.expected === 'string' &&
-      (issue.received === 'null' || issue.received === 'undefined') &&
-      issue.path.length === 1
-    ) {
-      patched[issue.path[0]] = '';
+    if (issue.path.length !== 1) continue;
+    const key = issue.path[0];
+    if (patched[key] !== null && patched[key] !== undefined) continue;
+    if (issue.code === 'invalid_type' && issue.expected === 'string') {
+      patched[key] = '';
+      changed = true;
+    } else if (key in defaults) {
+      patched[key] = defaults[key];
       changed = true;
     }
   }

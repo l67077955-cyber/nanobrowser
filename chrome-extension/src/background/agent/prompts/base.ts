@@ -43,6 +43,9 @@ abstract class BasePrompt {
       logger.info(scrollInfo);
       const elementsText = wrapUntrustedContent(rawElementsText);
       formattedElementsText = `${scrollInfo}[Start of page]\n${elementsText}\n[End of page]\n`;
+    } else if (browserState.unreadable) {
+      formattedElementsText =
+        'The page in this tab could not be read: it failed to load (the browser shows its own error page), is still loading, or cannot be accessed. There is nothing to click here. Wait and look again if it may still be loading; otherwise go to another URL or go back, and do not keep retrying an address that fails to load.';
     } else {
       formattedElementsText = 'empty page';
     }

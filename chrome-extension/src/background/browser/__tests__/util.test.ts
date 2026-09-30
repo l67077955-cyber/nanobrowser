@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isUrlAllowed } from '../util';
+import { isPageStateOutdated, isUrlAllowed } from '../util';
 
 describe('isUrlAllowed', () => {
   it('allows everything when both lists are empty, except dangerous schemes', () => {
@@ -48,5 +48,27 @@ describe('isUrlAllowed', () => {
 
   it('still lets about:blank through when rules exist', () => {
     expect(isUrlAllowed('about:blank', ['example.com'], [])).toBe(true);
+  });
+});
+
+describe('isPageStateOutdated', () => {
+  const google = 'https://www.google.com/search?q=huggingface%20papers';
+
+  it('keeps the state of a page that is still in the tab', () => {
+    expect(isPageStateOutdated(google, google, google)).toBe(false);
+  });
+
+  it('drops the state once the tab shows the error page of a failed load', () => {
+    expect(isPageStateOutdated(google, 'https://huggingface.co/papers', 'chrome-error://chromewebdata/')).toBe(true);
+    // reloading the same address failed
+    expect(isPageStateOutdated(google, google, 'chrome-error://chromewebdata/')).toBe(true);
+  });
+
+  it('drops the state once the tab has gone to another address', () => {
+    expect(isPageStateOutdated(google, 'https://arxiv.org/list/cs.AI/recent', '')).toBe(true);
+  });
+
+  it('keeps the state when the address of the tab is unknown', () => {
+    expect(isPageStateOutdated(google, '', google)).toBe(false);
   });
 });

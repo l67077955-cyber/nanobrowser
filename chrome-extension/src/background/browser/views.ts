@@ -100,6 +100,8 @@ export interface PageState extends DOMState {
   scrollY: number;
   scrollHeight: number;
   visualViewportHeight: number;
+  /** the tab shows a document that could not be read, e.g. the browser's error page after a failed load */
+  unreadable?: boolean;
 }
 
 export interface TabInfo {
