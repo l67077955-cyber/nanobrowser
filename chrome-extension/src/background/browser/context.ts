@@ -226,11 +226,17 @@ export default class BrowserContext {
       promises.push(activatedPromise);
     }
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Tab operation timed out after ${timeoutMs} ms`)), timeoutMs),
-    );
+    // a tab that is still loading after the wait is used as it is: most of the page is usually there
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<void>(resolve => {
+      timer = setTimeout(() => {
+        logger.warning(`Tab ${tabId} still loading after ${timeoutMs} ms, going on`);
+        resolve();
+      }, timeoutMs);
+    });
 
     await Promise.race([Promise.all(promises), timeoutPromise]);
+    clearTimeout(timer);
   }
 
   public async switchTab(tabId: number): Promise<Page> {

@@ -34,6 +34,9 @@ const logger = createLogger('Page');
 // Attributes that say what an element is; if one differs at action time, the locator found a different element.
 // ids are left out because many sites regenerate them on every render.
 const CLICK_TIMEOUT = 'Click timeout';
+// The default waits for the load event, which one stalled image or script holds back for the full 30 s
+// while the page is already usable. The DOM is enough; waitForPageAndFramesLoad waits for the rest, with a cap.
+const NAVIGATION_WAIT = { waitUntil: 'domcontentloaded' } as const;
 const PRESSED_FLAG = '__nanobrowserPressed';
 
 const IDENTITY_ATTRIBUTES = ['role', 'type', 'name', 'aria-label', 'data-testid', 'placeholder', 'href'];
@@ -528,7 +531,7 @@ export default class Page {
     }
 
     try {
-      await Promise.all([this.waitForPageAndFramesLoad(), this._puppeteerPage.goto(url)]);
+      await Promise.all([this.waitForPageAndFramesLoad(), this._puppeteerPage.goto(url, NAVIGATION_WAIT)]);
       logger.info('navigateTo complete');
     } catch (error) {
       if (error instanceof URLNotAllowedError) {
@@ -549,7 +552,7 @@ export default class Page {
     if (!this._puppeteerPage) return;
 
     try {
-      await Promise.all([this.waitForPageAndFramesLoad(), this._puppeteerPage.reload()]);
+      await Promise.all([this.waitForPageAndFramesLoad(), this._puppeteerPage.reload(NAVIGATION_WAIT)]);
       logger.info('Page refresh complete');
     } catch (error) {
       if (error instanceof URLNotAllowedError) {
@@ -570,7 +573,7 @@ export default class Page {
     if (!this._puppeteerPage) return;
 
     try {
-      await Promise.all([this.waitForPageAndFramesLoad(), this._puppeteerPage.goBack()]);
+      await Promise.all([this.waitForPageAndFramesLoad(), this._puppeteerPage.goBack(NAVIGATION_WAIT)]);
       logger.info('Navigation back completed');
     } catch (error) {
       if (error instanceof URLNotAllowedError) {
@@ -591,7 +594,7 @@ export default class Page {
     if (!this._puppeteerPage) return;
 
     try {
-      await Promise.all([this.waitForPageAndFramesLoad(), this._puppeteerPage.goForward()]);
+      await Promise.all([this.waitForPageAndFramesLoad(), this._puppeteerPage.goForward(NAVIGATION_WAIT)]);
       logger.info('Navigation forward completed');
     } catch (error) {
       if (error instanceof URLNotAllowedError) {
