@@ -48,6 +48,8 @@ export interface ExecutorSnapshot {
 export interface ExecutorExtraArgs {
   plannerLLM?: BaseChatModel;
   extractorLLM?: BaseChatModel;
+  /** a model that accepts images, for reading image captchas; without one solve_captcha reports that it is missing */
+  captchaLLM?: BaseChatModel | null;
   agentOptions?: Partial<AgentOptions>;
   generalSettings?: GeneralSettingsConfig;
   /** what is remembered about the user from earlier conversations */
@@ -93,7 +95,7 @@ export class Executor {
     this.navigatorPrompt = new NavigatorPrompt(context.options.maxActionsPerStep);
     this.plannerPrompt = new PlannerPrompt();
 
-    const actionBuilder = new ActionBuilder(context, extractorLLM);
+    const actionBuilder = new ActionBuilder(context, extractorLLM, extraArgs?.captchaLLM ?? null);
     const navigatorActionRegistry = new NavigatorActionRegistry(actionBuilder.buildDefaultActions());
 
     // Initialize agents with their respective prompts

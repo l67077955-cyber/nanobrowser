@@ -6,6 +6,7 @@ import {
   goBackActionSchema,
   goToUrlActionSchema,
   inputTextActionSchema,
+  solveCaptchaActionSchema,
   openTabActionSchema,
   searchGoogleActionSchema,
   switchTabActionSchema,
@@ -30,6 +31,8 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { wrapUntrustedContent } from '../messages/utils';
 import type { DOMElementNode } from '@src/background/browser/dom/views';
 import { ElementChangedError, ElementNotFoundError } from '@src/background/browser/views';
+import { readCaptcha } from '@src/background/services/captcha';
+import { isAbortedError } from '../agents/errors';
 
 const logger = createLogger('Action');
 
@@ -159,10 +162,13 @@ export function buildDynamicActionSchema(actions: Action[]): z.ZodType {
 export class ActionBuilder {
   private readonly context: AgentContext;
   private readonly extractorLLM: BaseChatModel;
+  /** reads image captchas; null when no model that accepts images is configured */
+  private readonly captchaLLM: BaseChatModel | null;
 
-  constructor(context: AgentContext, extractorLLM: BaseChatModel) {
+  constructor(context: AgentContext, extractorLLM: BaseChatModel, captchaLLM: BaseChatModel | null = null) {
     this.context = context;
     this.extractorLLM = extractorLLM;
+    this.captchaLLM = captchaLLM;
   }
 
   /**
@@ -339,6 +345,50 @@ export class ActionBuilder {
       true,
     );
     actions.push(inputText);
+
+    const solveCaptcha = new Action(
+      async (input: z.infer<typeof solveCaptchaActionSchema.schema>) => {
+        const intent = input.intent || t('act_solveCaptcha_start', [input.index.toString()]);
+        this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_START, intent);
+
+        if (!this.captchaLLM) {
+          const msg = t('act_solveCaptcha_noModel');
+          this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, msg);
+          return new ActionResult({ error: msg, includeInMemory: true });
+        }
+
+        const page = await this.context.browserContext.getCurrentPage();
+        const fieldNode = await this.observedElement(input.index);
+        if (!fieldNode) {
+          throw new Error(t('act_errors_elementNotExist', [input.index.toString()]));
+        }
+        const hasImageIndex = input.image_index !== null && input.image_index !== undefined;
+        const imageNode = hasImageIndex ? await this.observedElement(input.image_index as number) : undefined;
+        if (hasImageIndex && !imageNode) {
+          throw new Error(t('act_errors_elementNotExist', [String(input.image_index)]));
+        }
+
+        try {
+          const image = await page.captureCaptchaImage(fieldNode, imageNode);
+          const code = await readCaptcha(this.captchaLLM, image, this.context.controller.signal);
+          const content = await page.inputTextElementNode(this.context.options.useVision, fieldNode, code);
+          const msg = t('act_solveCaptcha_ok', [code, input.index.toString()]);
+          this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
+          return new ActionResult({
+            extractedContent: msg + inputMismatchNote(code, content),
+            includeInMemory: true,
+          });
+        } catch (error) {
+          if (isAbortedError(error)) throw error;
+          const msg = t('act_solveCaptcha_failed', [error instanceof Error ? error.message : String(error)]);
+          this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, msg);
+          return new ActionResult({ error: msg, includeInMemory: true });
+        }
+      },
+      solveCaptchaActionSchema,
+      true,
+    );
+    actions.push(solveCaptcha);
 
     // Tab Management Actions
     const switchTab = new Action(async (input: z.infer<typeof switchTabActionSchema.schema>) => {

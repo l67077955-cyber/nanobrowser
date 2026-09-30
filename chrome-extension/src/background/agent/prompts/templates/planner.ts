@@ -31,6 +31,8 @@ ${commonSecurityRules}
     - NEVER suggest scrolling through the entire page, only scroll maximum ONE PAGE at a time.
     - If sign in or credentials are required to complete the task, you should mark as done and ask user to sign in/fill credentials by themselves in final answer
     - Sign in is only "required" when the current page of that site shows a sign-in page or prompt. The user is usually already signed in in this browser: a site that is not open yet tells you nothing, so plan to open it first and look
+    - When the user asks for a specific part of a sign-in form to be filled in, such as the image captcha or a phone number they gave, that is the task itself: plan it instead of asking them to sign in
+    - An image captcha made of characters or an arithmetic question is not a reason to stop or to hand over to the user: the navigator reads it with its solve_captcha action, so plan that step, and never tell the user that such a captcha cannot be read. Sliders, puzzles and codes sent by SMS or email still need the user
     - When you set done to true, you must:
       * Provide the final answer to the user's task in the "final_answer" field
       * Set "next_steps" to empty string (since the task is complete)

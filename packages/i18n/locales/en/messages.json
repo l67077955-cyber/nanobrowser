@@ -345,6 +345,12 @@
   "options_models_labels_reasoning": {
     "message": "Reasoning"
   },
+  "options_models_captcha_header": {
+    "message": "Captcha Model"
+  },
+  "options_models_captcha_desc": {
+    "message": "Reads image captchas (distorted characters, arithmetic questions) so the agent can fill them in. Choose a model that accepts images. If none is chosen, the Navigator model is used when vision is enabled."
+  },
   "options_models_stt_desc": {
     "message": "Configure the Gemini model used for converting speech to text when using the microphone feature."
   },
@@ -693,6 +699,40 @@
         "example": "5"
       }
     }
+  },
+  "act_solveCaptcha_start": {
+    "message": "Reading the captcha for index $INDEX$",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "act_solveCaptcha_ok": {
+    "message": "Read the captcha as $TEXT$ and typed it into index $INDEX$",
+    "placeholders": {
+      "text": {
+        "content": "$1",
+        "example": "x7Kp"
+      },
+      "index": {
+        "content": "$2",
+        "example": "5"
+      }
+    }
+  },
+  "act_solveCaptcha_failed": {
+    "message": "Could not solve the captcha: $ERROR$. The captcha model has to accept images (Settings > Models > Captcha Model)",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "no captcha image found beside the field"
+      }
+    }
+  },
+  "act_solveCaptcha_noModel": {
+    "message": "No model is set for reading captchas. Choose one that accepts images in Settings > Models > Captcha Model, or type the captcha yourself"
   },
   "act_inputText_ok": {
     "message": "Input $TEXT$ into index $INDEX$",

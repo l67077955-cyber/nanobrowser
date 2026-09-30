@@ -39,6 +39,10 @@ const CLICK_TIMEOUT = 'Click timeout';
 const NAVIGATION_WAIT = { waitUntil: 'domcontentloaded' } as const;
 const PRESSED_FLAG = '__nanobrowserPressed';
 
+// What sites call their captcha image in its id, class, alt, title or address
+const CAPTCHA_HINT = 'captcha|kaptcha|verif|valid|v_?code|check_?code|auth_?code|img_?code|rand|yzm|验证码';
+const CAPTCHA_TARGET_HEIGHT = 96;
+
 const IDENTITY_ATTRIBUTES = ['role', 'type', 'name', 'aria-label', 'data-testid', 'placeholder', 'href'];
 
 const collapseLabel = (text: string) => {
@@ -1115,6 +1119,113 @@ export default class Page {
     }
 
     return null;
+  }
+
+  /**
+   * A picture of the captcha that belongs to a field, as the user sees it (base64 PNG). It is taken from the
+   * screen, not from the image's address: fetching that again would make the site issue a different captcha.
+   * @param imageNode the captcha image when the model saw it as an element; else it is looked for beside the field
+   */
+  async captureCaptchaImage(fieldNode: DOMElementNode, imageNode?: DOMElementNode): Promise<string> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer is not connected');
+    }
+    const anchor = await this.locateElement(imageNode ?? fieldNode);
+    if (!anchor) {
+      throw new Error(`Element: ${imageNode ?? fieldNode} not found`);
+    }
+
+    const found = await anchor.evaluateHandle(
+      (el, isImage, hintSource) => {
+        const hint = new RegExp(hintSource, 'i');
+        // sized like a captcha: larger than an icon, smaller than a banner
+        const fits = (candidate: Element) => {
+          const rect = candidate.getBoundingClientRect();
+          const style = getComputedStyle(candidate);
+          return (
+            rect.width >= 40 &&
+            rect.width <= 400 &&
+            rect.height >= 16 &&
+            rect.height <= 200 &&
+            style.visibility !== 'hidden' &&
+            style.opacity !== '0'
+          );
+        };
+        const pictures = (scope: Element) => Array.from(scope.querySelectorAll('img, canvas, svg')).filter(fits);
+        if (isImage) {
+          // the indexed element is the picture, or the clickable box around it
+          return el.matches('img, canvas, svg') ? el : (pictures(el)[0] ?? el);
+        }
+
+        const center = (candidate: Element) => {
+          const rect = candidate.getBoundingClientRect();
+          return [rect.left + rect.width / 2, rect.top + rect.height / 2];
+        };
+        const [fieldX, fieldY] = center(el);
+        const distance = (candidate: Element) => {
+          const [x, y] = center(candidate);
+          return Math.hypot(x - fieldX, y - fieldY);
+        };
+        const hinted = (candidate: Element) => {
+          const src = candidate.getAttribute('src') ?? '';
+          return hint.test(
+            [
+              candidate.id,
+              candidate.getAttribute('class'),
+              candidate.getAttribute('alt'),
+              candidate.getAttribute('title'),
+              src.startsWith('data:') ? '' : src,
+            ].join(' '),
+          );
+        };
+        // The captcha sits in the same row or group as its field: widen the search one ancestor at a time and
+        // stop at the first level that has a candidate, so a logo elsewhere in the form is not taken for it.
+        let scope = el.parentElement;
+        for (let depth = 0; scope && depth < 6; depth++, scope = scope.parentElement) {
+          const near = pictures(scope).filter(candidate => distance(candidate) <= 600);
+          if (near.length > 0) {
+            return near.sort((a, b) => Number(hinted(b)) - Number(hinted(a)) || distance(a) - distance(b))[0];
+          }
+        }
+        return null;
+      },
+      imageNode !== undefined,
+      CAPTCHA_HINT,
+    );
+    const image = found.asElement() as ElementHandle | null;
+    if (!image) {
+      throw new Error('no captcha image found beside the field');
+    }
+
+    // an image that is still loading would be read as blank
+    await image
+      .evaluate(async el => {
+        if (!(el instanceof HTMLImageElement) || el.complete) return;
+        await new Promise(resolve => {
+          el.addEventListener('load', resolve, { once: true });
+          el.addEventListener('error', resolve, { once: true });
+          setTimeout(resolve, 3000);
+        });
+      })
+      .catch(() => undefined);
+    await this._scrollIntoViewIfNeeded(image);
+
+    const box = await image.boundingBox();
+    if (!box || box.width === 0 || box.height === 0) {
+      throw new Error('the captcha image is not visible');
+    }
+    const [pageLeft, pageTop] = await this._puppeteerPage.evaluate(() => [
+      window.visualViewport?.pageLeft ?? window.scrollX,
+      window.visualViewport?.pageTop ?? window.scrollY,
+    ]);
+    // Captchas are a few dozen pixels high; models read enlarged characters more reliably
+    const scale = Math.min(4, Math.max(1, Math.round(CAPTCHA_TARGET_HEIGHT / box.height)));
+    const screenshot = await this._puppeteerPage.screenshot({
+      encoding: 'base64',
+      type: 'png',
+      clip: { x: box.x + pageLeft, y: box.y + pageTop, width: box.width, height: box.height, scale },
+    });
+    return screenshot as string;
   }
 
   /** @returns what the field contains after typing, or null when it is gone from the page */

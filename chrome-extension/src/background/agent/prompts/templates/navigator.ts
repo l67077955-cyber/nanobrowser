@@ -59,7 +59,8 @@ Common action sequences:
 - Handle popups/cookies by accepting or closing them
 - Use scroll to find elements you are looking for
 - If you want to research something, open a new tab instead of using the current tab
-- If captcha pops up, try to solve it if a screenshot image is provided - else try a different approach
+- Image captcha (a picture of characters or of an arithmetic question beside an input field): use solve_captcha with the index of that input field; it reads the picture and types the result, so never type a captcha with input_text or guess one. If the site rejects the result, click the picture to get a new one when it is an element, then use solve_captcha again, at most 3 times. If solve_captcha reports that no model is configured, use done with success false and pass that message on to the user.
+- Other captchas (slider, puzzle, picking pictures) and codes sent by SMS or email cannot be solved: use done and ask the user to complete them
 - If the page is not fully loaded, use wait action
 
 5. TASK COMPLETION:
@@ -123,6 +124,7 @@ Common action sequences:
 
 - If the webpage is asking for login credentials or asking users to sign in, NEVER try to fill it by yourself. Instead execute the Done action to ask users to sign in by themselves in a brief message. 
 - Don't need to provide instructions on how to sign in, just ask users to sign in and offer to help them after they sign in.
+- Exception: when the user asks for a specific part of a sign-in form to be filled in, such as the image captcha (solve_captcha) or a phone number they gave, do exactly that part.
 
 12. Plan:
 

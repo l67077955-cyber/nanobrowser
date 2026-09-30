@@ -13,6 +13,7 @@ import {
   llmProviderStore,
   agentModelStore,
   speechToTextModelStore,
+  captchaModelStore,
   AgentNameEnum,
   llmProviderModelNames,
   ProviderTypeEnum,
@@ -87,6 +88,7 @@ export const ModelSettings = () => {
   // State for model input handling
 
   const [selectedSpeechToTextModel, setSelectedSpeechToTextModel] = useState<string>('');
+  const [selectedCaptchaModel, setSelectedCaptchaModel] = useState<string>('');
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -166,6 +168,21 @@ export const ModelSettings = () => {
     };
 
     loadSpeechToTextModel();
+  }, []);
+
+  useEffect(() => {
+    const loadCaptchaModel = async () => {
+      try {
+        const config = await captchaModelStore.getCaptchaModel();
+        if (config) {
+          setSelectedCaptchaModel(`${config.provider}>${config.modelName}`);
+        }
+      } catch (error) {
+        console.error('Error loading captcha model:', error);
+      }
+    };
+
+    loadCaptchaModel();
   }, []);
 
   // Auto-focus the input field when a new provider is added
@@ -702,6 +719,21 @@ export const ModelSettings = () => {
       }
     } catch (error) {
       console.error('Error saving speech-to-text model:', error);
+    }
+  };
+
+  const handleCaptchaModelChange = async (modelValue: string) => {
+    setSelectedCaptchaModel(modelValue);
+
+    try {
+      if (modelValue) {
+        const [provider, modelName] = modelValue.split('>');
+        await captchaModelStore.setCaptchaModel({ provider, modelName });
+      } else {
+        await captchaModelStore.resetCaptchaModel();
+      }
+    } catch (error) {
+      console.error('Error saving captcha model:', error);
     }
   };
 
@@ -1577,6 +1609,34 @@ export const ModelSettings = () => {
           {[AgentNameEnum.Planner, AgentNameEnum.Navigator].map(agentName => (
             <div key={agentName}>{renderModelSelect(agentName)}</div>
           ))}
+        </div>
+      </div>
+
+      {/* Captcha Model Selection */}
+      <div className={`rounded-xl border border-nb-line bg-nb-tile p-6 text-left shadow-nb`}>
+        <h2 className={`mb-4 text-left text-base font-semibold tracking-tight text-nb-ink`}>
+          {t('options_models_captcha_header')}
+        </h2>
+        <p className={`mb-4 text-sm text-nb-muted`}>{t('options_models_captcha_desc')}</p>
+
+        <div className={`rounded-lg border border-nb-hair bg-nb-tile-2 p-4`}>
+          <div className="flex items-center">
+            <label htmlFor="captcha-model" className={`w-24 text-sm font-medium text-nb-ink-2`}>
+              {t('options_models_labels_model')}
+            </label>
+            <select
+              id="captcha-model"
+              className={`flex-1 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-sm text-nb-ink focus:border-nb-llm focus:outline-none`}
+              value={selectedCaptchaModel}
+              onChange={e => handleCaptchaModelChange(e.target.value)}>
+              <option value="">{t('options_models_chooseModel')}</option>
+              {availableModels.map(({ provider, providerName, model }) => (
+                <option key={`${provider}>${model}`} value={`${provider}>${model}`}>
+                  {`${providerName} > ${model}`}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

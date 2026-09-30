@@ -8,6 +8,7 @@ import {
   analyticsSettingsStore,
   memoryStore,
   chatHistoryStore,
+  captchaModelStore,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
@@ -375,6 +376,15 @@ async function setupExecutor(
     displayHighlights: generalSettings.displayHighlights,
   });
 
+  // Image captchas are read by a model of their own, as the agent models often take text only. With vision
+  // on, the Navigator model is known to accept images and reads them when none is chosen.
+  const captchaModel = await captchaModelStore.getCaptchaModel();
+  const captchaProviderConfig = captchaModel ? providers[captchaModel.provider] : undefined;
+  let captchaLLM: BaseChatModel | null = generalSettings.useVision ? navigatorLLM : null;
+  if (captchaModel && captchaProviderConfig) {
+    captchaLLM = createChatModel(captchaProviderConfig, { ...captchaModel, parameters: { temperature: 0, topP: 0.1 } });
+  }
+
   memoryLLM = plannerLLM ?? navigatorLLM;
   const memoryContext = [
     generalSettings.memoryEnabled ? formatMemoryContext(await memoryStore.getAll()) : '',
@@ -385,6 +395,7 @@ async function setupExecutor(
 
   const executor = new Executor(task, taskId, browserContext, navigatorLLM, {
     plannerLLM: plannerLLM ?? navigatorLLM,
+    captchaLLM,
     memoryContext,
     snapshot: snapshot ?? undefined,
     agentOptions: {
