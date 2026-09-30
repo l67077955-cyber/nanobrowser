@@ -183,7 +183,7 @@ export class RepeatedActionTracker {
     const count = (this.counts.get(key) ?? 0) + 1;
     this.counts.set(key, count);
     if (count < REPEAT_LIMIT) return null;
-    return `Warning: this exact action has now been taken ${count} times on this same page and the page did not change, so repeating it again will not help. Do something different: type into a text field with input_text directly (no click needed first), press Enter with send_keys, use another element, or call done and explain what is blocking you.`;
+    return `Warning: this exact action has now been taken ${count} times on this same page and the page did not change, so repeating it again will not help. Do something different: type into a text field with input_text directly (no click needed first), press Enter with send_keys, close a dropdown or popup that covers the page with send_keys Escape, use another element, or call done and explain what is blocking you.`;
   }
 
   reset(): void {
