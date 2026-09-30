@@ -2,32 +2,21 @@ import { useState } from 'react';
 import '@src/Options.css';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { t } from '@extension/i18n';
-import { FiSettings, FiCpu, FiShield, FiTrendingUp, FiHelpCircle } from 'react-icons/fi';
+import { FiSettings, FiCpu, FiShield } from 'react-icons/fi';
 import { GeneralSettings } from './components/GeneralSettings';
 import { ModelSettings } from './components/ModelSettings';
 import { FirewallSettings } from './components/FirewallSettings';
-import { AnalyticsSettings } from './components/AnalyticsSettings';
 
-type TabTypes = 'general' | 'models' | 'firewall' | 'analytics' | 'help';
+type TabTypes = 'general' | 'models' | 'firewall';
 
 const TABS: { id: TabTypes; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
   { id: 'general', icon: FiSettings, label: t('options_tabs_general') },
   { id: 'models', icon: FiCpu, label: t('options_tabs_models') },
   { id: 'firewall', icon: FiShield, label: t('options_tabs_firewall') },
-  { id: 'analytics', icon: FiTrendingUp, label: 'Analytics' },
-  { id: 'help', icon: FiHelpCircle, label: t('options_tabs_help') },
 ];
 
 const Options = () => {
   const [activeTab, setActiveTab] = useState<TabTypes>('models');
-
-  const handleTabClick = (tabId: TabTypes) => {
-    if (tabId === 'help') {
-      window.open('https://nanobrowser.ai/docs', '_blank');
-    } else {
-      setActiveTab(tabId);
-    }
-  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -37,8 +26,6 @@ const Options = () => {
         return <ModelSettings />;
       case 'firewall':
         return <FirewallSettings />;
-      case 'analytics':
-        return <AnalyticsSettings />;
       default:
         return null;
     }
@@ -58,7 +45,7 @@ const Options = () => {
               <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => handleTabClick(item.id)}
+                  onClick={() => setActiveTab(item.id)}
                   aria-current={activeTab === item.id ? 'page' : undefined}
                   className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-nb-llm ${
                     activeTab === item.id
