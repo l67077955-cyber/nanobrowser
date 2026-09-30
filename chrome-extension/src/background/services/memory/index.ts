@@ -1,10 +1,7 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { type MemoryEntry, memoryStore, looksSecret, MAX_MEMORIES } from '@extension/storage';
-import { createLogger } from '@src/background/log';
 import { askJev, askLLM, curate } from './curator';
-
-const logger = createLogger('Memory');
 
 const MAX_CONTEXT_CHARS = 2000;
 const MAX_MESSAGE_CHARS = 4000;
@@ -123,6 +120,7 @@ let queue: Promise<unknown> = Promise.resolve();
  */
 export function rememberFromMessages(userMessages: string[], options: RememberOptions): Promise<MemoryChange> {
   const run = queue.then(() => remember(userMessages, options));
-  queue = run.catch(error => logger.error('Failed to update memories:', error));
+  // the caller gets the failure; the queue only needs to move on
+  queue = run.catch(() => {});
   return run;
 }
