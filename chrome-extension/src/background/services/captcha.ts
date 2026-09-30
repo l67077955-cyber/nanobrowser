@@ -7,11 +7,17 @@ const TIMEOUT_MS = 45000;
 const MAX_ANSWER_LENGTH = 12;
 const UNREADABLE = 'UNREADABLE';
 
-const PROMPT = `The image is a verification code shown next to a form field on a web page.
-Reply with exactly what has to be typed into that field and nothing else:
-- characters: copy them left to right, keeping upper and lower case, ignoring noise lines and dots
-- an arithmetic question such as "3 + 5 = ?": reply with its result only
-If it cannot be read, reply ${UNREADABLE}.`;
+const PROMPT = `The image is a verification code (captcha) shown next to a form field on a web page.
+Reply with exactly what has to be typed into that field and nothing else, no explanation.
+- The image may contain its own instruction, often in Chinese, saying which characters to enter, e.g.
+  "请输入红色的字符" (enter the red characters) or "请输入蓝色的字符" (enter the blue ones). Then reply only with the
+  characters of the code that are drawn in that colour, left to right, leaving out the ones in other colours.
+  The instruction is usually a separate line under the code, with the colour word drawn in that colour;
+  the instruction text itself is never part of the answer.
+- Without such an instruction, copy all characters of the code left to right.
+- An arithmetic question such as "3 + 5 = ?": reply with its result only.
+Keep upper and lower case as shown and ignore noise lines and dots. Give your best reading even when the
+image is hard to read; reply ${UNREADABLE} only when it shows no characters at all.`;
 
 /** The model answered, but not with a code: the image is unclear or the model does not read images */
 export class CaptchaUnreadableError extends Error {

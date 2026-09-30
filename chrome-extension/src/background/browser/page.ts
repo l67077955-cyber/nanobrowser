@@ -41,7 +41,8 @@ const PRESSED_FLAG = '__nanobrowserPressed';
 
 // What sites call their captcha image in its id, class, alt, title or address
 const CAPTCHA_HINT = 'captcha|kaptcha|verif|valid|v_?code|check_?code|auth_?code|img_?code|rand|yzm|验证码';
-const CAPTCHA_TARGET_HEIGHT = 96;
+// enlarged to about this height: small coloured or thin characters are misread at their own size
+const CAPTCHA_TARGET_HEIGHT = 160;
 
 const IDENTITY_ATTRIBUTES = ['role', 'type', 'name', 'aria-label', 'data-testid', 'placeholder', 'href'];
 
@@ -1134,8 +1135,9 @@ export default class Page {
    * A picture of the captcha that belongs to a field, as the user sees it (base64 PNG). It is taken from the
    * screen, not from the image's address: fetching that again would make the site issue a different captcha.
    * @param imageNode the captcha image when the model saw it as an element; else it is looked for beside the field
+   * @param refresh click the picture first, which makes most sites draw a new captcha
    */
-  async captureCaptchaImage(fieldNode: DOMElementNode, imageNode?: DOMElementNode): Promise<string> {
+  async captureCaptchaImage(fieldNode: DOMElementNode, imageNode?: DOMElementNode, refresh = false): Promise<string> {
     if (!this._puppeteerPage) {
       throw new Error('Puppeteer is not connected');
     }
@@ -1206,6 +1208,22 @@ export default class Page {
       throw new Error('no captcha image found beside the field');
     }
 
+    if (refresh) {
+      // listen before clicking: the new picture may arrive faster than a second call would
+      const redrawn = image
+        .evaluate(
+          el =>
+            new Promise<void>(resolve => {
+              const isImg = el instanceof HTMLImageElement;
+              if (isImg) el.addEventListener('load', () => resolve(), { once: true });
+              setTimeout(resolve, isImg ? 3000 : 800);
+            }),
+        )
+        .catch(() => undefined);
+      await image.click();
+      await redrawn;
+    }
+
     // an image that is still loading would be read as blank
     await image
       .evaluate(async el => {
@@ -1227,7 +1245,6 @@ export default class Page {
       window.visualViewport?.pageLeft ?? window.scrollX,
       window.visualViewport?.pageTop ?? window.scrollY,
     ]);
-    // Captchas are a few dozen pixels high; models read enlarged characters more reliably
     const scale = Math.min(4, Math.max(1, Math.round(CAPTCHA_TARGET_HEIGHT / box.height)));
     const screenshot = await this._puppeteerPage.screenshot({
       encoding: 'base64',

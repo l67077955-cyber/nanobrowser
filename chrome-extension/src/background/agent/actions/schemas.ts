@@ -68,7 +68,7 @@ export const inputTextActionSchema: ActionSchema = {
 export const solveCaptchaActionSchema: ActionSchema = {
   name: 'solve_captcha',
   description:
-    'Read an image captcha (distorted characters or a simple arithmetic question) and type the result into its input field. The image itself is not visible to you: use this instead of input_text for such a field',
+    'Read an image captcha (distorted characters or a simple arithmetic question) and type the result into its input field. The image itself is not visible to you: use this instead of input_text for such a field. An instruction inside the picture, such as to enter only the characters of one colour, is followed by itself',
   schema: z.object({
     intent: z.string().default('').describe('purpose of this action'),
     index: z.number().int().describe('index of the input field the captcha text goes into'),
@@ -78,6 +78,11 @@ export const solveCaptchaActionSchema: ActionSchema = {
       .nullable()
       .optional()
       .describe('index of the captcha image if it is an indexed element; when omitted it is found beside the field'),
+    refresh: z
+      .boolean()
+      .nullable()
+      .optional()
+      .describe('true gets a new captcha first by clicking the picture: use it after a failed or rejected attempt'),
   }),
 };
 

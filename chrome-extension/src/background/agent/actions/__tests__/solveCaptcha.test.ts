@@ -35,7 +35,7 @@ describe('solve_captcha', () => {
   it('types what the model read into the field', async () => {
     const { action, page } = setup(modelReplying('x7Kp'));
     const result = await action.call({ index: 3 });
-    expect(page.captureCaptchaImage).toHaveBeenCalledWith(field, undefined);
+    expect(page.captureCaptchaImage).toHaveBeenCalledWith(field, undefined, false);
     expect(page.inputTextElementNode).toHaveBeenCalledWith(false, field, 'x7Kp');
     expect(result.error).toBeNull();
     expect(result.extractedContent).toContain('x7Kp');
@@ -44,7 +44,13 @@ describe('solve_captcha', () => {
   it('reads the image the model pointed at', async () => {
     const { action, page } = setup(modelReplying('x7Kp'));
     await action.call({ index: 3, image_index: 4 });
-    expect(page.captureCaptchaImage).toHaveBeenCalledWith(field, picture);
+    expect(page.captureCaptchaImage).toHaveBeenCalledWith(field, picture, false);
+  });
+
+  it('asks for a new picture on a retry', async () => {
+    const { action, page } = setup(modelReplying('x7Kp'));
+    await action.call({ index: 3, refresh: true });
+    expect(page.captureCaptchaImage).toHaveBeenCalledWith(field, undefined, true);
   });
 
   it('types nothing when the model has no code', async () => {
