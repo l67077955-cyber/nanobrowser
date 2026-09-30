@@ -21,7 +21,7 @@ import { DEFAULT_AGENT_OPTIONS } from './agent/types';
 import { SpeechToTextService } from './services/speechToText';
 import { injectBuildDomTreeScripts } from './browser/dom/service';
 import { analytics } from './services/analytics';
-import { formatMemoryContext, rememberFromMessages } from './services/memory';
+import { formatMemoryContext, memoryInstructions, rememberFromMessages, rememberFromText } from './services/memory';
 
 const logger = createLogger('background');
 
@@ -31,6 +31,7 @@ let currentExecutor: Executor | null = null;
 let memoryLLM: BaseChatModel | null = null;
 let currentPort: chrome.runtime.Port | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
+const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
 // Setup side panel behavior
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(error => console.error(error));
@@ -73,10 +74,18 @@ analyticsSettingsStore.subscribe(() => {
 });
 
 // Listen for simple messages (e.g., from options page)
-chrome.runtime.onMessage.addListener(() => {
-  // Handle other message types if needed in the future
-  // Return false if response is not sent asynchronously
-  // return false;
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type !== 'memory_import' || sender.id !== chrome.runtime.id || !sender.url?.startsWith(OPTIONS_URL)) {
+    return false;
+  }
+  importMemories(String(message.text ?? ''))
+    .then(change => sendResponse({ change }))
+    .catch(error => {
+      logger.error('Failed to import memories:', error);
+      sendResponse({ error: error instanceof Error ? error.message : String(error) });
+    });
+  // the response is sent when the model has answered
+  return true;
 });
 
 // Setup connection listener for long-lived connections (e.g., side panel)
@@ -367,7 +376,12 @@ async function setupExecutor(
   });
 
   memoryLLM = plannerLLM ?? navigatorLLM;
-  const memoryContext = generalSettings.memoryEnabled ? formatMemoryContext(await memoryStore.getAll()) : '';
+  const memoryContext = [
+    generalSettings.memoryEnabled ? formatMemoryContext(await memoryStore.getAll()) : '',
+    memoryInstructions(generalSettings.memoryEnabled, generalSettings.memoryAutoExtract),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   const executor = new Executor(task, taskId, browserContext, navigatorLLM, {
     plannerLLM: plannerLLM ?? navigatorLLM,
@@ -388,9 +402,22 @@ async function setupExecutor(
   return executor;
 }
 
+/** Text given in the memory settings: the Planner model picks the facts out of it, as it does for chat messages */
+async function importMemories(text: string) {
+  const providers = await llmProviderStore.getAllProviders();
+  const agentModels = await agentModelStore.getAllAgentModels();
+  const model = agentModels[AgentNameEnum.Planner] ?? agentModels[AgentNameEnum.Navigator];
+  if (!model || !providers[model.provider]) throw new Error(t('bg_setup_noApiKeys'));
+  const settings = await generalSettingsStore.getSettings();
+  return rememberFromText(text, {
+    llm: createChatModel(providers[model.provider], model),
+    jevApiKey: settings.fastMode ? settings.fastModeApiKey : undefined,
+  });
+}
+
 /** After a task, store what the user said about themselves and tell the side panel what changed */
 async function updateMemories(executor: Executor) {
-  const messages = executor.takeUserMessagesToRemember();
+  const { messages, earlier, attachments } = executor.takeUserMessagesToRemember();
   const llm = memoryLLM;
   try {
     const settings = await generalSettingsStore.getSettings();
@@ -398,8 +425,11 @@ async function updateMemories(executor: Executor) {
     const change = await rememberFromMessages(messages, {
       llm,
       jevApiKey: settings.fastMode ? settings.fastModeApiKey : undefined,
+      earlier,
+      attachments,
     });
-    if (change.added.length + change.updated.length === 0) return;
+    // a request to remember gets an answer even when nothing was stored
+    if (change.added.length + change.updated.length === 0 && !change.asked) return;
     logger.info('memories updated', change);
     currentPort?.postMessage({ type: 'memory_updated', ...change });
   } catch (error) {

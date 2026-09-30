@@ -32,7 +32,13 @@ vi.mock('@extension/storage', async () => {
   };
 });
 
-import { formatMemoryContext, parseCandidates, rememberFromMessages } from '../index';
+import {
+  formatMemoryContext,
+  memoryInstructions,
+  parseCandidates,
+  rememberFromMessages,
+  rememberFromText,
+} from '../index';
 import { buildCurationRequest, interpretCuration } from '../curator';
 
 const entry = (id: string, content: string, updatedAt = 0): MemoryEntry => ({ id, content, createdAt: 0, updatedAt });
@@ -41,6 +47,12 @@ const entry = (id: string, content: string, updatedAt = 0): MemoryEntry => ({ id
 function llm(...replies: string[]) {
   const invoke = vi.fn(async () => ({ content: replies.shift() ?? '{}' }));
   return { model: { invoke } as unknown as BaseChatModel, invoke };
+}
+
+/** What the first call, the extraction, handed to the model */
+function extractorInput(invoke: ReturnType<typeof llm>['invoke']) {
+  const [messages] = invoke.mock.calls[0] as unknown as [{ content: string }[]];
+  return JSON.parse(messages[1].content);
 }
 
 /** A Jev endpoint that picks the given key for each question */
@@ -135,7 +147,12 @@ describe('curation', () => {
 describe('rememberFromMessages', () => {
   it('does not call the model for empty messages', async () => {
     const { model, invoke } = llm();
-    expect(await rememberFromMessages(['  '], { llm: model })).toEqual({ added: [], updated: [], removed: [] });
+    expect(await rememberFromMessages(['  '], { llm: model })).toEqual({
+      added: [],
+      updated: [],
+      removed: [],
+      asked: false,
+    });
     expect(invoke).not.toHaveBeenCalled();
   });
 
@@ -162,7 +179,7 @@ describe('rememberFromMessages', () => {
       jevApiKey: 'sk-or-test',
       fetchImpl: jev({ decision: 'add', evict: '2' }),
     });
-    expect(change).toEqual({ added: ['The user speaks German.'], updated: [], removed: ['two'] });
+    expect(change).toEqual({ added: ['The user speaks German.'], updated: [], removed: ['two'], asked: false });
     expect(store.entries.map(e => e.content)).toEqual(['one', 'three', 'The user speaks German.']);
   });
 
@@ -205,5 +222,66 @@ describe('rememberFromMessages', () => {
     });
     expect(change.added).toEqual(['The user speaks German.']);
     expect(jevDown.invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives the extractor the earlier messages and attached files, and reports a request to remember', async () => {
+    const { model, invoke } = llm(
+      '{"asked": true, "memories": ["The user studied at TU Berlin."]}',
+      '{"decision": "add"}',
+    );
+    const change = await rememberFromMessages(['remember this'], {
+      llm: model,
+      earlier: ['this is my resume'],
+      attachments: 'Studied at TU Berlin',
+    });
+    expect(change).toEqual({ added: ['The user studied at TU Berlin.'], updated: [], removed: [], asked: true });
+    const input = extractorInput(invoke);
+    expect(input).toEqual({
+      stored_memories: [],
+      user_messages: ['remember this'],
+      earlier_user_messages: ['this is my resume'],
+      attached_files: 'Studied at TU Berlin',
+    });
+  });
+
+  it('reports a request to remember that stored nothing', async () => {
+    const { model } = llm('{"asked": true, "memories": []}');
+    const change = await rememberFromMessages(['remember'], { llm: model });
+    expect(change).toEqual({ added: [], updated: [], removed: [], asked: true });
+  });
+});
+
+describe('rememberFromText', () => {
+  it('stores the facts the model picks out, not the text', async () => {
+    const { model, invoke } = llm(
+      '{"memories": ["The user studied at TU Berlin.", "The user knows Rust and Python."]}',
+      '{"decision": "add"}',
+      '{"decision": "add"}',
+    );
+    const text = '# Resume\n\n**Education:** TU Berlin\n**Skills:**\n- Rust\n- Python';
+    const change = await rememberFromText(text, { llm: model });
+    expect(change.added).toEqual(['The user studied at TU Berlin.', 'The user knows Rust and Python.']);
+    expect(store.entries.map(e => e.content)).toEqual(change.added);
+    expect(extractorInput(invoke)).toEqual({
+      stored_memories: [],
+      text,
+    });
+  });
+
+  it('stores nothing when the model finds nothing, and does not call it for empty text', async () => {
+    const nothing = llm('{"memories": []}');
+    expect((await rememberFromText('asdf', { llm: nothing.model })).added).toEqual([]);
+    const empty = llm();
+    await rememberFromText('  ', { llm: empty.model });
+    expect(empty.invoke).not.toHaveBeenCalled();
+    expect(store.entries).toEqual([]);
+  });
+});
+
+describe('memoryInstructions', () => {
+  it('tells the agents that storing is not theirs to claim, and when it is off', () => {
+    expect(memoryInstructions(true, true)).toContain('Never claim or list what was stored');
+    expect(memoryInstructions(true, false)).toContain('"Remember automatically" is turned off');
+    expect(memoryInstructions(false, true)).toContain('Memory is turned off');
   });
 });

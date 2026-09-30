@@ -1125,7 +1125,7 @@
     "message": "Remember automatically"
   },
   "options_memory_autoExtract_desc": {
-    "message": "After each task, keep lasting facts from what you wrote. The Planner model picks them out."
+    "message": "After each task, keep lasting facts from what you wrote. A file you attach is read when you say it is about you or ask to remember it. The Planner model picks the facts out."
   },
   "options_memory_list_header": {
     "message": "What is remembered"
@@ -1144,7 +1144,7 @@
     }
   },
   "options_memory_placeholder": {
-    "message": "Add a memory, e.g. The user lives in Berlin"
+    "message": "Type or paste anything about yourself: a sentence, notes, a resume. The Planner model picks out what to remember."
   },
   "options_memory_btnEdit": {
     "message": "Edit"
@@ -1158,8 +1158,20 @@
   "options_memory_empty": {
     "message": "Nothing remembered yet."
   },
-  "options_memory_full": {
-    "message": "Memory is full. Delete a memory to add another."
+  "options_memory_btnReading": {
+    "message": "Reading…"
+  },
+  "options_memory_nothingFound": {
+    "message": "Nothing new to remember was found in that text."
+  },
+  "options_memory_importFailed": {
+    "message": "The text could not be read: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Please configure API keys in the settings first"
+      }
+    }
   },
   "options_memory_secretRejected": {
     "message": "That looks like a password or key, so it was not stored. Keep it in the browser's password manager instead."
@@ -1168,7 +1180,7 @@
     "message": "How it works"
   },
   "options_memory_howItWorks": {
-    "message": "Only your own messages are read for things to remember, never page content.\nPasswords, keys and card numbers are never stored. To sign in, the agent relies on the passwords saved in your browser.\nWhen memory is full, a new memory replaces the least useful one. With Fast mode on, Jev makes that choice.\nMemories are stored on this device and sent to your model providers with each task."
+    "message": "Only your own messages, the files you attach and the text you add here are read for things to remember, never page content.\nText you add here is not stored as it is: the Planner model picks the lasting facts out of it.\nPasswords, keys and card numbers are never stored. To sign in, the agent relies on the passwords saved in your browser.\nWhen memory is full, a new memory replaces the least useful one. With Fast mode on, Jev makes that choice.\nMemories are stored on this device and sent to your model providers with each task."
   },
   "chat_memory_updated": {
     "message": "Memory updated: $ITEMS$",
@@ -1178,5 +1190,8 @@
         "example": "The user lives in Berlin"
       }
     }
+  },
+  "chat_memory_unchanged": {
+    "message": "Nothing new was saved to memory."
   }
 }

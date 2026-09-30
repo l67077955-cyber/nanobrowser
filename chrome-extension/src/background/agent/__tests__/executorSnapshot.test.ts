@@ -43,7 +43,27 @@ describe('Executor snapshot', () => {
     ]);
     expect(history.at(-1)).toContain('The user sent a follow-up message: """now unstar it"""');
     expect(second.snapshot().tasks).toEqual(['star the repo', 'now unstar it']);
-    // only the follow-up is read for things to remember
-    expect(second.takeUserMessagesToRemember()).toEqual(['now unstar it']);
+    // only the follow-up is read for things to remember; the earlier task tells what it refers to
+    expect(second.takeUserMessagesToRemember()).toEqual({
+      messages: ['now unstar it'],
+      earlier: ['star the repo'],
+      attachments: '',
+    });
+  });
+
+  it('hands the attached files of the session to memory along with what the user wrote', () => {
+    const file = '<nano_file_content type="file" name="cv.md">\nStudied at TU Berlin\n</nano_file_content>';
+    const executor = new Executor(
+      `this is my resume\n\n<nano_attached_files>${file}</nano_attached_files>`,
+      's',
+      browserContext,
+      llm,
+    );
+    expect(executor.takeUserMessagesToRemember().messages).toEqual(['this is my resume']);
+    executor.addFollowUpTask('remember this');
+    const said = executor.takeUserMessagesToRemember();
+    expect(said.messages).toEqual(['remember this']);
+    expect(said.earlier).toEqual(['this is my resume']);
+    expect(said.attachments).toContain('Studied at TU Berlin');
   });
 });

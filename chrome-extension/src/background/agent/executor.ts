@@ -7,7 +7,7 @@ import { NavigatorPrompt } from './prompts/navigator';
 import { PlannerPrompt } from './prompts/planner';
 import { createLogger } from '@src/background/log';
 import MessageManager, { type StoredManagedMessage } from './messages/service';
-import { splitUserTextAndAttachments } from './messages/utils';
+import { filterExternalContent, splitUserTextAndAttachments } from './messages/utils';
 import type BrowserContext from '../browser/context';
 import { ActionBuilder } from './actions/builder';
 import { EventManager } from './event/manager';
@@ -189,11 +189,23 @@ export class Executor {
     this.context.actionResults = this.context.actionResults.filter(result => result.includeInMemory);
   }
 
-  /** What the user wrote since the last call, without attachments: only their own words go into memory */
-  takeUserMessagesToRemember(): string[] {
-    const messages = this.tasks.slice(this.tasksRemembered).map(task => splitUserTextAndAttachments(task).userText);
+  /**
+   * What the user wrote since the last call, for memory. Their earlier messages and the files they
+   * attached in the session come along, so that "remember this" can be resolved; the newest file first.
+   */
+  takeUserMessagesToRemember(): { messages: string[]; earlier: string[]; attachments: string } {
+    const parts = this.tasks.map(task => splitUserTextAndAttachments(task));
+    const said = parts.map(part => part.userText);
+    const messages = said.slice(this.tasksRemembered);
+    const earlier = said.slice(0, this.tasksRemembered);
     this.tasksRemembered = this.tasks.length;
-    return messages;
+    const attachments = parts
+      .map(part => part.attachmentsInner)
+      .filter((inner): inner is string => !!inner)
+      .reverse()
+      .map(inner => filterExternalContent(inner))
+      .join('\n\n');
+    return { messages, earlier, attachments };
   }
 
   /**

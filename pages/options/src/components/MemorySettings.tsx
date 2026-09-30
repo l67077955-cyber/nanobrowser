@@ -14,6 +14,7 @@ export const MemorySettings = () => {
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [notice, setNotice] = useState('');
+  const [reading, setReading] = useState(false);
 
   const load = useCallback(async () => {
     const settings = await generalSettingsStore.getSettings();
@@ -29,21 +30,31 @@ export const MemorySettings = () => {
     return memoryStore.subscribe(load);
   }, [load]);
 
-  const full = memories.length >= MAX_MEMORIES;
-
   const toggle = async (key: 'memoryEnabled' | 'memoryAutoExtract', value: boolean) => {
     await generalSettingsStore.updateSettings({ [key]: value });
     await load();
   };
 
+  /** The background has the Planner model pick the facts out of the text; the text itself is not stored */
   const handleAdd = async () => {
     const text = draft.trim();
-    if (!text) return;
-    if (full) return setNotice(t('options_memory_full'));
-    const stored = await memoryStore.add(text);
-    setNotice(stored ? '' : t('options_memory_secretRejected'));
-    if (stored) setDraft('');
-    await load();
+    if (!text || reading) return;
+    setReading(true);
+    setNotice('');
+    try {
+      const reply = (await chrome.runtime.sendMessage({ type: 'memory_import', text })) as
+        | { change?: { added: string[]; updated: string[] }; error?: string }
+        | undefined;
+      if (!reply?.change) return setNotice(t('options_memory_importFailed', [reply?.error ?? '']));
+      const kept = [...reply.change.added, ...reply.change.updated];
+      setNotice(kept.length > 0 ? t('chat_memory_updated', [kept.join('; ')]) : t('options_memory_nothingFound'));
+      if (kept.length > 0) setDraft('');
+    } catch (error) {
+      setNotice(t('options_memory_importFailed', [error instanceof Error ? error.message : String(error)]));
+    } finally {
+      setReading(false);
+      await load();
+    }
   };
 
   const handleSave = async () => {
@@ -112,21 +123,22 @@ export const MemorySettings = () => {
           )}
         </div>
 
-        <div className="mb-4 flex space-x-2">
-          <input
+        <div className="mb-4 flex items-end space-x-2">
+          <textarea
             id="memory-input"
-            type="text"
+            rows={3}
             value={draft}
+            disabled={reading}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') handleAdd();
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleAdd();
             }}
             placeholder={t('options_memory_placeholder')}
             aria-label={t('options_memory_placeholder')}
-            className={INPUT}
+            className={`${INPUT} resize-y`}
           />
-          <Button onClick={handleAdd} className="px-4 py-2 text-sm">
-            {t('options_firewall_btnAdd')}
+          <Button onClick={handleAdd} disabled={reading || !draft.trim()} className="px-4 py-2 text-sm">
+            {reading ? t('options_memory_btnReading') : t('options_firewall_btnAdd')}
           </Button>
         </div>
         {notice && (
