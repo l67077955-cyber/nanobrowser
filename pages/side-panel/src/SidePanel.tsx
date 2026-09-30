@@ -325,6 +325,13 @@ const SidePanel = () => {
             timestamp: Date.now(),
           });
           setIsProcessingSpeech(false);
+        } else if (message && message.type === 'memory_updated') {
+          // Facts the background kept from what the user wrote in the last task
+          appendMessage({
+            actor: Actors.SYSTEM,
+            content: t('chat_memory_updated', [[...message.added, ...message.updated].join('; ')]),
+            timestamp: Date.now(),
+          });
         } else if (message && message.type === 'heartbeat_ack') {
           console.log('Heartbeat acknowledged');
         }

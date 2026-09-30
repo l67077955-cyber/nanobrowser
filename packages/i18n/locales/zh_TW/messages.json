@@ -1100,5 +1100,75 @@
   },
   "options_general_fastModeMinTarget_desc": {
     "message": "對目標元素的信心低於此值時，交給導航模型決定（預設 0.6）。"
+  },
+  "options_tabs_memory": {
+    "message": "Memory"
+  },
+  "options_memory_header": {
+    "message": "Memory"
+  },
+  "options_memory_enable": {
+    "message": "Use memory"
+  },
+  "options_memory_enable_desc": {
+    "message": "Give the agents what is remembered about you at the start of every task."
+  },
+  "options_memory_autoExtract": {
+    "message": "Remember automatically"
+  },
+  "options_memory_autoExtract_desc": {
+    "message": "After each task, keep lasting facts from what you wrote. The Planner model picks them out."
+  },
+  "options_memory_list_header": {
+    "message": "What is remembered"
+  },
+  "options_memory_count": {
+    "message": "$COUNT$ of $MAX$",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      },
+      "max": {
+        "content": "$2",
+        "example": "50"
+      }
+    }
+  },
+  "options_memory_placeholder": {
+    "message": "Add a memory, e.g. The user lives in Berlin"
+  },
+  "options_memory_btnEdit": {
+    "message": "Edit"
+  },
+  "options_memory_btnClearAll": {
+    "message": "Delete all"
+  },
+  "options_memory_confirmClearAll": {
+    "message": "Delete every memory? This cannot be undone."
+  },
+  "options_memory_empty": {
+    "message": "Nothing remembered yet."
+  },
+  "options_memory_full": {
+    "message": "Memory is full. Delete a memory to add another."
+  },
+  "options_memory_secretRejected": {
+    "message": "That looks like a password or key, so it was not stored. Keep it in the browser's password manager instead."
+  },
+  "options_memory_howItWorks_header": {
+    "message": "How it works"
+  },
+  "options_memory_howItWorks": {
+    "message": "Only your own messages are read for things to remember, never page content.\nPasswords, keys and card numbers are never stored. To sign in, the agent relies on the passwords saved in your browser.\nWhen memory is full, a new memory replaces the least useful one. With Fast mode on, Jev makes that choice.\nMemories are stored on this device and sent to your model providers with each task."
+  },
+  "chat_memory_updated": {
+    "message": "Memory updated: $ITEMS$",
+    "placeholders": {
+      "items": {
+        "content": "$1",
+        "example": "The user lives in Berlin"
+      }
+    }
   }
 }

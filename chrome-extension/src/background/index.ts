@@ -6,6 +6,7 @@ import {
   generalSettingsStore,
   llmProviderStore,
   analyticsSettingsStore,
+  memoryStore,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
@@ -18,11 +19,14 @@ import { DEFAULT_AGENT_OPTIONS } from './agent/types';
 import { SpeechToTextService } from './services/speechToText';
 import { injectBuildDomTreeScripts } from './browser/dom/service';
 import { analytics } from './services/analytics';
+import { formatMemoryContext, rememberFromMessages } from './services/memory';
 
 const logger = createLogger('background');
 
 const browserContext = new BrowserContext({});
 let currentExecutor: Executor | null = null;
+/** the Planner model of the current executor: it also reads the user's messages for things to remember */
+let memoryLLM: BaseChatModel | null = null;
 let currentPort: chrome.runtime.Port | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 
@@ -107,6 +111,7 @@ chrome.runtime.onConnect.addListener(port => {
 
             const result = await currentExecutor.execute();
             logger.info('new_task execution result', message.tabId, result);
+            void updateMemories(currentExecutor);
             break;
           }
 
@@ -123,6 +128,7 @@ chrome.runtime.onConnect.addListener(port => {
               subscribeToExecutorEvents(currentExecutor);
               const result = await currentExecutor.execute();
               logger.info('follow_up_task execution result', message.tabId, result);
+              void updateMemories(currentExecutor);
             } else {
               // executor was cleaned up, can not add follow-up task
               logger.info('follow_up_task: executor was cleaned up, can not add follow-up task');
@@ -328,8 +334,12 @@ async function setupExecutor(taskId: string, task: string, browserContext: Brows
     displayHighlights: generalSettings.displayHighlights,
   });
 
+  memoryLLM = plannerLLM ?? navigatorLLM;
+  const memoryContext = generalSettings.memoryEnabled ? formatMemoryContext(await memoryStore.getAll()) : '';
+
   const executor = new Executor(task, taskId, browserContext, navigatorLLM, {
     plannerLLM: plannerLLM ?? navigatorLLM,
+    memoryContext,
     agentOptions: {
       maxSteps: generalSettings.maxSteps,
       maxFailures: generalSettings.maxFailures,
@@ -343,6 +353,25 @@ async function setupExecutor(taskId: string, task: string, browserContext: Brows
   });
 
   return executor;
+}
+
+/** After a task, store what the user said about themselves and tell the side panel what changed */
+async function updateMemories(executor: Executor) {
+  const messages = executor.takeUserMessagesToRemember();
+  const llm = memoryLLM;
+  try {
+    const settings = await generalSettingsStore.getSettings();
+    if (!llm || !settings.memoryEnabled || !settings.memoryAutoExtract) return;
+    const change = await rememberFromMessages(messages, {
+      llm,
+      jevApiKey: settings.fastMode ? settings.fastModeApiKey : undefined,
+    });
+    if (change.added.length + change.updated.length === 0) return;
+    logger.info('memories updated', change);
+    currentPort?.postMessage({ type: 'memory_updated', ...change });
+  } catch (error) {
+    logger.error('Failed to update memories:', error);
+  }
 }
 
 // Update subscribeToExecutorEvents to use port

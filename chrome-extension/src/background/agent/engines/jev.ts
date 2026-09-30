@@ -400,6 +400,44 @@ export function traceChoice(choice: JevChoice, space: JevActionSpace, model: str
 const summarize = (operation: string, target?: Target) =>
   target ? `${operation} [${target.index}] ${target.label}` : operation;
 
+/** OpenRouter keys go through OpenRouter, anything else straight to TypeSafe */
+export function jevEndpoint(apiKey: string): { url: string; model: string } {
+  return apiKey.startsWith('sk-or-')
+    ? { url: OPENROUTER_URL, model: OPENROUTER_MODEL }
+    : { url: TYPESAFE_URL, model: TYPESAFE_MODEL };
+}
+
+export async function postJev(
+  url: string,
+  apiKey: string,
+  body: unknown,
+  taskSignal: AbortSignal,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ answers?: Record<string, unknown> }> {
+  for (let attempt = 0; ; attempt++) {
+    const signal = AbortSignal.any([taskSignal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
+    let response: Response;
+    try {
+      response = await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (error) {
+      // Task cancellation propagates; a timeout is just a failed fast path and falls back to the LLM.
+      if (taskSignal.aborted) throw error;
+      throw new Error(`Jev request failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if ([429, 503, 529].includes(response.status) && attempt < 2) {
+      await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
+      continue;
+    }
+    if (!response.ok) throw new Error(`Jev returned HTTP ${response.status}`);
+    return response.json();
+  }
+}
+
 export interface JevEngineOptions {
   apiKey: string;
   textLLM: BaseChatModel;
@@ -419,9 +457,7 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
   private repeatCount = 0;
 
   constructor(private readonly options: JevEngineOptions) {
-    const openRouter = options.apiKey.startsWith('sk-or-');
-    this.url = openRouter ? OPENROUTER_URL : TYPESAFE_URL;
-    this.model = openRouter ? OPENROUTER_MODEL : TYPESAFE_MODEL;
+    ({ url: this.url, model: this.model } = jevEndpoint(options.apiKey));
   }
 
   async decide(state: BrowserState, signal: AbortSignal): Promise<EngineResult> {
@@ -539,29 +575,7 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     return null;
   }
 
-  private async post(body: unknown, taskSignal: AbortSignal): Promise<{ answers?: Record<string, unknown> }> {
-    const doFetch = this.options.fetchImpl ?? fetch;
-    for (let attempt = 0; ; attempt++) {
-      const signal = AbortSignal.any([taskSignal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
-      let response: Response;
-      try {
-        response = await doFetch(this.url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.options.apiKey}` },
-          body: JSON.stringify(body),
-          signal,
-        });
-      } catch (error) {
-        // Task cancellation propagates; a timeout is just a failed fast path and falls back to the LLM.
-        if (taskSignal.aborted) throw error;
-        throw new Error(`Jev request failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      if ([429, 503, 529].includes(response.status) && attempt < 2) {
-        await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
-        continue;
-      }
-      if (!response.ok) throw new Error(`Jev returned HTTP ${response.status}`);
-      return response.json();
-    }
+  private post(body: unknown, taskSignal: AbortSignal): Promise<{ answers?: Record<string, unknown> }> {
+    return postJev(this.url, this.options.apiKey, body, taskSignal, this.options.fetchImpl);
   }
 }

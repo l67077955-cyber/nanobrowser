@@ -7,6 +7,7 @@ import { NavigatorPrompt } from './prompts/navigator';
 import { PlannerPrompt } from './prompts/planner';
 import { createLogger } from '@src/background/log';
 import MessageManager from './messages/service';
+import { splitUserTextAndAttachments } from './messages/utils';
 import type BrowserContext from '../browser/context';
 import { ActionBuilder } from './actions/builder';
 import { EventManager } from './event/manager';
@@ -40,6 +41,8 @@ export interface ExecutorExtraArgs {
   extractorLLM?: BaseChatModel;
   agentOptions?: Partial<AgentOptions>;
   generalSettings?: GeneralSettingsConfig;
+  /** what is remembered about the user from earlier conversations */
+  memoryContext?: string;
 }
 
 export class Executor {
@@ -50,6 +53,8 @@ export class Executor {
   private readonly navigatorPrompt: NavigatorPrompt;
   private readonly generalSettings: GeneralSettingsConfig | undefined;
   private tasks: string[] = [];
+  /** how many of the tasks have already been read for things to remember */
+  private tasksRemembered = 0;
   private latestNextSteps: string | null = null;
   /** step the latest plan was made on: its element indices are only valid on that step */
   private latestPlanStep = 0;
@@ -108,7 +113,11 @@ export class Executor {
 
     this.context = context;
     // Initialize message history
-    this.context.messageManager.initTaskMessages(this.navigatorPrompt.getSystemMessage(), task);
+    this.context.messageManager.initTaskMessages(
+      this.navigatorPrompt.getSystemMessage(),
+      task,
+      extraArgs?.memoryContext,
+    );
   }
 
   subscribeExecutionEvents(callback: EventCallback): void {
@@ -128,6 +137,13 @@ export class Executor {
 
     // need to reset previous action results that are not included in memory
     this.context.actionResults = this.context.actionResults.filter(result => result.includeInMemory);
+  }
+
+  /** What the user wrote since the last call, without attachments: only their own words go into memory */
+  takeUserMessagesToRemember(): string[] {
+    const messages = this.tasks.slice(this.tasksRemembered).map(task => splitUserTextAndAttachments(task).userText);
+    this.tasksRemembered = this.tasks.length;
+    return messages;
   }
 
   /**

@@ -21,6 +21,10 @@ export interface GeneralSettingsConfig {
   fastModeMinTargetConfidence: number;
   /** pause for approval before clicking delete/send/pay-like elements */
   confirmSensitiveActions: boolean;
+  /** give the agents the stored memories at the start of every task */
+  memoryEnabled: boolean;
+  /** after each task, look for new facts about the user in what they wrote */
+  memoryAutoExtract: boolean;
 }
 
 export type GeneralSettingsStorage = BaseStorage<GeneralSettingsConfig> & {
@@ -46,6 +50,8 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsConfig = {
   // Wrong picks seen in practice scored ~0.5 on the target head; correct ones 0.67+
   fastModeMinTargetConfidence: 0.6,
   confirmSensitiveActions: false,
+  memoryEnabled: true,
+  memoryAutoExtract: true,
 };
 
 const storage = createStorage<GeneralSettingsConfig>('general-settings', DEFAULT_GENERAL_SETTINGS, {

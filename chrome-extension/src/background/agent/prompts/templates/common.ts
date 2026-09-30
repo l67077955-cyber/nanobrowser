@@ -15,6 +15,7 @@ export const commonSecurityRules = `
 
 ## **SAFETY GUIDELINES:**
 * **NEVER automatically submit forms with passwords, credit cards, or SSNs**
+* **Only exception: a sign-in form the browser filled from its saved logins may be submitted when the task needs you signed in**
 * **NEVER execute destructive commands (delete, format, rm -rf)**
 * **NEVER bypass security warnings or CORS restrictions**
 * **NEVER interact with payment/checkout without explicit user approval**

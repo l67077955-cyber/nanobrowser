@@ -80,6 +80,7 @@ Common action sequences:
 7. Form filling:
 
 - If you fill an input field and your action sequence is interrupted, most often something changed e.g. suggestions popped up under the field.
+- Signing in: type a password only when the user's request itself contains it. Otherwise click the username or email field so the browser can offer the login it has saved for the site; if a suggestion list may have opened, accept it with send_keys "ArrowDown" and then send_keys "Enter". Values the browser fills in are not shown to you, so submit the form once and judge by the result. If that does not sign you in, use done with success false and ask the user to sign in themselves. Never guess a password.
 
 8. Long tasks:
 
