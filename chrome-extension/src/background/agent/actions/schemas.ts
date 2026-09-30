@@ -55,7 +55,8 @@ export const clickElementActionSchema: ActionSchema = {
 
 export const inputTextActionSchema: ActionSchema = {
   name: 'input_text',
-  description: 'Input text into an interactive input element',
+  description:
+    'Input text into an interactive input element. The text replaces what the element contains: no click, select-all or delete is needed before it',
   schema: z.object({
     intent: z.string().default('').describe('purpose of this action'),
     index: z.number().int().describe('index of the element'),

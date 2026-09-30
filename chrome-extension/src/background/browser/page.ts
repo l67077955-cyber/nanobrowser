@@ -1173,13 +1173,28 @@ export default class Page {
 
       // Choose appropriate input method based on element properties
       if ((isContentEditable || tagName === 'input') && !isReadOnly && !isDisabled) {
-        // Clear content and set value directly
-        await element.evaluate(el => {
-          if (el instanceof HTMLElement) {
-            el.textContent = '';
+        // Empty the field the way a user does: select what it contains and delete it. A page that keeps the
+        // text in its own state puts it back after a value set from script, and the new text lands behind it.
+        await element.focus();
+        const hasContent = await element.evaluate(el => {
+          if (el instanceof HTMLInputElement) {
+            el.select();
+            return el.value !== '';
           }
-          if ('value' in el) {
-            (el as HTMLInputElement).value = '';
+          el.ownerDocument.getSelection()?.selectAllChildren(el);
+          return (el.textContent ?? '') !== '';
+        });
+        if (hasContent) {
+          await this._puppeteerPage.keyboard.press('Backspace');
+        }
+        // What the keys did not remove is cleared directly
+        await element.evaluate(el => {
+          const value = el instanceof HTMLInputElement ? el.value : (el.textContent ?? '');
+          if (value === '') return;
+          if (el instanceof HTMLInputElement) {
+            el.value = '';
+          } else {
+            el.textContent = '';
           }
           // Dispatch events
           el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1359,7 +1374,11 @@ export default class Page {
         // neighbouring button); dispatch the click on the element itself when something else is there.
         if (await this.isCoveredAtCenter(element)) {
           logger.info('Element is covered at its center, clicking it directly');
-          await element.evaluate(el => (el as HTMLElement).click());
+          // a mouse click also puts the focus there: keys sent next must reach a field clicked this way
+          await element.evaluate(el => {
+            (el as HTMLElement).focus();
+            (el as HTMLElement).click();
+          });
           await this._checkAndHandleNavigation();
           return;
         }
