@@ -146,7 +146,10 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     this.jsonSchema = convertZodToJsonSchema(this.modelOutputSchema, 'NavigatorAgentOutput', true);
   }
 
-  async invoke(inputMessages: BaseMessage[]): Promise<this['ModelOutput']> {
+  async invoke(
+    inputMessages: BaseMessage[],
+    signal: AbortSignal = this.context.controller.signal,
+  ): Promise<this['ModelOutput']> {
     // Use structured output
     if (this.withStructuredOutput) {
       const structuredLlm = this.chatLLM.withStructuredOutput(this.jsonSchema, {
@@ -157,7 +160,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       let response = undefined;
       try {
         response = await structuredLlm.invoke(inputMessages, {
-          signal: this.context.controller.signal,
+          signal,
           ...this.callOptions,
         });
 
@@ -204,7 +207,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     }
 
     // Fallback to parent class manual JSON extraction for models without structured output support
-    return super.invoke(inputMessages);
+    return super.invoke(inputMessages, signal);
   }
 
   async execute(): Promise<AgentOutput<NavigatorResult>> {
@@ -239,10 +242,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       // logger.info('Navigator input message', inputMessages[inputMessages.length - 1]);
 
       const decisionStarted = performance.now();
-      const engineResult = await this.decideWithEngine(currentState);
-      const modelOutput = engineResult.decision
-        ? (engineResult.decision as Awaited<this['ModelOutput']>)
-        : await this.invoke(inputMessages);
+      const { engineResult, modelOutput } = await this.decide(currentState, inputMessages);
       const decisionMs = Math.round(performance.now() - decisionStarted);
 
       // check if the task is paused or stopped
@@ -348,6 +348,36 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
   setDecisionEngine(engine: NavigatorDecisionEngine | null): void {
     this.decisionEngine = engine;
+  }
+
+  /**
+   * Ask the fast engine and the LLM at the same time: the LLM's answer is only used when the engine
+   * defers, and is cancelled when it does not, so a deferral no longer costs the engine's latency on top.
+   */
+  private async decide(
+    state: BrowserState,
+    inputMessages: BaseMessage[],
+  ): Promise<{ engineResult: EngineResult; modelOutput: NavigatorAgent['ModelOutput'] }> {
+    if (!this.decisionEngine) {
+      return { engineResult: { decision: null }, modelOutput: await this.invoke(inputMessages) };
+    }
+    const taskSignal = this.context.controller.signal;
+    const llmController = new AbortController();
+    const abortLLM = () => llmController.abort();
+    taskSignal.addEventListener('abort', abortLLM, { once: true });
+    const llmCall = this.invoke(inputMessages, llmController.signal);
+    // when the engine wins, the cancelled call rejects with nobody waiting for it
+    llmCall.catch(() => {});
+    try {
+      const engineResult = await this.decideWithEngine(state);
+      if (engineResult.decision) {
+        llmController.abort();
+        return { engineResult, modelOutput: engineResult.decision as NavigatorAgent['ModelOutput'] };
+      }
+      return { engineResult, modelOutput: await llmCall };
+    } finally {
+      taskSignal.removeEventListener('abort', abortLLM);
+    }
   }
 
   /**

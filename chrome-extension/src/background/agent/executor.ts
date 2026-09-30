@@ -29,6 +29,12 @@ import { JevDecisionEngine } from './engines/jev';
 
 const logger = createLogger('Executor');
 
+/** A planner run going on alongside navigation */
+interface BackgroundPlan {
+  promise: Promise<AgentOutput<PlannerOutput> | null>;
+  settled: boolean;
+}
+
 export interface ExecutorExtraArgs {
   plannerLLM?: BaseChatModel;
   extractorLLM?: BaseChatModel;
@@ -45,6 +51,8 @@ export class Executor {
   private readonly generalSettings: GeneralSettingsConfig | undefined;
   private tasks: string[] = [];
   private latestNextSteps: string | null = null;
+  /** step the latest plan was made on: its element indices are only valid on that step */
+  private latestPlanStep = 0;
   constructor(
     task: string,
     taskId: string,
@@ -128,7 +136,13 @@ export class Executor {
    */
   private decisionGoal(): string {
     const goal = this.tasks[this.tasks.length - 1];
-    return this.latestNextSteps ? `${goal}\nCurrent plan: ${this.latestNextSteps}` : goal;
+    if (!this.latestNextSteps) return goal;
+    // "[92]" in an older plan now points at some other element; keep the words, drop the numbers
+    const plan =
+      this.context.nSteps > this.latestPlanStep
+        ? this.latestNextSteps.replace(/\s*\((?:index\s*)?\[\d+\]\)|\s*(?:at\s+)?(?:index\s*)?\[\d+\]/gi, '')
+        : this.latestNextSteps;
+    return `${goal}\nCurrent plan: ${plan}`;
   }
 
   /**
@@ -157,6 +171,7 @@ export class Executor {
     context.nSteps = 0;
     const allowedMaxSteps = this.context.options.maxSteps;
 
+    let backgroundPlan: BackgroundPlan | null = null;
     try {
       this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_START, this.context.taskId);
 
@@ -178,15 +193,28 @@ export class Executor {
           break;
         }
 
-        // Run planner periodically for guidance
-        if (this.planner && (context.nSteps % context.options.planningInterval === 0 || navigatorDone)) {
-          navigatorDone = false;
-          latestPlanOutput = await this.runPlanner();
-
-          // Check if task is complete after planner run
+        // Pick up a periodic plan that finished while the navigator kept going
+        if (backgroundPlan?.settled) {
+          latestPlanOutput = await backgroundPlan.promise;
+          backgroundPlan = null;
           if (this.checkTaskCompletion(latestPlanOutput)) {
             break;
           }
+        }
+
+        if (navigatorDone || context.nSteps === 0) {
+          // The first plan steers the first steps, and a claimed finish needs checking before going on:
+          // both wait for the planner
+          navigatorDone = false;
+          if (backgroundPlan) await backgroundPlan.promise.catch(() => null);
+          backgroundPlan = null;
+          latestPlanOutput = await this.runPlanner();
+          if (this.checkTaskCompletion(latestPlanOutput)) {
+            break;
+          }
+        } else if (context.nSteps % context.options.planningInterval === 0 && !backgroundPlan) {
+          // Periodic re-planning runs alongside navigation instead of pausing it for a whole LLM call
+          backgroundPlan = await this.startPlanner();
         }
 
         // Execute navigator
@@ -240,6 +268,8 @@ export class Executor {
         void analytics.trackTaskFailed(this.context.taskId, errorCategory);
       }
     } finally {
+      // a plan still in flight would otherwise land in the history of a follow-up task
+      await backgroundPlan?.promise.catch(() => null);
       if (import.meta.env.DEV) {
         logger.debug('Executor history', JSON.stringify(this.context.history, null, 2));
       }
@@ -258,43 +288,71 @@ export class Executor {
    * Helper method to run planner and store its output
    */
   private async runPlanner(): Promise<AgentOutput<PlannerOutput> | null> {
-    const context = this.context;
+    return (await this.startPlanner()).promise;
+  }
+
+  /**
+   * Read the page and start the planner on it. Resolves once the planner has taken its snapshot of the
+   * history, so the navigator can go on with the same state while the plan is being made.
+   */
+  private async startPlanner(): Promise<BackgroundPlan> {
+    let positionForPlan = 0;
+    let started = performance.now();
+    let observeMs = 0;
+    let planning: Promise<AgentOutput<PlannerOutput>>;
     try {
       // Add current browser state to memory, on the first step too: a blind first plan
       // misleads the fast engine, and the navigator reuses this same state read
-      const observeStarted = performance.now();
       await this.navigator.addStateMessageToMemory();
-      const observeMs = Math.round(performance.now() - observeStarted);
-      const positionForPlan = this.context.messageManager.length() - 1;
-
-      // Execute planner
-      const planStarted = performance.now();
-      const planOutput = await this.planner.execute();
-      logger.info(`⏱ planner: observe ${observeMs}ms, plan ${Math.round(performance.now() - planStarted)}ms`);
-      if (planOutput.result) {
-        this.context.messageManager.addPlan(JSON.stringify(planOutput.result), positionForPlan);
-        this.latestNextSteps = planOutput.result.next_steps || null;
-      }
-      return planOutput;
+      observeMs = Math.round(performance.now() - started);
+      positionForPlan = this.context.messageManager.length() - 1;
+      started = performance.now();
+      // execute() copies the history synchronously, before the navigator changes it
+      planning = this.planner.execute();
     } catch (error) {
-      logger.error(`Failed to execute planner: ${error}`);
-      if (
-        error instanceof ChatModelAuthError ||
-        error instanceof ChatModelBadRequestError ||
-        error instanceof ChatModelForbiddenError ||
-        error instanceof URLNotAllowedError ||
-        error instanceof RequestCancelledError ||
-        error instanceof ExtensionConflictError
-      ) {
-        throw error;
-      }
-      context.consecutiveFailures++;
-      logger.error(`Failed to execute planner: ${error}`);
-      if (context.consecutiveFailures >= context.options.maxFailures) {
-        throw new MaxFailuresReachedError(t('exec_errors_maxFailuresReached'));
-      }
-      return null;
+      planning = Promise.reject(error);
     }
+    const planStep = this.context.nSteps;
+    const plan: BackgroundPlan = {
+      settled: false,
+      promise: planning
+        .then(planOutput => {
+          logger.info(`⏱ planner: observe ${observeMs}ms, plan ${Math.round(performance.now() - started)}ms`);
+          if (planOutput.result) {
+            this.context.messageManager.addPlan(JSON.stringify(planOutput.result), positionForPlan);
+            this.latestNextSteps = planOutput.result.next_steps || null;
+            this.latestPlanStep = planStep;
+          }
+          return planOutput;
+        })
+        .catch(error => this.handlePlannerError(error))
+        .finally(() => {
+          plan.settled = true;
+        }),
+    };
+    // a rejected plan is rethrown when the loop picks it up
+    plan.promise.catch(() => {});
+    return plan;
+  }
+
+  private handlePlannerError(error: unknown): AgentOutput<PlannerOutput> | null {
+    const context = this.context;
+    logger.error(`Failed to execute planner: ${error}`);
+    if (
+      error instanceof ChatModelAuthError ||
+      error instanceof ChatModelBadRequestError ||
+      error instanceof ChatModelForbiddenError ||
+      error instanceof URLNotAllowedError ||
+      error instanceof RequestCancelledError ||
+      error instanceof ExtensionConflictError
+    ) {
+      throw error;
+    }
+    context.consecutiveFailures++;
+    if (context.consecutiveFailures >= context.options.maxFailures) {
+      throw new MaxFailuresReachedError(t('exec_errors_maxFailuresReached'));
+    }
+    return null;
   }
 
   private async navigate(): Promise<boolean> {

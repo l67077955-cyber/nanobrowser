@@ -119,7 +119,10 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
     return true;
   }
 
-  async invoke(inputMessages: BaseMessage[]): Promise<this['ModelOutput']> {
+  async invoke(
+    inputMessages: BaseMessage[],
+    signal: AbortSignal = this.context.controller.signal,
+  ): Promise<this['ModelOutput']> {
     // Use structured output
     if (this.withStructuredOutput) {
       logger.debug(`[${this.modelName}] Preparing structured output call with schema:`, {
@@ -137,7 +140,7 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
       try {
         logger.debug(`[${this.modelName}] Invoking LLM with structured output...`);
         response = await structuredLlm.invoke(inputMessages, {
-          signal: this.context.controller.signal,
+          signal,
           ...this.callOptions,
         });
 
@@ -199,7 +202,7 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
 
     try {
       const response = await this.chatLLM.invoke(convertedInputMessages, {
-        signal: this.context.controller.signal,
+        signal,
         ...this.callOptions,
       });
 
