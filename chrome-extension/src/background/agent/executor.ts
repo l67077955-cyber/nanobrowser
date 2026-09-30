@@ -274,15 +274,23 @@ export class Executor {
         }
 
         // Pick up a periodic plan that finished while the navigator kept going
+        let finishToConfirm = false;
         if (backgroundPlan?.settled) {
           latestPlanOutput = await backgroundPlan.promise;
           backgroundPlan = null;
-          if (this.checkTaskCompletion(latestPlanOutput)) {
-            break;
+          if (latestPlanOutput?.result?.done) {
+            // The plan read the page before the navigator's latest steps. A finish the navigator claims as
+            // well stands; otherwise it is checked on the page as it is now, so that the task does not end
+            // on something the planner never saw (a file the navigator went on to open, a 404).
+            if (navigatorDone && this.checkTaskCompletion(latestPlanOutput)) {
+              break;
+            }
+            logger.info('Planner found the task done on an earlier page, checking on the current one');
+            finishToConfirm = true;
           }
         }
 
-        if (navigatorDone || context.nSteps === 0) {
+        if (navigatorDone || finishToConfirm || context.nSteps === 0) {
           // The first plan steers the first steps, and a claimed finish needs checking before going on:
           // both wait for the planner
           navigatorDone = false;
