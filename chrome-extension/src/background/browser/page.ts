@@ -1128,11 +1128,12 @@ export default class Page {
       //   await this._updateState(useVision, elementNode.highlightIndex);
       // }
 
-      const element = await this.locateElement(elementNode);
-      if (!element) {
+      const located = await this.locateElement(elementNode);
+      if (!located) {
         throw new Error(`Element: ${elementNode} not found`);
       }
-      await this.assertSameElement(element, elementNode);
+      await this.assertSameElement(located, elementNode);
+      const element = await this.textFieldOf(located);
 
       // Ensure element is ready for input
       try {
@@ -1208,6 +1209,37 @@ export default class Page {
       logger.error(errorMsg);
       throw new Error(errorMsg);
     }
+  }
+
+  /**
+   * Where text for an element goes: the element itself if it is a field, else the field inside it or the one
+   * a click on it focuses (a search bar with filter chips, a styled wrapper). Setting a value on anything
+   * else changes nothing on the page while the action reports success.
+   */
+  private async textFieldOf(element: ElementHandle): Promise<ElementHandle> {
+    const find = async (focused: boolean) => {
+      const handle = await element.evaluateHandle((el, focused) => {
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return el;
+        if (el instanceof HTMLElement && el.isContentEditable) return el;
+        const fields =
+          'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=file]), textarea, [contenteditable]:not([contenteditable="false"])';
+        const inside = Array.from(el.querySelectorAll(fields)).find(field => field.getClientRects().length > 0);
+        if (inside) return inside;
+        const active = el.ownerDocument.activeElement;
+        return focused && active?.matches(fields) ? active : null;
+      }, focused);
+      return handle.asElement() as ElementHandle | null;
+    };
+
+    let field = await find(false);
+    if (!field) {
+      await element.click();
+      field = await find(true);
+    }
+    if (!field) {
+      throw new Error('it is not a text field and there is none inside it');
+    }
+    return field;
   }
 
   /**
