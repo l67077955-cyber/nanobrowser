@@ -15,6 +15,26 @@ window.buildDomTree = (
 
   let highlightIndex = startHighlightIndex; // Reset highlight index
 
+  // The window is often narrower than the page (side panel open, fixed-width site). What lies beside the
+  // viewport within the page's scrollable width is one horizontal scroll away, and a click scrolls to it,
+  // so it counts as in view. With overflow-x hidden that part is kept off screen on purpose.
+  const scrollsHorizontally = [document.documentElement, document.body].every(
+    el => !el || !['hidden', 'clip'].includes(window.getComputedStyle(el).overflowX),
+  );
+  const pageLeft = scrollsHorizontally ? -window.scrollX : 0;
+  const pageRight = scrollsHorizontally
+    ? Math.max(document.documentElement.scrollWidth - window.scrollX, window.innerWidth)
+    : window.innerWidth;
+
+  function isOutsideViewport(rect) {
+    return (
+      rect.bottom < -viewportExpansion ||
+      rect.top > window.innerHeight + viewportExpansion ||
+      rect.right < pageLeft - viewportExpansion ||
+      rect.left > pageRight + viewportExpansion
+    );
+  }
+
   // Add caching mechanisms at the top level
   const DOM_CACHE = {
     boundingRects: new WeakMap(),
@@ -458,14 +478,7 @@ window.buildDomTree = (
           isAnyRectVisible = true;
 
           // Viewport check for this rect
-          if (
-            !(
-              rect.bottom < -viewportExpansion ||
-              rect.top > window.innerHeight + viewportExpansion ||
-              rect.right < -viewportExpansion ||
-              rect.left > window.innerWidth + viewportExpansion
-            )
-          ) {
+          if (!isOutsideViewport(rect)) {
             isAnyRectInViewport = true;
             break; // Found a visible rect in viewport, no need to check others
           }
@@ -807,12 +820,7 @@ window.buildDomTree = (
         rect.height > 0 &&
         !(
           // Only check non-empty rects
-          (
-            rect.bottom < -viewportExpansion ||
-            rect.top > window.innerHeight + viewportExpansion ||
-            rect.right < -viewportExpansion ||
-            rect.left > window.innerWidth + viewportExpansion
-          )
+          isOutsideViewport(rect)
         )
       ) {
         isAnyRectInViewport = true;
@@ -855,6 +863,11 @@ window.buildDomTree = (
 
     const margin = 5;
     const rect = rects[Math.floor(rects.length / 2)];
+
+    // Beside the viewport there is nothing to hit-test: elementFromPoint only answers inside it
+    if (rect.left >= window.innerWidth || rect.right <= 0) {
+      return true;
+    }
 
     // For elements in viewport, check if they're topmost. Do the check in the
     // center of the element and at the corners to ensure we catch more cases.
@@ -905,26 +918,14 @@ window.buildDomTree = (
       if (!boundingRect || boundingRect.width === 0 || boundingRect.height === 0) {
         return false;
       }
-      return !(
-        boundingRect.bottom < -viewportExpansion ||
-        boundingRect.top > window.innerHeight + viewportExpansion ||
-        boundingRect.right < -viewportExpansion ||
-        boundingRect.left > window.innerWidth + viewportExpansion
-      );
+      return !isOutsideViewport(boundingRect);
     }
 
     // Check if *any* client rect is within the viewport
     for (const rect of rects) {
       if (rect.width === 0 || rect.height === 0) continue; // Skip empty rects
 
-      if (
-        !(
-          rect.bottom < -viewportExpansion ||
-          rect.top > window.innerHeight + viewportExpansion ||
-          rect.right < -viewportExpansion ||
-          rect.left > window.innerWidth + viewportExpansion
-        )
-      ) {
+      if (!isOutsideViewport(rect)) {
         return true; // Found at least one rect in the viewport
       }
     }
@@ -1329,15 +1330,7 @@ window.buildDomTree = (
 
       // Use getBoundingClientRect for the quick OUTSIDE check.
       // isInExpandedViewport will do the more accurate check later if needed.
-      if (
-        !rect ||
-        (!isFixedOrSticky &&
-          !hasSize &&
-          (rect.bottom < -viewportExpansion ||
-            rect.top > window.innerHeight + viewportExpansion ||
-            rect.right < -viewportExpansion ||
-            rect.left > window.innerWidth + viewportExpansion))
-      ) {
+      if (!rect || (!isFixedOrSticky && !hasSize && isOutsideViewport(rect))) {
         // console.log("Skipping node outside viewport (quick check):", node.tagName, rect);
         return null;
       }
