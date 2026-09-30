@@ -143,6 +143,12 @@ chrome.runtime.onConnect.addListener(port => {
             return port.postMessage({ type: 'success' });
           }
 
+          case 'confirm_action': {
+            if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
+            currentExecutor.confirmAction(message.approved === true);
+            return port.postMessage({ type: 'success' });
+          }
+
           case 'pause_task': {
             if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
             await currentExecutor.pause();
@@ -331,6 +337,7 @@ async function setupExecutor(taskId: string, task: string, browserContext: Brows
       useVision: generalSettings.useVision,
       useVisionForPlanner: true,
       planningInterval: generalSettings.planningInterval,
+      confirmSensitiveActions: generalSettings.confirmSensitiveActions,
     },
     generalSettings: generalSettings,
   });

@@ -1039,5 +1039,55 @@
   },
   "chat_steps_plan": {
     "message": "PLANO"
+  },
+  "act_confirm_click": {
+    "message": "Aprovar o clique em [$INDEX$] \"$LABEL$\"?",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Delete"
+      }
+    }
+  },
+  "act_confirm_declined": {
+    "message": "O usuário recusou o clique em [$INDEX$] \"$LABEL$\". Não tente de novo; pergunte ao usuário ou siga outro caminho.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Delete"
+      }
+    }
+  },
+  "chat_confirm_approve": {
+    "message": "Aprovar"
+  },
+  "chat_confirm_decline": {
+    "message": "Recusar"
+  },
+  "options_general_confirmSensitive": {
+    "message": "Confirmar cliques sensíveis"
+  },
+  "options_general_confirmSensitive_desc": {
+    "message": "Pausa para sua aprovação antes de clicar em elementos como excluir, enviar, publicar, pagar ou confirmar."
+  },
+  "options_general_fastModeMinOperation": {
+    "message": "Limite de operação do Jev"
+  },
+  "options_general_fastModeMinOperation_desc": {
+    "message": "Abaixo desta confiança na operação, o passo vai para o modelo Navegador (padrão 0,5)."
+  },
+  "options_general_fastModeMinTarget": {
+    "message": "Limite de elemento do Jev"
+  },
+  "options_general_fastModeMinTarget_desc": {
+    "message": "Abaixo desta confiança no elemento, o passo vai para o modelo Navegador (padrão 0,6)."
   }
 }

@@ -15,7 +15,7 @@ import {
   LLM_FORBIDDEN_ERROR_MESSAGE,
   RequestCancelledError,
 } from './errors';
-import { convertMessagesForPlanner, filterExternalContent } from '../messages/utils';
+import { convertMessagesForPlanner, stripBoundaryTags } from '../messages/utils';
 const logger = createLogger('PlannerAgent');
 
 // Define Zod schema for planner output
@@ -84,12 +84,12 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
         throw new Error('Failed to validate planner output');
       }
 
-      // clean the model output
-      const observation = filterExternalContent(modelOutput.observation);
-      const final_answer = filterExternalContent(modelOutput.final_answer);
-      const next_steps = filterExternalContent(modelOutput.next_steps);
-      const challenges = filterExternalContent(modelOutput.challenges);
-      const reasoning = filterExternalContent(modelOutput.reasoning);
+      // page content was already filtered on the way in; here only strip fake trust-boundary tags
+      const observation = stripBoundaryTags(modelOutput.observation);
+      const final_answer = stripBoundaryTags(modelOutput.final_answer);
+      const next_steps = stripBoundaryTags(modelOutput.next_steps);
+      const challenges = stripBoundaryTags(modelOutput.challenges);
+      const reasoning = stripBoundaryTags(modelOutput.reasoning);
 
       const cleanedPlan: PlannerOutput = {
         ...modelOutput,

@@ -84,6 +84,8 @@ export class Executor {
       this.navigator.setDecisionEngine(
         new JevDecisionEngine({
           apiKey: this.generalSettings.fastModeApiKey,
+          minOperationConfidence: this.generalSettings.fastModeMinOperationConfidence,
+          minTargetConfidence: this.generalSettings.fastModeMinTargetConfidence,
           textLLM: navigatorLLM,
           getGoal: () => this.decisionGoal(),
         }),
@@ -112,14 +114,20 @@ export class Executor {
 
   addFollowUpTask(task: string): void {
     this.tasks.push(task);
+    // the plan belonged to the previous task
+    this.latestNextSteps = null;
     this.context.messageManager.addNewTask(task);
 
     // need to reset previous action results that are not included in memory
     this.context.actionResults = this.context.actionResults.filter(result => result.includeInMemory);
   }
 
+  /**
+   * Only the task being worked on: earlier tasks are finished, and handing them over made Jev see
+   * their results (e.g. an already-starred repo) as evidence that the new task is DONE.
+   */
   private decisionGoal(): string {
-    const goal = this.tasks.join('\n');
+    const goal = this.tasks[this.tasks.length - 1];
     return this.latestNextSteps ? `${goal}\nCurrent plan: ${this.latestNextSteps}` : goal;
   }
 
@@ -362,6 +370,10 @@ export class Executor {
 
   async pause(): Promise<void> {
     this.context.pause();
+  }
+
+  confirmAction(approved: boolean): void {
+    this.context.resolveConfirmation(approved);
   }
 
   async cleanup(): Promise<void> {

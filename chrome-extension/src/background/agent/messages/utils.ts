@@ -265,6 +265,14 @@ export function filterExternalContent(rawContent: string | undefined, strict: bo
   return result.sanitized;
 }
 
+/**
+ * For the model's own output: drop only fake trust-boundary tags. Running the injection patterns here
+ * rewrote ordinary planner prose ("The new task is to …") into [BLOCKED_TASK_INJECTION].
+ */
+export function stripBoundaryTags(text: string | undefined): string {
+  return (text ?? '').replace(/<\/?\s*nano_[a-z_]+\s*>/gi, '');
+}
+
 export function filterExternalContentWithReport(rawContent: string | undefined, strict: boolean = true) {
   if (!rawContent || rawContent.trim() === '') {
     return { sanitized: '', threats: [], modified: false };

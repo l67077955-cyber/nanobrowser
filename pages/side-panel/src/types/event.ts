@@ -40,6 +40,8 @@ export enum ExecutionState {
   ACT_START = 'act.start',
   ACT_OK = 'act.ok',
   ACT_FAIL = 'act.fail',
+  /** waiting for the user to approve or decline the next action */
+  ACT_CONFIRM = 'act.confirm',
 }
 
 export interface EventData {

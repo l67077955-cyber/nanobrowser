@@ -140,6 +140,14 @@ export class BrowserError extends Error {
   }
 }
 
+/** The element an action targets is no longer the one the model chose; the action was not performed */
+export class ElementChangedError extends BrowserError {
+  constructor(message?: string) {
+    super(message);
+    this.name = 'ElementChangedError';
+  }
+}
+
 export class URLNotAllowedError extends BrowserError {
   /**
    * Error raised when a URL is not allowed

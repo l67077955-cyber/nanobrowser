@@ -2,9 +2,10 @@ import { z } from 'zod';
 import type BrowserContext from '../browser/context';
 import { DEFAULT_INCLUDE_ATTRIBUTES } from '../browser/dom/views';
 import type { DOMHistoryElement } from '../browser/dom/history/view';
+import type { DOMElementNode } from '../browser/dom/views';
 import type MessageManager from './messages/service';
 import type { EventManager } from './event/manager';
-import { type Actors, type ExecutionState, AgentEvent } from './event/types';
+import { type Actors, ExecutionState, AgentEvent } from './event/types';
 import { AgentStepHistory } from './history';
 import type { StepMeta } from '@extension/storage';
 
@@ -19,6 +20,8 @@ export interface AgentOptions {
   useVisionForPlanner: boolean;
   includeAttributes: string[];
   planningInterval: number;
+  /** pause for the user's approval before clicks/typing on delete, send, pay-like elements */
+  confirmSensitiveActions: boolean;
 }
 
 export const DEFAULT_AGENT_OPTIONS: AgentOptions = {
@@ -32,6 +35,7 @@ export const DEFAULT_AGENT_OPTIONS: AgentOptions = {
   useVisionForPlanner: true,
   includeAttributes: DEFAULT_INCLUDE_ATTRIBUTES,
   planningInterval: 3,
+  confirmSensitiveActions: false,
 };
 
 export class AgentContext {
@@ -50,6 +54,9 @@ export class AgentContext {
   stateMessageAdded: boolean;
   history: AgentStepHistory;
   finalAnswer: string | null;
+  /** element indices as the deciding model saw them; actions resolve their index here, not in a re-read DOM */
+  observedSelectorMap: Map<number, DOMElementNode> | null;
+  private pendingConfirmation: ((approved: boolean) => void) | null;
 
   constructor(
     taskId: string,
@@ -74,6 +81,8 @@ export class AgentContext {
     this.stateMessageAdded = false;
     this.history = new AgentStepHistory();
     this.finalAnswer = null;
+    this.observedSelectorMap = null;
+    this.pendingConfirmation = null;
   }
 
   async emitEvent(actor: Actors, state: ExecutionState, eventDetails: string, meta?: StepMeta) {
@@ -97,7 +106,23 @@ export class AgentContext {
 
   async stop() {
     this.stopped = true;
+    this.resolveConfirmation(false);
     setTimeout(() => this.controller.abort(), 300);
+  }
+
+  /** Ask the side panel to approve an action; resolves false if declined or the task stops */
+  requestConfirmation(actor: Actors, description: string): Promise<boolean> {
+    this.resolveConfirmation(false);
+    return new Promise(resolve => {
+      this.pendingConfirmation = resolve;
+      void this.emitEvent(actor, ExecutionState.ACT_CONFIRM, description);
+    });
+  }
+
+  resolveConfirmation(approved: boolean): void {
+    const resolve = this.pendingConfirmation;
+    this.pendingConfirmation = null;
+    resolve?.(approved);
   }
 }
 

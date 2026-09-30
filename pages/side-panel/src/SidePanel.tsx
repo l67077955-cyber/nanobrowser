@@ -26,6 +26,8 @@ const SidePanel = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputEnabled, setInputEnabled] = useState(true);
   const [showStopButton, setShowStopButton] = useState(false);
+  // action text awaiting the user's approval (confirm sensitive clicks setting)
+  const [pendingConfirmation, setPendingConfirmation] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [chatSessions, setChatSessions] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
@@ -162,12 +164,14 @@ const SidePanel = () => {
               setIsHistoricalSession(false);
               break;
             case ExecutionState.TASK_OK:
+              setPendingConfirmation(null);
               setIsFollowUpMode(true);
               setInputEnabled(true);
               setShowStopButton(false);
               setIsReplaying(false);
               break;
             case ExecutionState.TASK_FAIL:
+              setPendingConfirmation(null);
               setIsFollowUpMode(true);
               setInputEnabled(true);
               setShowStopButton(false);
@@ -175,6 +179,7 @@ const SidePanel = () => {
               skip = false;
               break;
             case ExecutionState.TASK_CANCEL:
+              setPendingConfirmation(null);
               setIsFollowUpMode(false);
               setInputEnabled(true);
               setShowStopButton(false);
@@ -235,6 +240,9 @@ const SidePanel = () => {
               break;
             case ExecutionState.ACT_FAIL:
               skip = false;
+              break;
+            case ExecutionState.ACT_CONFIRM:
+              setPendingConfirmation(content || '');
               break;
             default:
               console.error('Invalid action', state);
@@ -641,6 +649,11 @@ const SidePanel = () => {
       setShowStopButton(false);
       stopConnection();
     }
+  };
+
+  const handleConfirmAction = (approved: boolean) => {
+    portRef.current?.postMessage({ type: 'confirm_action', approved });
+    setPendingConfirmation(null);
   };
 
   const handleStopTask = async () => {
@@ -1159,6 +1172,26 @@ const SidePanel = () => {
                 {messages.length > 0 && (
                   <div
                     className={`border-t ${isDarkMode ? 'border-sky-900' : 'border-sky-100'} p-2 shadow-sm backdrop-blur-sm`}>
+                    {pendingConfirmation !== null && (
+                      <div
+                        role="alertdialog"
+                        aria-label={pendingConfirmation}
+                        className={`mb-2 flex items-center gap-2 rounded-lg border p-2 text-sm ${isDarkMode ? 'border-amber-700 bg-slate-800 text-gray-200' : 'border-amber-300 bg-amber-50 text-gray-800'}`}>
+                        <span className="min-w-0 flex-1 break-words">{pendingConfirmation}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmAction(false)}
+                          className={`rounded-md px-3 py-1 ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-200 hover:bg-gray-300'}`}>
+                          {t('chat_confirm_decline')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmAction(true)}
+                          className="rounded-md bg-amber-600 px-3 py-1 text-white hover:bg-amber-700">
+                          {t('chat_confirm_approve')}
+                        </button>
+                      </div>
+                    )}
                     <ChatInput
                       onSendMessage={handleSendMessage}
                       onStopTask={handleStopTask}

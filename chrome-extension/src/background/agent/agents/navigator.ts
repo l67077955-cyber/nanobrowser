@@ -30,8 +30,24 @@ import { AgentStepRecord } from '../history';
 import { type DOMHistoryElement } from '@src/background/browser/dom/history/view';
 import type { EngineResult, NavigatorDecisionEngine } from '../engines/types';
 import type { StepMeta } from '@extension/storage';
+import { t } from '@extension/i18n';
+import type { DOMElementNode } from '@src/background/browser/dom/views';
 
 const logger = createLogger('NavigatorAgent');
+
+// Clicks on elements named like this are hard to undo; with confirmation on, they wait for the user
+const SENSITIVE_LABEL =
+  /\b(delete|remove|discard|erase|destroy|unsubscribe|send|submit|publish|post|reply|pay|purchase|buy|checkout|order|transfer|confirm)\b|删除|刪除|移除|清空|发送|發送|发布|發布|提交|支付|付款|购买|購買|下单|下單|转账|轉帳|确认|確認/i;
+
+function elementLabel(node: DOMElementNode): string {
+  const attrs = node.attributes;
+  const label =
+    [attrs['aria-label'], node.getAllTextTillNextClickableElement(2), attrs.title, attrs.value].find(
+      c => c && c.trim(),
+    ) ?? '';
+  const flat = label.replace(/\s+/g, ' ').trim();
+  return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
+}
 
 interface ParsedModelOutput {
   current_state?: {
@@ -206,8 +222,10 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
       const messageManager = this.context.messageManager;
       // add the browser state message
+      const observeStarted = performance.now();
       await this.addStateMessageToMemory();
       const currentState = await this.context.browserContext.getCachedState();
+      const observeMs = Math.round(performance.now() - observeStarted);
       browserStateHistory = new BrowserStateHistory(currentState);
 
       // check if the task is paused or stopped
@@ -241,8 +259,13 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       this.removeLastStateMessageFromMemory();
       this.addModelOutputToMemory(modelOutput);
 
-      // take the actions
-      actionResults = await this.doMultiAction(actions);
+      // take the actions, resolving indices against the state the decision was made on
+      const actStarted = performance.now();
+      actionResults = await this.doMultiAction(actions, currentState);
+      const actMs = Math.round(performance.now() - actStarted);
+      logger.info(
+        `⏱ step ${this.context.nSteps + 1}: observe ${observeMs}ms, decide ${decisionMs}ms (${engineResult.decision ? this.decisionEngine?.name : this.modelName}), act ${actMs}ms`,
+      );
       this.decisionEngine?.observeStep(actions, actionResults);
       // logger.info('Action results', JSON.stringify(actionResults, null, 2));
 
@@ -447,13 +470,13 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     return actions;
   }
 
-  private async doMultiAction(actions: Record<string, unknown>[]): Promise<ActionResult[]> {
+  private async doMultiAction(actions: Record<string, unknown>[], browserState: BrowserState): Promise<ActionResult[]> {
     const results: ActionResult[] = [];
     let errCount = 0;
     logger.info('Actions', actions);
 
     const browserContext = this.context.browserContext;
-    const browserState = await browserContext.getState(this.context.options.useVision);
+    this.context.observedSelectorMap = browserState.selectorMap;
     const cachedPathHashes = await calcBranchPathHashSet(browserState);
 
     await browserContext.removeHighlight();
@@ -490,6 +513,26 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           }
         }
 
+        if (this.context.options.confirmSensitiveActions && indexArg !== null) {
+          const node = browserState.selectorMap.get(indexArg);
+          const label = node ? elementLabel(node) : '';
+          if (actionName === 'click_element' && SENSITIVE_LABEL.test(label)) {
+            const approved = await this.context.requestConfirmation(
+              Actors.NAVIGATOR,
+              t('act_confirm_click', [indexArg.toString(), label]),
+            );
+            if (!approved) {
+              results.push(
+                new ActionResult({
+                  error: t('act_confirm_declined', [indexArg.toString(), label]),
+                  includeInMemory: true,
+                }),
+              );
+              break;
+            }
+          }
+        }
+
         const result = await actionInstance.call(actionArgs);
         if (result === undefined) {
           throw new Error(`Action ${actionName} returned undefined`);
@@ -511,8 +554,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         if (this.context.paused || this.context.stopped) {
           return results;
         }
-        // TODO: wait for 1 second for now, need to optimize this to avoid unnecessary waiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Let the page react before the next action; after the last one, the next step's observation
+        // already waits for the network to go idle.
+        if (i < actions.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       } catch (error) {
         if (error instanceof URLNotAllowedError) {
           throw error;
@@ -625,7 +671,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
     // Filter out null values and cast to the expected type
     const validActions = updatedActions.filter((action): action is Record<string, unknown> => action !== null);
-    const result = await this.doMultiAction(validActions);
+    const result = await this.doMultiAction(validActions, state);
 
     // Wait for the specified delay
     await new Promise(resolve => setTimeout(resolve, delay));

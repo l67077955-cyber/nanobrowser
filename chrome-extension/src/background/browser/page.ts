@@ -17,12 +17,27 @@ import {
   getScrollInfo as _getScrollInfo,
 } from './dom/service';
 import { DOMElementNode, type DOMState } from './dom/views';
-import { type BrowserContextConfig, DEFAULT_BROWSER_CONTEXT_CONFIG, type PageState, URLNotAllowedError } from './views';
+import {
+  type BrowserContextConfig,
+  DEFAULT_BROWSER_CONTEXT_CONFIG,
+  ElementChangedError,
+  type PageState,
+  URLNotAllowedError,
+} from './views';
 import { createLogger } from '@src/background/log';
 import { ClickableElementProcessor } from './dom/clickable/service';
 import { isUrlAllowed } from './util';
 
 const logger = createLogger('Page');
+
+// Attributes that say what an element is; if one differs at action time, the locator found a different element.
+// ids are left out because many sites regenerate them on every render.
+const IDENTITY_ATTRIBUTES = ['role', 'type', 'name', 'aria-label', 'data-testid', 'placeholder', 'href'];
+
+const collapseLabel = (text: string) => {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
+};
 
 export function build_initial_state(tabId?: number, url?: string, title?: string): PageState {
   return {
@@ -517,7 +532,7 @@ export default class Page {
       }
 
       if (error instanceof Error && error.message.includes('timeout')) {
-        logger.warning('Navigation timeout, but page might still be usable:', error);
+        logger.warning(`Navigation timeout, but page might still be usable: ${error.message}`);
         return;
       }
 
@@ -910,11 +925,8 @@ export default class Page {
     }
   }
 
-  async getDropdownOptions(index: number): Promise<Array<{ index: number; text: string; value: string }>> {
-    const selectorMap = this.getSelectorMap();
-    const element = selectorMap?.get(index);
-
-    if (!element || !this._puppeteerPage) {
+  async getDropdownOptions(element: DOMElementNode): Promise<Array<{ index: number; text: string; value: string }>> {
+    if (!this._puppeteerPage) {
       throw new Error('Element not found or puppeteer is not connected');
     }
 
@@ -924,6 +936,7 @@ export default class Page {
       if (!elementHandle) {
         throw new Error('Dropdown element not found');
       }
+      await this.assertSameElement(elementHandle, element);
 
       // Evaluate the select element to get all options
       const options = await elementHandle.evaluate(select => {
@@ -948,11 +961,9 @@ export default class Page {
     }
   }
 
-  async selectDropdownOption(index: number, text: string): Promise<string> {
-    const selectorMap = this.getSelectorMap();
-    const element = selectorMap?.get(index);
-
-    if (!element || !this._puppeteerPage) {
+  async selectDropdownOption(element: DOMElementNode, text: string): Promise<string> {
+    const index = element.highlightIndex;
+    if (!this._puppeteerPage) {
       throw new Error('Element not found or puppeteer is not connected');
     }
 
@@ -973,6 +984,7 @@ export default class Page {
       if (!elementHandle) {
         throw new Error(`Dropdown element with index ${index} not found`);
       }
+      await this.assertSameElement(elementHandle, element);
 
       // Verify dropdown and select option in one call
       const result = await elementHandle.evaluate(
@@ -1113,6 +1125,7 @@ export default class Page {
       if (!element) {
         throw new Error(`Element: ${elementNode} not found`);
       }
+      await this.assertSameElement(element, elementNode);
 
       // Ensure element is ready for input
       try {
@@ -1297,11 +1310,20 @@ export default class Page {
       if (!element) {
         throw new Error(`Element: ${elementNode} not found`);
       }
+      await this.assertSameElement(element, elementNode);
 
       // Scroll element into view if needed
       await this._scrollIntoViewIfNeeded(element);
 
       try {
+        // A mouse click lands on whatever is on top at the element's center (a toast, a hover card, a
+        // neighbouring button); dispatch the click on the element itself when something else is there.
+        if (await this.isCoveredAtCenter(element)) {
+          logger.info('Element is covered at its center, clicking it directly');
+          await element.evaluate(el => (el as HTMLElement).click());
+          await this._checkAndHandleNavigation();
+          return;
+        }
         // First attempt: Use Puppeteer's click method with timeout
         await Promise.race([
           element.click(),
@@ -1328,9 +1350,49 @@ export default class Page {
         }
       }
     } catch (error) {
+      if (error instanceof ElementChangedError) throw error;
       throw new Error(
         `Failed to click element: ${elementNode}. Error: ${error instanceof Error ? error.message : String(error)}`,
       );
+    }
+  }
+
+  /**
+   * Throw if the live element no longer matches the one the model chose (the page re-rendered and the
+   * locator now resolves to a different element), so we never act on something the model did not see.
+   */
+  private async assertSameElement(handle: ElementHandle, node: DOMElementNode): Promise<void> {
+    const expected = {
+      tag: (node.tagName ?? '').toLowerCase(),
+      attributes: Object.fromEntries(IDENTITY_ATTRIBUTES.map(name => [name, node.attributes[name] ?? null])),
+    };
+    const mismatch = await handle.evaluate((el, exp) => {
+      if (exp.tag && el.tagName.toLowerCase() !== exp.tag) return `<${el.tagName.toLowerCase()}>`;
+      for (const [name, value] of Object.entries(exp.attributes)) {
+        const live = el.getAttribute(name);
+        if (live !== value) return `${name}=${JSON.stringify(live)}`;
+      }
+      return null;
+    }, expected);
+    if (mismatch) {
+      const label = node.attributes['aria-label'] ?? node.getAllTextTillNextClickableElement(2);
+      throw new ElementChangedError(
+        `Element [${node.highlightIndex}] "${collapseLabel(label)}" changed since the page was read (now ${mismatch}); nothing was done. Look at the page again before acting.`,
+      );
+    }
+  }
+
+  private async isCoveredAtCenter(handle: ElementHandle): Promise<boolean> {
+    try {
+      return await handle.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return false;
+        const root = el.getRootNode() as Document | ShadowRoot;
+        const hit = root.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return !!hit && hit !== el && !el.contains(hit);
+      });
+    } catch {
+      return false;
     }
   }
 

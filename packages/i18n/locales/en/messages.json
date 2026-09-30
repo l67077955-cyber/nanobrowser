@@ -1040,5 +1040,55 @@
   },
   "chat_steps_plan": {
     "message": "PLAN"
+  },
+  "act_confirm_click": {
+    "message": "Approve clicking [$INDEX$] \"$LABEL$\"?",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Delete"
+      }
+    }
+  },
+  "act_confirm_declined": {
+    "message": "The user declined clicking [$INDEX$] \"$LABEL$\". Do not retry it; ask the user or choose another way.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Delete"
+      }
+    }
+  },
+  "chat_confirm_approve": {
+    "message": "Approve"
+  },
+  "chat_confirm_decline": {
+    "message": "Decline"
+  },
+  "options_general_confirmSensitive": {
+    "message": "Confirm sensitive clicks"
+  },
+  "options_general_confirmSensitive_desc": {
+    "message": "Pause for your approval before clicking elements named like delete, send, post, pay or confirm."
+  },
+  "options_general_fastModeMinOperation": {
+    "message": "Jev operation threshold"
+  },
+  "options_general_fastModeMinOperation_desc": {
+    "message": "Below this confidence in the operation, the step goes to the Navigator model (default 0.5)."
+  },
+  "options_general_fastModeMinTarget": {
+    "message": "Jev element threshold"
+  },
+  "options_general_fastModeMinTarget_desc": {
+    "message": "Below this confidence in the element, the step goes to the Navigator model (default 0.6)."
   }
 }

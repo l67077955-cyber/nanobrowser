@@ -1032,5 +1032,55 @@
   },
   "chat_steps_plan": {
     "message": "計畫"
+  },
+  "act_confirm_click": {
+    "message": "允許點擊 [$INDEX$]「$LABEL$」嗎？",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Delete"
+      }
+    }
+  },
+  "act_confirm_declined": {
+    "message": "使用者拒絕點擊 [$INDEX$]「$LABEL$」。不要重試；請詢問使用者或改用其他方式。",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "3"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Delete"
+      }
+    }
+  },
+  "chat_confirm_approve": {
+    "message": "允許"
+  },
+  "chat_confirm_decline": {
+    "message": "拒絕"
+  },
+  "options_general_confirmSensitive": {
+    "message": "敏感點擊需確認"
+  },
+  "options_general_confirmSensitive_desc": {
+    "message": "點擊名稱像刪除、傳送、發布、付款或確認的元素前，先暫停等你允許。"
+  },
+  "options_general_fastModeMinOperation": {
+    "message": "Jev 操作門檻"
+  },
+  "options_general_fastModeMinOperation_desc": {
+    "message": "對操作的信心低於此值時，交給導航模型決定（預設 0.5）。"
+  },
+  "options_general_fastModeMinTarget": {
+    "message": "Jev 元素門檻"
+  },
+  "options_general_fastModeMinTarget_desc": {
+    "message": "對目標元素的信心低於此值時，交給導航模型決定（預設 0.6）。"
   }
 }

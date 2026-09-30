@@ -16,9 +16,11 @@ const TYPESAFE_URL = 'https://api.typesafe.ai/v1/systemone';
 const TYPESAFE_MODEL = 'jev-latest';
 
 const REQUEST_TIMEOUT_MS = 15000;
-const MIN_OPERATION_CONFIDENCE = 0.5;
+const DEFAULT_MIN_OPERATION_CONFIDENCE = 0.5;
 // Wrong picks seen in practice scored ~0.5 on the target head; correct ones 0.67+
-const MIN_TARGET_CONFIDENCE = 0.6;
+const DEFAULT_MIN_TARGET_CONFIDENCE = 0.6;
+// Offered with every target question so Jev is never forced to pick an element
+const NO_TARGET = 'none';
 const MAX_ELEMENTS = 250;
 const MAX_LABEL_LENGTH = 100;
 const MAX_PAGE_TEXT = 4000;
@@ -35,12 +37,14 @@ WAIT only when the needed control is absent/disabled, or submitted results are s
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
 DONE requires visible evidence that ALL requirements are satisfied. If asked to open a result,
-a matching link is not enough. BLOCKED means no supported operation can make progress.`;
+a matching link is not enough. BLOCKED means no supported operation can make progress.
+Choose ABSTAIN instead of guessing when no operation is clearly right: a wrong click can be irreversible.`;
 
 const TARGET = `Choose the best observed target if the next operation is the one specified in this question.
 Use the user's entire goal, field values, nearby text, and recent actions. This question chooses only
 a target for that operation; another question decides which operation to execute. Do not choose
-a field that already contains the requested value. Choose only an offered element index.`;
+a field that already contains the requested value. Choose only an offered element index, or none
+when no offered element clearly matches (e.g. several look identical and nothing tells them apart).`;
 
 const TEXT_VALUE = `Return a JSON object with exactly one key, text: the exact string to enter in the selected field.
 Infer the value from the original goal and field meaning, using current page context and history.
@@ -59,6 +63,7 @@ const CONTROLS = {
   SCROLL_DOWN: 'Scroll the page down to reveal more content.',
   SCROLL_UP: 'Scroll the page up.',
   WAIT: 'Wait briefly while submitted results are still loading.',
+  ABSTAIN: 'Do nothing this step: no operation is clearly right, so a more careful model decides.',
   DONE: 'Every requirement is visibly satisfied.',
   BLOCKED: 'No supported operation can progress.',
 };
@@ -260,6 +265,11 @@ export function buildJevRequest(
     for (const [key, t] of Object.entries(candidates)) {
       criteria[key] = { element: `[${key}] ${t.label}`, current_value: t.value ?? '', role: t.role };
     }
+    criteria[NO_TARGET] = {
+      element: 'None of these elements is clearly the right target',
+      current_value: '',
+      role: '',
+    };
     questions[`${op.toLowerCase()}_target`] = {
       type: 'choice',
       criteria,
@@ -316,7 +326,8 @@ export function interpretAnswers(answers: Record<string, unknown>, space: JevAct
   }
   const operation = op.choice as Operation;
   const candidates = space.targets[operation]!;
-  const target = validateChoice(answers[`${operation.toLowerCase()}_target`], Object.keys(candidates));
+  const target = validateChoice(answers[`${operation.toLowerCase()}_target`], [...Object.keys(candidates), NO_TARGET]);
+  if (target.choice === NO_TARGET) return { kind: 'control', operation: 'ABSTAIN', confidence: target.confidence };
   return {
     kind: 'action',
     operation,
@@ -346,7 +357,10 @@ export function traceChoice(choice: JevChoice, space: JevActionSpace, model: str
     margin: (ranked[0]?.[1] ?? 0) - (ranked[1]?.[1] ?? 0),
     alternatives: ranked
       .slice(0, MAX_ALTERNATIVES)
-      .map(([key, p]) => ({ label: `[${candidates[key].index}] ${candidates[key].label}`, p })),
+      .map(([key, p]) => ({
+        label: key === NO_TARGET ? NO_TARGET : `[${candidates[key].index}] ${candidates[key].label}`,
+        p,
+      })),
   };
 }
 
@@ -357,6 +371,9 @@ export interface JevEngineOptions {
   apiKey: string;
   textLLM: BaseChatModel;
   getGoal: () => string;
+  /** below these, a pick goes to the LLM navigator instead of being executed */
+  minOperationConfidence?: number;
+  minTargetConfidence?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -413,8 +430,11 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     // DONE needs a written answer and BLOCKED needs reasoning: both are the LLM's job.
     if (choice.kind === 'control' && choice.operation === 'DONE') return 'task looks done';
     if (choice.kind === 'control' && choice.operation === 'BLOCKED') return 'no way forward';
-    if (choice.confidence < MIN_OPERATION_CONFIDENCE) return 'unsure which operation';
-    if (choice.kind === 'action' && choice.targetConfidence < MIN_TARGET_CONFIDENCE) return 'unsure which element';
+    if (choice.kind === 'control' && choice.operation === 'ABSTAIN') return 'jev abstained';
+    const minOperation = this.options.minOperationConfidence ?? DEFAULT_MIN_OPERATION_CONFIDENCE;
+    const minTarget = this.options.minTargetConfidence ?? DEFAULT_MIN_TARGET_CONFIDENCE;
+    if (choice.confidence < minOperation) return 'unsure which operation';
+    if (choice.kind === 'action' && choice.targetConfidence < minTarget) return 'unsure which element';
 
     // Same decision three times in a row means the page is not responding to it; let the LLM look.
     const key = choice.kind === 'action' ? `${choice.operation}:${choice.target.index}` : choice.operation;

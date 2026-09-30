@@ -15,6 +15,12 @@ export interface GeneralSettingsConfig {
   replayHistoricalTasks: boolean;
   fastMode: boolean;
   fastModeApiKey: string;
+  /** Jev runs an operation only at or above this confidence; below it the step goes to the Navigator model */
+  fastModeMinOperationConfidence: number;
+  /** same, for which element Jev picked */
+  fastModeMinTargetConfidence: number;
+  /** pause for approval before clicking delete/send/pay-like elements */
+  confirmSensitiveActions: boolean;
 }
 
 export type GeneralSettingsStorage = BaseStorage<GeneralSettingsConfig> & {
@@ -36,6 +42,10 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsConfig = {
   replayHistoricalTasks: false,
   fastMode: false,
   fastModeApiKey: '',
+  fastModeMinOperationConfidence: 0.5,
+  // Wrong picks seen in practice scored ~0.5 on the target head; correct ones 0.67+
+  fastModeMinTargetConfidence: 0.6,
+  confirmSensitiveActions: false,
 };
 
 const storage = createStorage<GeneralSettingsConfig>('general-settings', DEFAULT_GENERAL_SETTINGS, {

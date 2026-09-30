@@ -229,6 +229,79 @@ export const GeneralSettings = () => {
               />
             </div>
           )}
+
+          {settings.fastMode && (
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_fastModeMinOperation')}</h3>
+                <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_fastModeMinOperation_desc')}</p>
+              </div>
+              <label htmlFor="fastModeMinOperationConfidence" className="sr-only">
+                {t('options_general_fastModeMinOperation')}
+              </label>
+              <input
+                id="fastModeMinOperationConfidence"
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={settings.fastModeMinOperationConfidence}
+                onChange={e => {
+                  const value = Number.parseFloat(e.target.value);
+                  if (Number.isFinite(value))
+                    updateSetting('fastModeMinOperationConfidence', Math.min(1, Math.max(0, value)));
+                }}
+                className={`w-20 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
+              />
+            </div>
+          )}
+
+          {settings.fastMode && (
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_fastModeMinTarget')}</h3>
+                <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_fastModeMinTarget_desc')}</p>
+              </div>
+              <label htmlFor="fastModeMinTargetConfidence" className="sr-only">
+                {t('options_general_fastModeMinTarget')}
+              </label>
+              <input
+                id="fastModeMinTargetConfidence"
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={settings.fastModeMinTargetConfidence}
+                onChange={e => {
+                  const value = Number.parseFloat(e.target.value);
+                  if (Number.isFinite(value))
+                    updateSetting('fastModeMinTargetConfidence', Math.min(1, Math.max(0, value)));
+                }}
+                className={`w-20 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
+              />
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_confirmSensitive')}</h3>
+              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_confirmSensitive_desc')}</p>
+            </div>
+            <div className="relative inline-flex cursor-pointer items-center">
+              <input
+                id="confirmSensitiveActions"
+                type="checkbox"
+                checked={settings.confirmSensitiveActions}
+                onChange={e => updateSetting('confirmSensitiveActions', e.target.checked)}
+                className="peer sr-only"
+              />
+              <label
+                htmlFor="confirmSensitiveActions"
+                className={`peer h-6 w-11 rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-nb-line after:bg-nb-tile after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-full peer-checked:after:border-nb-llm peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`}>
+                <span className="sr-only">{t('options_general_confirmSensitive')}</span>
+              </label>
+            </div>
+          </div>
         </div>
       </div>
     </section>

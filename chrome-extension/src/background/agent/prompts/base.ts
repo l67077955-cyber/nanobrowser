@@ -3,6 +3,13 @@ import type { AgentContext } from '@src/background/agent/types';
 import { wrapUntrustedContent } from '../messages/utils';
 import { createLogger } from '@src/background/log';
 
+/** A page no taller than the viewport cannot scroll; dividing by that ~0 distance gave 631884% and -157588% */
+export function viewportShareOfScroll(viewportHeight: number, scrollHeight: number): string {
+  const scrollable = scrollHeight - viewportHeight;
+  if (scrollable < 1) return 'n/a (page does not scroll)';
+  return `${Math.round((viewportHeight / scrollable) * 100)}%`;
+}
+
 const logger = createLogger('BasePrompt');
 /**
  * Abstract base class for all prompt types
@@ -32,7 +39,7 @@ abstract class BasePrompt {
 
     let formattedElementsText = '';
     if (rawElementsText !== '') {
-      const scrollInfo = `[Scroll info of current page] window.scrollY: ${browserState.scrollY}, document.body.scrollHeight: ${browserState.scrollHeight}, window.visualViewport.height: ${browserState.visualViewportHeight}, visual viewport height as percentage of scrollable distance: ${Math.round((browserState.visualViewportHeight / (browserState.scrollHeight - browserState.visualViewportHeight)) * 100)}%\n`;
+      const scrollInfo = `[Scroll info of current page] window.scrollY: ${browserState.scrollY}, document.body.scrollHeight: ${browserState.scrollHeight}, window.visualViewport.height: ${browserState.visualViewportHeight}, visual viewport height as percentage of scrollable distance: ${viewportShareOfScroll(browserState.visualViewportHeight, browserState.scrollHeight)}\n`;
       logger.info(scrollInfo);
       const elementsText = wrapUntrustedContent(rawElementsText);
       formattedElementsText = `${scrollInfo}[Start of page]\n${elementsText}\n[End of page]\n`;

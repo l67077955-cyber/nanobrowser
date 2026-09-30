@@ -56,7 +56,7 @@ const choice = (picked: string, ids: string[], confidence = 0.95) => ({
   confidence,
 });
 
-const OPS = ['CLICK', 'TYPE_TEXT', 'SELECT', 'SCROLL_DOWN', 'SCROLL_UP', 'WAIT', 'DONE', 'BLOCKED'];
+const OPS = ['CLICK', 'TYPE_TEXT', 'SELECT', 'SCROLL_DOWN', 'SCROLL_UP', 'WAIT', 'ABSTAIN', 'DONE', 'BLOCKED'];
 
 function engineWith(answers: Record<string, unknown>, llmReply = '{"text": "a@b.com"}') {
   const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ answers }), { status: 200 }));
@@ -121,7 +121,7 @@ describe('Jev response validation', () => {
   it('resolves the target of the chosen operation', () => {
     const space = buildActionSpace(signupPage().selectorMap);
     const result = interpretAnswers(
-      { operation: choice('SELECT', OPS), select_target: choice('2:2', ['2:1', '2:2']) },
+      { operation: choice('SELECT', OPS), select_target: choice('2:2', ['2:1', '2:2', 'none']) },
       space,
     );
     expect(result).toMatchObject({ kind: 'action', operation: 'SELECT', target: { index: 2, optionText: 'France' } });
@@ -134,7 +134,7 @@ describe('JevDecisionEngine', () => {
   it('turns CLICK into click_element', async () => {
     const { engine, fetchImpl } = engineWith({
       operation: choice('CLICK', OPS),
-      click_target: choice('3', ['1', '3']),
+      click_target: choice('3', ['1', '3', 'none']),
     });
     const { decision } = await engine.decide(signupPage(), signal);
     expect(decision?.action).toEqual([{ click_element: { intent: 'CLICK [3] Sign up', index: 3 } }]);
@@ -144,7 +144,7 @@ describe('JevDecisionEngine', () => {
   it('asks the text LLM for TYPE_TEXT values', async () => {
     const { engine, textLLM } = engineWith({
       operation: choice('TYPE_TEXT', OPS),
-      type_text_target: choice('1', ['1']),
+      type_text_target: choice('1', ['1', 'none']),
     });
     const { decision } = await engine.decide(signupPage(), signal);
     expect(decision?.action).toEqual([{ input_text: { intent: 'TYPE_TEXT [1] Email', index: 1, text: 'a@b.com' } }]);
@@ -153,7 +153,7 @@ describe('JevDecisionEngine', () => {
 
   it('defers when the text LLM has no value', async () => {
     const { engine } = engineWith(
-      { operation: choice('TYPE_TEXT', OPS), type_text_target: choice('1', ['1']) },
+      { operation: choice('TYPE_TEXT', OPS), type_text_target: choice('1', ['1', 'none']) },
       '{"text": null}',
     );
     expect((await engine.decide(signupPage(), signal)).decision).toBeNull();
@@ -163,22 +163,27 @@ describe('JevDecisionEngine', () => {
     expect(
       (await engineWith({ operation: choice('DONE', OPS) }).engine.decide(signupPage(), signal)).decision,
     ).toBeNull();
-    const lowConfidence = { operation: choice('CLICK', OPS, 0.3), click_target: choice('3', ['1', '3']) };
+    const lowConfidence = { operation: choice('CLICK', OPS, 0.3), click_target: choice('3', ['1', '3', 'none']) };
     expect((await engineWith(lowConfidence).engine.decide(signupPage(), signal)).decision).toBeNull();
-    const lowTarget = { operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3'], 0.51) };
+    const lowTarget = { operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3', 'none'], 0.51) };
     expect((await engineWith(lowTarget).engine.decide(signupPage(), signal)).decision).toBeNull();
   });
 
   it('records why a step was deferred', async () => {
     const done = await engineWith({ operation: choice('DONE', OPS) }).engine.decide(signupPage(), signal);
     expect(done.trace).toMatchObject({ operation: 'DONE', deferred: 'task looks done' });
-    const lowTarget = { operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3'], 0.51) };
+    const lowTarget = { operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3', 'none'], 0.51) };
     const unsure = await engineWith(lowTarget).engine.decide(signupPage(), signal);
     expect(unsure.trace).toMatchObject({ target: '[3] Sign up', deferred: 'unsure which element' });
   });
 
   it('ranks target alternatives and reports the top-two margin', async () => {
-    const clickTarget = { type: 'choice', choice: '3', probabilities: { '1': 0.3, '3': 0.7 }, confidence: 0.8 };
+    const clickTarget = {
+      type: 'choice',
+      choice: '3',
+      probabilities: { '1': 0.3, '3': 0.7, none: 0 },
+      confidence: 0.8,
+    };
     const { trace } = await engineWith({ operation: choice('CLICK', OPS), click_target: clickTarget }).engine.decide(
       signupPage(),
       signal,
@@ -186,13 +191,44 @@ describe('JevDecisionEngine', () => {
     expect(trace?.alternatives).toEqual([
       { label: '[3] Sign up', p: 0.7 },
       { label: '[1] Email', p: 0.3 },
+      { label: 'none', p: 0 },
     ]);
     expect(trace?.margin).toBeCloseTo(0.4);
     expect(trace?.deferred).toBeUndefined();
   });
 
+  it('defers when Jev abstains or picks no target', async () => {
+    const abstain = await engineWith({ operation: choice('ABSTAIN', OPS) }).engine.decide(signupPage(), signal);
+    expect(abstain).toMatchObject({ decision: null, trace: { operation: 'ABSTAIN', deferred: 'jev abstained' } });
+    const noTarget = { operation: choice('CLICK', OPS), click_target: choice('none', ['1', '3', 'none']) };
+    const none = await engineWith(noTarget).engine.decide(signupPage(), signal);
+    expect(none).toMatchObject({ decision: null, trace: { operation: 'ABSTAIN', deferred: 'jev abstained' } });
+  });
+
+  it('offers a none candidate in every target question', () => {
+    const state = signupPage();
+    const body = buildJevRequest(state, buildActionSpace(state.selectorMap), 'goal', [], 'm');
+    for (const key of ['click_target', 'select_target', 'type_text_target']) {
+      expect(Object.keys((body.questions[key] as { criteria: object }).criteria)).toContain('none');
+    }
+  });
+
+  it('uses the configured confidence thresholds', async () => {
+    const answers = { operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3', 'none'], 0.55) };
+    const { engine } = engineWith(answers);
+    expect((await engine.decide(signupPage(), signal)).decision).toBeNull();
+    const lenient = new JevDecisionEngine({
+      apiKey: 'sk-or-test',
+      textLLM: {} as BaseChatModel,
+      getGoal: () => 'goal',
+      minTargetConfidence: 0.5,
+      fetchImpl: async () => new Response(JSON.stringify({ answers }), { status: 200 }),
+    });
+    expect((await lenient.decide(signupPage(), signal)).decision).not.toBeNull();
+  });
+
   it('defers after the same decision repeats three times', async () => {
-    const { engine } = engineWith({ operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3']) });
+    const { engine } = engineWith({ operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3', 'none']) });
     expect((await engine.decide(signupPage(), signal)).decision).not.toBeNull();
     expect((await engine.decide(signupPage(), signal)).decision).not.toBeNull();
     expect((await engine.decide(signupPage(), signal)).decision).toBeNull();
