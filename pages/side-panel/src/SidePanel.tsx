@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RxDiscordLogo } from 'react-icons/rx';
-import { FiSettings, FiPlus, FiClock, FiChevronLeft } from 'react-icons/fi';
+import { FiSettings, FiPlus, FiClock, FiChevronLeft, FiMoreHorizontal, FiCheck, FiArrowDown } from 'react-icons/fi';
 import {
   type Message,
   Actors,
@@ -12,7 +12,10 @@ import {
 } from '@extension/storage';
 import favoritesStorage, { type FavoritePrompt } from '@extension/storage/lib/prompt/favorites';
 import { t } from '@extension/i18n';
-import MessageList from './components/MessageList';
+import MessageList, { type Activity } from './components/MessageList';
+import ContextPeek from './components/ModelView';
+import Welcome from './components/Welcome';
+import { latestView, withoutPageText } from './components/steps';
 import ChatInput from './components/ChatInput';
 import ChatHistoryList from './components/ChatHistoryList';
 import BookmarkList from './components/BookmarkList';
@@ -31,9 +34,29 @@ declare global {
 // Rows for these are shown as failures whatever their wording
 const FAILURE_STATES = [ExecutionState.TASK_FAIL, ExecutionState.STEP_FAIL, ExecutionState.ACT_FAIL];
 
+// The choice between the plain view and the one with every step's model, confidence and timing
+const DETAILED_VIEW_KEY = 'nb-detailed-view';
+
+function readDetailedView(): boolean {
+  try {
+    return localStorage.getItem(DETAILED_VIEW_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 const SidePanel = () => {
-  const progressMessage = 'Showing progress...';
   const [messages, setMessages] = useState<Message[]>([]);
+  // what the agent is doing between the steps it has finished
+  const [activity, setActivity] = useState<Activity | null>(null);
+  const [detailed, setDetailed] = useState(readDetailedView);
+  const [sessionTitle, setSessionTitle] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // the chat follows new steps only while the user is reading at its end
+  const [awayFromEnd, setAwayFromEnd] = useState(false);
+  const followRef = useRef(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [inputEnabled, setInputEnabled] = useState(true);
   const [showStopButton, setShowStopButton] = useState(false);
   // action text awaiting the user's approval (confirm sensitive clicks setting)
@@ -130,23 +153,17 @@ const SidePanel = () => {
   }, [isReplaying]);
 
   const appendMessage = useCallback((newMessage: Message, sessionId?: string | null) => {
-    // Don't save progress messages
-    const isProgressMessage = newMessage.content === progressMessage;
-
-    setMessages(prev => {
-      const filteredMessages = prev.filter((msg, idx) => !(msg.content === progressMessage && idx === prev.length - 1));
-      return [...filteredMessages, newMessage];
-    });
+    setMessages(prev => [...prev, newMessage]);
 
     // Use provided sessionId if available, otherwise fall back to sessionIdRef.current
     const effectiveSessionId = sessionId !== undefined ? sessionId : sessionIdRef.current;
 
     console.log('sessionId', effectiveSessionId);
 
-    // Save message to storage if we have a session and it's not a progress message
-    if (effectiveSessionId && !isProgressMessage) {
+    // Save message to storage if we have a session
+    if (effectiveSessionId) {
       chatHistoryStore
-        .addMessage(effectiveSessionId, newMessage)
+        .addMessage(effectiveSessionId, withoutPageText(newMessage))
         .catch(err => console.error('Failed to save message to history:', err));
     }
   }, []);
@@ -156,7 +173,6 @@ const SidePanel = () => {
       const { actor, state, timestamp, data } = event;
       const content = data?.details;
       let skip = true;
-      let displayProgress = false;
 
       switch (actor) {
         case Actors.SYSTEM:
@@ -166,6 +182,7 @@ const SidePanel = () => {
               setIsHistoricalSession(false);
               break;
             case ExecutionState.TASK_OK:
+              setActivity(null);
               setPendingConfirmation(null);
               setIsFollowUpMode(true);
               setInputEnabled(true);
@@ -173,6 +190,7 @@ const SidePanel = () => {
               setIsReplaying(false);
               break;
             case ExecutionState.TASK_FAIL:
+              setActivity(null);
               setPendingConfirmation(null);
               setIsFollowUpMode(true);
               setInputEnabled(true);
@@ -181,6 +199,7 @@ const SidePanel = () => {
               skip = false;
               break;
             case ExecutionState.TASK_CANCEL:
+              setActivity(null);
               setPendingConfirmation(null);
               setIsFollowUpMode(false);
               setInputEnabled(true);
@@ -202,7 +221,7 @@ const SidePanel = () => {
         case Actors.PLANNER:
           switch (state) {
             case ExecutionState.STEP_START:
-              displayProgress = true;
+              setActivity({ phase: 'planning' });
               break;
             case ExecutionState.STEP_OK:
               skip = false;
@@ -220,22 +239,25 @@ const SidePanel = () => {
         case Actors.NAVIGATOR:
           switch (state) {
             case ExecutionState.STEP_START:
-              displayProgress = true;
+              setActivity(prev => ({ phase: 'reading', view: prev?.view }));
+              break;
+            case ExecutionState.STEP_OBSERVE:
+              // the page has been read: what the model is given about it is shown while it decides
+              if (data?.meta?.kind === 'observe') setActivity({ phase: 'deciding', view: data.meta.view });
               break;
             case ExecutionState.STEP_OK:
               // one row per step, carrying who decided and what ran
               skip = !data?.meta;
-              displayProgress = false;
+              setActivity(prev => ({ phase: 'reading', view: prev?.view }));
               break;
             case ExecutionState.STEP_FAIL:
               skip = false;
-              displayProgress = false;
               break;
             case ExecutionState.STEP_CANCEL:
-              displayProgress = false;
               break;
             case ExecutionState.ACT_START:
-              // shown inside the step row once the step finishes
+              // the step row comes once the step finishes; until then the action is what is happening now
+              setActivity(prev => ({ phase: 'acting', text: content, view: prev?.view }));
               break;
             case ExecutionState.ACT_OK:
               skip = !isReplayingRef.current;
@@ -245,6 +267,7 @@ const SidePanel = () => {
               break;
             case ExecutionState.ACT_CONFIRM:
               setPendingConfirmation(content || '');
+              setActivity(prev => ({ phase: 'waiting', view: prev?.view }));
               break;
             default:
               console.error('Invalid action', state);
@@ -255,7 +278,6 @@ const SidePanel = () => {
           // Handle legacy validator events from historical messages
           switch (state) {
             case ExecutionState.STEP_START:
-              displayProgress = true;
               break;
             case ExecutionState.STEP_OK:
               skip = false;
@@ -282,14 +304,6 @@ const SidePanel = () => {
           ...(FAILURE_STATES.includes(state) ? { failed: true } : {}),
         });
       }
-
-      if (displayProgress) {
-        appendMessage({
-          actor,
-          content: progressMessage,
-          timestamp: timestamp,
-        });
-      }
     },
     [appendMessage],
   );
@@ -301,6 +315,7 @@ const SidePanel = () => {
       sessionIdRef.current = null;
       setCurrentSessionId(null);
       setMessages([]);
+      setActivity(null);
       setIsFollowUpMode(false);
       setIsHistoricalSession(false);
       setInputEnabled(false);
@@ -309,6 +324,7 @@ const SidePanel = () => {
       try {
         const title = userMessage.content;
         const session = await chatHistoryStore.createSession(title.substring(0, 50) + (title.length > 50 ? '...' : ''));
+        setSessionTitle(session.title);
         setCurrentSessionId(session.id);
         sessionIdRef.current = session.id;
       } catch (err) {
@@ -354,6 +370,7 @@ const SidePanel = () => {
             timestamp: Date.now(),
             failed: true,
           });
+          setActivity(null);
           setInputEnabled(true);
           setShowStopButton(false);
         } else if (message && message.type === 'speech_to_text_result') {
@@ -394,6 +411,7 @@ const SidePanel = () => {
           clearInterval(heartbeatIntervalRef.current);
           heartbeatIntervalRef.current = null;
         }
+        setActivity(null);
         setInputEnabled(true);
         setShowStopButton(false);
       });
@@ -486,6 +504,7 @@ const SidePanel = () => {
 
       // Store the new session ID in both state and ref
       const newTaskId = newSession.id;
+      setSessionTitle(newSession.title);
       setCurrentSessionId(newTaskId);
       sessionIdRef.current = newTaskId;
 
@@ -619,6 +638,9 @@ const SidePanel = () => {
 
       setInputEnabled(false);
       setShowStopButton(true);
+      // whoever sends a message wants to see what comes of it
+      followRef.current = true;
+      setAwayFromEnd(false);
 
       // Create a new chat session for this task if not in follow-up mode
       if (!isFollowUpMode) {
@@ -631,6 +653,7 @@ const SidePanel = () => {
 
         // Store the session ID in both state and ref
         const sessionId = newSession.id;
+        setSessionTitle(newSession.title);
         setCurrentSessionId(sessionId);
         sessionIdRef.current = sessionId;
       }
@@ -679,6 +702,7 @@ const SidePanel = () => {
         content: errorMessage,
         timestamp: Date.now(),
       });
+      setActivity(null);
       setInputEnabled(true);
       setShowStopButton(false);
       stopConnection();
@@ -704,6 +728,7 @@ const SidePanel = () => {
         timestamp: Date.now(),
       });
     }
+    setActivity(null);
     setInputEnabled(true);
     setShowStopButton(false);
   };
@@ -711,6 +736,8 @@ const SidePanel = () => {
   const handleNewChat = () => {
     // Clear messages and start a new chat
     setMessages([]);
+    setActivity(null);
+    setSessionTitle(null);
     setCurrentSessionId(null);
     sessionIdRef.current = null;
     setInputEnabled(true);
@@ -740,6 +767,7 @@ const SidePanel = () => {
     setShowHistory(false);
     if (reset) {
       setCurrentSessionId(null);
+      setSessionTitle(null);
       setMessages([]);
       setIsFollowUpMode(false);
       setIsHistoricalSession(false);
@@ -751,7 +779,11 @@ const SidePanel = () => {
       const fullSession = await chatHistoryStore.getSession(sessionId);
       if (fullSession && fullSession.messages.length > 0) {
         setCurrentSessionId(fullSession.id);
+        setSessionTitle(fullSession.title);
         setMessages(fullSession.messages);
+        setActivity(null);
+        followRef.current = true;
+        setAwayFromEnd(false);
         // A message sent from here continues the session: the background reloads its context
         setIsFollowUpMode(true);
         setIsHistoricalSession(true); // Mark this as a historical session
@@ -770,6 +802,7 @@ const SidePanel = () => {
       if (sessionId === currentSessionId) {
         setMessages([]);
         setCurrentSessionId(null);
+        setSessionTitle(null);
       }
     } catch (error) {
       console.error('Failed to delete session:', error);
@@ -888,11 +921,54 @@ const SidePanel = () => {
     };
   }, [stopConnection]);
 
-  // Scroll to bottom when new messages arrive
+  // New steps are followed while the user is at the end of the chat; someone reading further up is left alone
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
+    if (followRef.current) messagesEndRef.current?.scrollIntoView();
+  }, [messages, activity]);
+
+  const handleScroll = () => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const atEnd = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+    followRef.current = atEnd;
+    setAwayFromEnd(!atEnd);
+  };
+
+  const jumpToEnd = () => {
+    followRef.current = true;
+    setAwayFromEnd(false);
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  };
+
+  const chooseDetailed = (value: boolean) => {
+    setDetailed(value);
+    setMenuOpen(false);
+    try {
+      localStorage.setItem(DETAILED_VIEW_KEY, value ? '1' : '0');
+    } catch {
+      // the choice then lasts as long as the panel stays open
+    }
+  };
+
+  // the menu closes on a click anywhere else, and on Escape
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [menuOpen]);
+
+  // what the model is looking at: the page it has just been shown, else the one its last step was decided on
+  const modelView = useMemo(() => activity?.view ?? latestView(messages), [activity, messages]);
 
   const handleMicClick = async () => {
     if (isRecording) {
@@ -1058,28 +1134,33 @@ const SidePanel = () => {
     }
   };
 
+  let placeholder = t('chat_input_placeholder');
+  if (showStopButton) placeholder = t('chat_input_placeholder_working');
+  else if (messages.length > 0) placeholder = t('chat_input_placeholder_followUp');
+
   const chatInput = (
-    <div className="border-t border-nb-line p-2">
+    <div className="nb-composer">
+      {awayFromEnd && messages.length > 0 && (
+        <button type="button" className="nb-jump" onClick={jumpToEnd}>
+          <FiArrowDown aria-hidden />
+          {t('chat_jumpToLatest')}
+        </button>
+      )}
       {pendingConfirmation !== null && (
-        <div
-          role="alertdialog"
-          aria-label={pendingConfirmation}
-          className="mb-2 flex items-center gap-2 rounded-xl border border-l-[3px] border-nb-line border-l-nb-warning bg-nb-tile p-2 pl-3 text-[12.5px] text-nb-ink shadow-nb">
-          <span className="min-w-0 flex-1 break-words">{pendingConfirmation}</span>
-          <button
-            type="button"
-            onClick={() => handleConfirmAction(false)}
-            className="rounded-lg border border-nb-line bg-nb-tile-2 px-2.5 py-1 font-medium text-nb-ink-2 transition-colors hover:text-nb-ink">
-            {t('chat_confirm_decline')}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleConfirmAction(true)}
-            className="rounded-lg bg-nb-warning px-2.5 py-1 font-medium text-white transition-opacity hover:opacity-90">
-            {t('chat_confirm_approve')}
-          </button>
+        <div role="alertdialog" aria-label={pendingConfirmation} className="nb-confirm">
+          <div className="nb-confirm-title">{t('chat_confirm_title')}</div>
+          <p>{pendingConfirmation}</p>
+          <div className="nb-confirm-actions">
+            <button type="button" onClick={() => handleConfirmAction(false)} className="nb-button">
+              {t('chat_confirm_decline')}
+            </button>
+            <button type="button" onClick={() => handleConfirmAction(true)} className="nb-button primary warn">
+              {t('chat_confirm_approve')}
+            </button>
+          </div>
         </div>
       )}
+      {modelView && messages.length > 0 && <ContextPeek view={modelView} live={showStopButton} />}
       <ChatInput
         onSendMessage={handleSendMessage}
         onStopTask={handleStopTask}
@@ -1088,6 +1169,7 @@ const SidePanel = () => {
         isProcessingSpeech={isProcessingSpeech}
         disabled={!inputEnabled}
         showStopButton={showStopButton}
+        placeholder={placeholder}
         setContent={setter => {
           setInputTextRef.current = setter;
         }}
@@ -1099,19 +1181,24 @@ const SidePanel = () => {
 
   return (
     <div className="nb-panel flex h-screen flex-col overflow-hidden">
-      <header className="header relative">
-        <div className="header-logo">
+      <header className="header">
+        <div className="header-lead">
           {showHistory ? (
             <button
               type="button"
               onClick={() => handleBackToChat(false)}
-              className="header-icon gap-1 text-sm font-medium"
+              className="header-icon gap-1 text-[13px] font-medium"
               aria-label={t('nav_back_a11y')}>
               <FiChevronLeft size={16} />
-              {t('nav_back')}
+              {t('chat_history_title')}
             </button>
           ) : (
-            <img src="/icon-128.png" alt="Nanobrowser" className="size-5" />
+            <>
+              <img src="/icon-128.png" alt="" className="size-[18px] shrink-0" />
+              <span className="header-title" title={sessionTitle ?? undefined}>
+                {sessionTitle ?? 'Nanobrowser'}
+              </span>
+            </>
           )}
         </div>
         <div className="header-icons">
@@ -1123,7 +1210,7 @@ const SidePanel = () => {
                 className="header-icon"
                 aria-label={t('nav_newChat_a11y')}
                 title={t('nav_newChat_a11y')}>
-                <FiPlus size={17} />
+                <FiPlus size={16} />
               </button>
               <button
                 type="button"
@@ -1131,40 +1218,75 @@ const SidePanel = () => {
                 className="header-icon"
                 aria-label={t('nav_loadHistory_a11y')}
                 title={t('nav_loadHistory_a11y')}>
-                <FiClock size={17} />
+                <FiClock size={16} />
               </button>
             </>
           )}
-          {/* closing the side panel ends a running task, so not while one runs */}
-          {!showStopButton && <OpenInWindowButton />}
-          <a
-            href="https://discord.gg/NN3ABHggMK"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="header-icon"
-            aria-label="Discord"
-            title="Discord">
-            <RxDiscordLogo size={17} />
-          </a>
-          <button
-            type="button"
-            onClick={() => chrome.runtime.openOptionsPage()}
-            className="header-icon"
-            aria-label={t('nav_settings_a11y')}
-            title={t('nav_settings_a11y')}>
-            <FiSettings size={17} />
-          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="header-icon"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label={t('nav_more_a11y')}
+              title={t('nav_more_a11y')}>
+              <FiMoreHorizontal size={16} />
+            </button>
+            {menuOpen && (
+              <div className="nb-menu" role="menu">
+                <div className="nb-label px-2.5 pb-1 pt-1.5">{t('nav_view')}</div>
+                <button type="button" role="menuitemradio" aria-checked={!detailed} onClick={() => chooseDetailed(false)}>
+                  <span className="nb-menu-check">{!detailed && <FiCheck size={14} />}</span>
+                  <span>
+                    {t('nav_view_simple')}
+                    <small>{t('nav_view_simple_hint')}</small>
+                  </span>
+                </button>
+                <button type="button" role="menuitemradio" aria-checked={detailed} onClick={() => chooseDetailed(true)}>
+                  <span className="nb-menu-check">{detailed && <FiCheck size={14} />}</span>
+                  <span>
+                    {t('nav_view_detailed')}
+                    <small>{t('nav_view_detailed_hint')}</small>
+                  </span>
+                </button>
+                <hr />
+                {/* closing the side panel ends a running task, so not while one runs */}
+                {!showStopButton && <OpenInWindowButton />}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    chrome.runtime.openOptionsPage();
+                  }}>
+                  <span className="nb-menu-check">
+                    <FiSettings size={14} />
+                  </span>
+                  {t('nav_settings_a11y')}
+                </button>
+                <a href="https://discord.gg/NN3ABHggMK" target="_blank" rel="noopener noreferrer" role="menuitem">
+                  <span className="nb-menu-check">
+                    <RxDiscordLogo size={14} />
+                  </span>
+                  Discord
+                </a>
+              </div>
+            )}
+          </div>
         </div>
       </header>
       {showHistory ? (
         <div className="flex-1 overflow-hidden">
-          <ChatHistoryList
-            sessions={chatSessions}
-            onSessionSelect={handleSessionSelect}
-            onSessionDelete={handleSessionDelete}
-            onSessionBookmark={handleSessionBookmark}
-            visible={true}
-          />
+          <div className="nb-col h-full">
+            <ChatHistoryList
+              sessions={chatSessions}
+              onSessionSelect={handleSessionSelect}
+              onSessionDelete={handleSessionDelete}
+              onSessionBookmark={handleSessionBookmark}
+              visible={true}
+            />
+          </div>
         </div>
       ) : (
         <>
@@ -1178,22 +1300,17 @@ const SidePanel = () => {
 
           {/* Show setup message when no models are configured */}
           {hasConfiguredModels === false && (
-            <div className="flex flex-1 flex-col justify-center p-4">
-              <div className="rounded-xl border border-nb-line bg-nb-tile p-4 text-left shadow-nb">
-                <div className="mb-3 flex items-center gap-2">
-                  <img src="/icon-128.png" alt="" className="size-5" />
-                  <span className="nb-label">Nanobrowser</span>
-                </div>
-                <h3 className="mb-1 text-[15px] font-semibold tracking-tight">{t('welcome_title')}</h3>
-                <p className="mb-4 text-[13px] leading-relaxed text-nb-ink-2">{t('welcome_instruction')}</p>
-                <button
-                  type="button"
-                  onClick={() => chrome.runtime.openOptionsPage()}
-                  className="rounded-lg bg-nb-llm px-3 py-1.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90">
+            <div className="nb-col flex flex-1 flex-col justify-center p-5">
+              <div className="nb-welcome-hero">
+                <img src="/icon-128.png" alt="" className="nb-welcome-logo" />
+                <h1>{t('welcome_title')}</h1>
+                <p>{t('welcome_instruction')}</p>
+                <button type="button" onClick={() => chrome.runtime.openOptionsPage()} className="nb-button primary mt-4">
+                  <FiSettings aria-hidden />
                   {t('welcome_openSettings')}
                 </button>
               </div>
-              <div className="mt-3 flex gap-4 px-1 text-xs text-nb-muted">
+              <div className="mt-6 flex gap-4 text-xs text-nb-muted">
                 <a
                   href="https://github.com/nanobrowser/nanobrowser?tab=readme-ov-file#-quick-start"
                   target="_blank"
@@ -1215,29 +1332,38 @@ const SidePanel = () => {
           {/* Show normal chat interface when models are configured */}
           {hasConfiguredModels === true && (
             <>
-              {messages.length === 0 && (
-                <>
-                  {chatInput}
-                  <div className="flex-1 overflow-y-auto">
-                    <BookmarkList
-                      bookmarks={favoritePrompts}
-                      onBookmarkSelect={handleBookmarkSelect}
-                      onBookmarkUpdateTitle={handleBookmarkUpdateTitle}
-                      onBookmarkDelete={handleBookmarkDelete}
-                      onBookmarkReorder={handleBookmarkReorder}
-                    />
-                  </div>
-                </>
-              )}
-              {messages.length > 0 && (
-                <>
-                  <div className="scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll scroll-smooth p-2">
-                    <MessageList messages={messages} />
-                    <div ref={messagesEndRef} />
-                  </div>
-                  {chatInput}
-                </>
-              )}
+              <div
+                ref={scrollRef}
+                onScroll={handleScroll}
+                className="scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll">
+                <div className="nb-col flex min-h-full flex-col px-3 py-3">
+                  {messages.length === 0 ? (
+                    <Welcome>
+                      {favoritePrompts.length > 0 && (
+                        <BookmarkList
+                          bookmarks={favoritePrompts}
+                          onBookmarkSelect={handleBookmarkSelect}
+                          onBookmarkUpdateTitle={handleBookmarkUpdateTitle}
+                          onBookmarkDelete={handleBookmarkDelete}
+                          onBookmarkReorder={handleBookmarkReorder}
+                        />
+                      )}
+                    </Welcome>
+                  ) : (
+                    <>
+                      <MessageList
+                        messages={messages}
+                        running={showStopButton}
+                        activity={activity}
+                        detailed={detailed}
+                        onRetry={inputEnabled ? handleSendMessage : undefined}
+                      />
+                      <div ref={messagesEndRef} />
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="nb-col w-full">{chatInput}</div>
             </>
           )}
         </>

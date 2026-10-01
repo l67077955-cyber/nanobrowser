@@ -29,25 +29,40 @@ code {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.625rem 0.75rem;
-  background-color: transparent;
-  border-bottom: 1px solid var(--nb-line);
+  gap: 8px;
+  padding: 5px 6px 5px 12px;
+  border-bottom: 1px solid var(--nb-hair);
 }
 
-.header-logo {
+.header-lead {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+/* the chat's name takes the room the icons leave */
+.header-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-icons {
   display: flex;
-  gap: 2px;
+  flex: none;
+  gap: 1px;
   align-items: center;
 }
 
 .header-icon {
   display: inline-flex;
+  align-items: center;
   padding: 6px;
   border-radius: 8px;
   color: var(--nb-ink-2);
@@ -57,7 +72,8 @@ code {
     background-color 0.15s ease;
 }
 
-.header-icon:hover {
+.header-icon:hover,
+.header-icon[aria-expanded='true'] {
   color: var(--nb-ink);
   background: var(--nb-tile-2);
 }

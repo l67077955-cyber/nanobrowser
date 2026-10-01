@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { FiExternalLink } from 'react-icons/fi';
 import { t } from '@extension/i18n';
 
-/** Moves Nanobrowser from the side panel into a window of its own. Not shown in that window. */
+/** Menu item that moves Nanobrowser from the side panel into a window of its own. Not shown in that window. */
 export default function OpenInWindowButton() {
   const [isDocked, setIsDocked] = useState(false);
 
@@ -26,13 +26,11 @@ export default function OpenInWindowButton() {
   };
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className="header-icon"
-      aria-label={t('nav_openInWindow_a11y')}
-      title={t('nav_openInWindow_a11y')}>
-      <FiExternalLink size={17} />
+    <button type="button" role="menuitem" onClick={handleClick}>
+      <span className="nb-menu-check">
+        <FiExternalLink size={14} />
+      </span>
+      {t('nav_openInWindow_a11y')}
     </button>
   );
 }

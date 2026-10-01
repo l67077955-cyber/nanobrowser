@@ -301,7 +301,6 @@
   "options_models_providers_custom_name_placeholder": {
     "message": "Nome do provedor"
   },
-
   "options_models_providers_apiKey": {
     "message": "Chave de API"
   },
@@ -320,21 +319,18 @@
   "options_models_providers_apiKey_show": {
     "message": "Mostrar chave de API"
   },
-
   "options_models_selection_header": {
     "message": "Seleção de Modelo"
   },
   "options_models_speechToText_header": {
     "message": "Modelo de Fala para Texto"
   },
-
   "options_models_agents_navigator": {
     "message": "Navega em sites e executa ações"
   },
   "options_models_agents_planner": {
     "message": "Desenvolve e refina estratégias para completar tarefas"
   },
-
   "options_models_labels_model": {
     "message": "Modelo"
   },
@@ -458,7 +454,6 @@
       }
     }
   },
-
   "options_firewall_header": {
     "message": "Acesso a sites"
   },
@@ -513,7 +508,6 @@
       }
     }
   },
-
   "bg_errors_noTabId": {
     "message": "Nenhum ID de aba fornecido"
   },
@@ -610,7 +604,6 @@
   "exec_replay_historyEmpty": {
     "message": "O histórico está vazio"
   },
-
   "act_searchGoogle_start": {
     "message": "Procurando por \"$QUERY$\" no Google",
     "placeholders": {
@@ -1073,7 +1066,6 @@
       }
     }
   },
-
   "chat_steps_summary_a11y": {
     "message": "Resumo da execução"
   },
@@ -1361,5 +1353,289 @@
   },
   "options_remote_confirm_note": {
     "message": "Actions that need your approval wait in the side panel. With the side panel closed they are declined."
+  },
+  "nav_more_a11y": {
+    "message": "More"
+  },
+  "nav_view": {
+    "message": "View"
+  },
+  "nav_view_simple": {
+    "message": "Simple"
+  },
+  "nav_view_simple_hint": {
+    "message": "What was done, in plain words"
+  },
+  "nav_view_detailed": {
+    "message": "Detailed"
+  },
+  "nav_view_detailed_hint": {
+    "message": "Adds the model, confidence and timing of every step"
+  },
+  "welcome_greeting_morning": {
+    "message": "Good morning"
+  },
+  "welcome_greeting_afternoon": {
+    "message": "Good afternoon"
+  },
+  "welcome_greeting_evening": {
+    "message": "Good evening"
+  },
+  "welcome_prompt": {
+    "message": "Tell me what you need done and I’ll do it in your browser, step by step, where you can watch."
+  },
+  "welcome_startsOn": {
+    "message": "I’ll start on"
+  },
+  "chat_input_placeholder_followUp": {
+    "message": "Reply, or ask for the next thing"
+  },
+  "chat_input_placeholder_working": {
+    "message": "Working on it. Press Stop to interrupt."
+  },
+  "chat_jumpToLatest": {
+    "message": "Latest"
+  },
+  "chat_confirm_title": {
+    "message": "Before I go on, is this okay?"
+  },
+  "chat_work_running": {
+    "message": "Working"
+  },
+  "chat_work_done": {
+    "message": "Worked for $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1",
+        "example": "42s"
+      }
+    }
+  },
+  "chat_work_thought": {
+    "message": "Thought for $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1",
+        "example": "4s"
+      }
+    }
+  },
+  "chat_work_steps": {
+    "message": "$COUNT$ steps",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "12"
+      }
+    }
+  },
+  "chat_work_steps_one": {
+    "message": "1 step"
+  },
+  "chat_work_more": {
+    "message": "and $COUNT$ more",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "chat_live_working": {
+    "message": "Working on it"
+  },
+  "chat_live_planning": {
+    "message": "Thinking about the next move"
+  },
+  "chat_live_reading": {
+    "message": "Reading the page"
+  },
+  "chat_live_deciding": {
+    "message": "Looking at $PAGE$ and deciding what to do",
+    "placeholders": {
+      "page": {
+        "content": "$1",
+        "example": "GitHub"
+      }
+    }
+  },
+  "chat_live_wrappingUp": {
+    "message": "Wrapping up"
+  },
+  "chat_live_waiting": {
+    "message": "Waiting for your OK"
+  },
+  "chat_step_page": {
+    "message": "Now on"
+  },
+  "chat_step_plan": {
+    "message": "Thought about what to do next"
+  },
+  "chat_step_saw": {
+    "message": "What the model saw"
+  },
+  "chat_step_decided": {
+    "message": "How it decided"
+  },
+  "chat_answer_copy": {
+    "message": "Copy"
+  },
+  "chat_answer_copied": {
+    "message": "Copied"
+  },
+  "chat_answer_done": {
+    "message": "All done."
+  },
+  "chat_notice_stopped": {
+    "message": "Stopped. What was already done on the page stays as it is."
+  },
+  "chat_fail_retry": {
+    "message": "Try again"
+  },
+  "chat_fail_settings": {
+    "message": "Open settings"
+  },
+  "chat_fail_details": {
+    "message": "What the error said"
+  },
+  "chat_fail_setup_title": {
+    "message": "I’m not set up yet"
+  },
+  "chat_fail_setup_hint": {
+    "message": "A model or an API key is missing. Add it in the settings and I can start."
+  },
+  "chat_fail_auth_title": {
+    "message": "The model provider turned down the API key"
+  },
+  "chat_fail_auth_hint": {
+    "message": "The key may be mistyped, expired, or meant for another provider. It can be checked in the settings."
+  },
+  "chat_fail_forbidden_title": {
+    "message": "The model provider refused the request"
+  },
+  "chat_fail_forbidden_hint": {
+    "message": "The account may not have access to this model. Another model can be chosen in the settings."
+  },
+  "chat_fail_rateLimit_title": {
+    "message": "The model provider is holding requests back"
+  },
+  "chat_fail_rateLimit_hint": {
+    "message": "The account is out of quota or sending too fast. Give it a moment, then try again."
+  },
+  "chat_fail_timeout_title": {
+    "message": "The model took too long to answer"
+  },
+  "chat_fail_timeout_hint": {
+    "message": "Nothing went wrong on the page. Try again, or choose a faster model in the settings."
+  },
+  "chat_fail_maxSteps_title": {
+    "message": "I ran out of steps before finishing"
+  },
+  "chat_fail_maxSteps_hint": {
+    "message": "The task needed more steps than the limit allows. Ask me to carry on from here, or raise the limit in the settings."
+  },
+  "chat_fail_network_title": {
+    "message": "I lost the connection"
+  },
+  "chat_fail_network_hint": {
+    "message": "The model or the extension could not be reached. Check the connection, then try again."
+  },
+  "chat_fail_blocked_title": {
+    "message": "That address is off limits"
+  },
+  "chat_fail_blocked_hint": {
+    "message": "The firewall in the settings does not allow it. The list can be changed there."
+  },
+  "chat_fail_unknown_title": {
+    "message": "Something went wrong and I had to stop"
+  },
+  "chat_fail_unknown_hint": {
+    "message": "Trying again often helps. The error itself is below if you want to look."
+  },
+  "chat_view_seeing": {
+    "message": "Seeing"
+  },
+  "chat_view_saw": {
+    "message": "Last saw"
+  },
+  "chat_view_summary": {
+    "message": "$COUNT$ elements",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
+  "chat_view_intro": {
+    "message": "The model does not see the page the way you do. For every step it gets a text list of what it can click or type into in the visible part of the page, along with the conversation so far."
+  },
+  "chat_view_elements": {
+    "message": "$COUNT$ things it can click or type into",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "42"
+      }
+    }
+  },
+  "chat_view_elements_none": {
+    "message": "Nothing here it can click or type into"
+  },
+  "chat_view_unreadable": {
+    "message": "This page could not be read"
+  },
+  "chat_view_seen_all": {
+    "message": "The whole page fits in view"
+  },
+  "chat_view_seen_part": {
+    "message": "In view: $FROM$–$TO$% of the page. The rest is out of sight until it scrolls.",
+    "placeholders": {
+      "from": {
+        "content": "$1",
+        "example": "0"
+      },
+      "to": {
+        "content": "$2",
+        "example": "35"
+      }
+    }
+  },
+  "chat_view_screenshot_yes": {
+    "message": "A screenshot went along with the text"
+  },
+  "chat_view_screenshot_no": {
+    "message": "Text only, no screenshot"
+  },
+  "chat_view_tabs": {
+    "message": "Knows of $COUNT$ other open tabs",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "chat_view_tabs_one": {
+    "message": "Knows of 1 other open tab"
+  },
+  "chat_view_tokens": {
+    "message": "$USED$ of $MAX$ tokens of context in use",
+    "placeholders": {
+      "used": {
+        "content": "$1",
+        "example": "12.4k"
+      },
+      "max": {
+        "content": "$2",
+        "example": "128k"
+      }
+    }
+  },
+  "chat_view_text_show": {
+    "message": "The page as the model reads it"
+  },
+  "chat_view_text_gone": {
+    "message": "The exact page text is kept only while the chat it was read in stays open."
   }
 }

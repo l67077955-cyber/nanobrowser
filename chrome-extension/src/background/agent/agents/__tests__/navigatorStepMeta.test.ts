@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { ActionResult } from '../../types';
-import { navigatorStepMeta } from '../navigator';
+import { navigatorStepMeta, pageView, targetLabel } from '../navigator';
+import { DOMElementNode } from '@src/background/browser/dom/views';
+import type { BrowserState } from '@src/background/browser/views';
 
 const jevTrace = {
   model: 'typesafe/jev-1.13:latest',
@@ -12,6 +14,10 @@ const jevTrace = {
   margin: 0.74,
   alternatives: [{ label: '[83] More', p: 0.86 }],
 };
+
+function element(tagName: string, attributes: Record<string, string>): DOMElementNode {
+  return new DOMElementNode({ tagName, xpath: null, attributes, children: [], isVisible: true });
+}
 
 describe('navigatorStepMeta', () => {
   it('credits Jev and its model when Jev decided', () => {
@@ -88,5 +94,72 @@ describe('navigatorStepMeta', () => {
       notes: [],
     });
     expect(meta).not.toHaveProperty('notes');
+  });
+
+  it('names the element an action touched and what it was given, but not what a field holds', () => {
+    const selectorMap = new Map([
+      [8, element('input', { type: 'password', placeholder: 'Password', value: 'hunter2' })],
+      [12, element('input', { type: 'submit', value: 'Sign in' })],
+    ]);
+    const meta = navigatorStepMeta({
+      engineResult: { decision: null },
+      llmModel: 'deepseek-flash',
+      decisionMs: 10,
+      actions: [
+        { input_text: { index: 8, text: 'hunter2' } },
+        { click_element: { index: 12 } },
+        { go_to_url: { url: 'https://example.com/a' } },
+        { send_keys: { keys: 'Control+a' } },
+        { send_keys: { keys: 'hunter2' } },
+      ],
+      results: Array.from({ length: 5 }, () => new ActionResult({})),
+      selectorMap,
+    });
+    const actions = meta.kind === 'navigator' ? meta.actions : [];
+    expect(actions.map(a => a.label)).toEqual(['Password', 'Sign in', undefined, undefined, undefined]);
+    expect(actions.map(a => a.value)).toEqual([undefined, undefined, 'https://example.com/a', 'Control+a', undefined]);
+    expect(JSON.stringify(meta)).not.toContain('hunter2');
+  });
+});
+
+describe('targetLabel', () => {
+  it('has nothing to say about a field without a label', () => {
+    expect(targetLabel(element('textarea', { value: 'a draft' }))).toBeUndefined();
+  });
+});
+
+describe('pageView', () => {
+  const state = {
+    tabId: 1,
+    url: 'https://example.com/',
+    title: 'Example',
+    scrollY: 500,
+    scrollHeight: 2000,
+    visualViewportHeight: 500,
+    selectorMap: new Map([[0, element('a', {})]]),
+    tabs: [
+      { id: 1, url: 'https://example.com/', title: 'Example' },
+      { id: 2, url: 'https://example.org/', title: 'Other' },
+    ],
+  } as unknown as BrowserState;
+
+  it('says how much of the page was in view and what went with it', () => {
+    expect(pageView(state, '[0]<a>Home</a>', { screenshot: false, tokens: 1200, maxTokens: 128000 })).toEqual({
+      url: 'https://example.com/',
+      title: 'Example',
+      elements: 1,
+      seen: [0.25, 0.5],
+      screenshot: false,
+      tabs: 1,
+      tokens: 1200,
+      maxTokens: 128000,
+      text: '[0]<a>Home</a>',
+    });
+  });
+
+  it('cuts a long page text short', () => {
+    const view = pageView(state, 'x'.repeat(9000), { screenshot: true });
+    expect(view.text).toHaveLength(8002);
+    expect(view).not.toHaveProperty('tokens');
   });
 });

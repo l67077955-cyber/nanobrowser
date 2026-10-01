@@ -33,7 +33,7 @@ import { isAnthropicAdaptiveThinkingModel } from '../helper';
 import { convertMessagesForPlanner } from '../messages/utils';
 import { type DOMHistoryElement } from '@src/background/browser/dom/history/view';
 import type { EngineResult, NavigatorDecisionEngine } from '../engines/types';
-import type { StepMeta } from '@extension/storage';
+import type { PageView, StepMeta } from '@extension/storage';
 import { t } from '@extension/i18n';
 import type { DOMElementNode } from '@src/background/browser/dom/views';
 
@@ -51,6 +51,91 @@ function elementLabel(node: DOMElementNode): string {
     ) ?? '';
   const flat = label.replace(/\s+/g, ' ').trim();
   return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
+}
+
+const FIELD_TAGS = new Set(['textarea', 'select']);
+const BUTTON_INPUT_TYPES = new Set(['submit', 'button', 'reset', 'image']);
+
+/** What the page calls an element, for the side panel. A field goes by its label, never by what it holds. */
+export function targetLabel(node: DOMElementNode): string | undefined {
+  const attrs = node.attributes;
+  const tag = node.tagName?.toLowerCase() ?? '';
+  const isField =
+    FIELD_TAGS.has(tag) ||
+    (tag === 'input' && !BUTTON_INPUT_TYPES.has((attrs.type ?? '').toLowerCase())) ||
+    attrs.contenteditable === 'true' ||
+    attrs.role === 'textbox';
+  const candidates = isField
+    ? [attrs['aria-label'], attrs.placeholder, attrs.title, attrs.name]
+    : [attrs['aria-label'], node.getAllTextTillNextClickableElement(2), attrs.title, attrs.value];
+  const flat = (candidates.find(c => c && c.trim()) ?? '').replace(/\s+/g, ' ').trim();
+  if (!flat) return undefined;
+  return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
+}
+
+const KEY_NAME =
+  /^(Enter|Escape|Tab|Backspace|Delete|Space|Home|End|PageUp|PageDown|Arrow(Up|Down|Left|Right)|Control|Shift|Alt|Meta|F\d{1,2})$/;
+
+/** Keys as pressed, when they are named keys or a shortcut; anything else may be text typed through send_keys */
+function keyNames(keys: string): string | undefined {
+  const parts = keys.split('+');
+  const named = parts.every((part, i) => KEY_NAME.test(part) || (parts.length > 1 && i > 0 && part.length === 1));
+  return named ? keys : undefined;
+}
+
+/** What an action was given besides its element: an address, a search, a key, an option. Never typed text. */
+function actionValue(name: string, args: Record<string, unknown>): string | undefined {
+  let value: unknown;
+  switch (name) {
+    case 'go_to_url':
+    case 'open_tab':
+      value = args.url;
+      break;
+    case 'search_google':
+      value = args.query;
+      break;
+    case 'select_dropdown_option':
+    case 'scroll_to_text':
+      value = args.text;
+      break;
+    case 'send_keys':
+      value = typeof args.keys === 'string' ? keyNames(args.keys) : undefined;
+      break;
+    case 'wait':
+      value = args.seconds;
+      break;
+    case 'scroll_to_percent':
+      value = args.yPercent;
+      break;
+  }
+  if (typeof value === 'number') return String(value);
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  return value.length > 200 ? `${value.slice(0, 199)}…` : value;
+}
+
+/** The page text is shown as the model got it, up to this many characters */
+const PAGE_TEXT_LIMIT = 8000;
+
+/** Side-panel record of what the model is given about the page for one step */
+export function pageView(
+  state: BrowserState,
+  text: string,
+  sent: { screenshot: boolean; tokens?: number; maxTokens?: number },
+): PageView {
+  const share = (y: number) => Math.round(Math.min(1, Math.max(0, y / state.scrollHeight)) * 100) / 100;
+  return {
+    url: state.url,
+    title: state.title,
+    elements: state.selectorMap.size,
+    ...(state.scrollHeight > 0
+      ? { seen: [share(state.scrollY), share(state.scrollY + state.visualViewportHeight)] as [number, number] }
+      : {}),
+    screenshot: sent.screenshot,
+    tabs: state.tabs.filter(tab => tab.id !== state.tabId).length,
+    ...(state.unreadable ? { unreadable: true } : {}),
+    ...(sent.tokens !== undefined ? { tokens: sent.tokens, maxTokens: sent.maxTokens } : {}),
+    text: text.length > PAGE_TEXT_LIMIT ? `${text.slice(0, PAGE_TEXT_LIMIT)}\n…` : text,
+  };
 }
 
 interface ParsedModelOutput {
@@ -101,11 +186,16 @@ interface NavigatorStepMetaInput {
   results: ActionResult[];
   /** what the step told the model besides the results of its actions */
   notes?: string[];
+  /** what the model was given about the page */
+  view?: PageView;
+  /** the elements the actions' indices refer to */
+  selectorMap?: Map<number, DOMElementNode>;
 }
 
 /** Side-panel record of a finished navigator step: who decided, how fast, and what ran */
 export function navigatorStepMeta(input: NavigatorStepMetaInput): StepMeta {
-  const { engineResult, llmModel, decisionMs, observeMs, actMs, goal, actions, results, notes } = input;
+  const { engineResult, llmModel, decisionMs, observeMs, actMs, goal, actions, results, notes, view, selectorMap } =
+    input;
   const byEngine = engineResult.decision !== null;
   return {
     kind: 'navigator',
@@ -117,15 +207,21 @@ export function navigatorStepMeta(input: NavigatorStepMetaInput): StepMeta {
     ...(notes?.length ? { notes } : {}),
     goal: byEngine ? undefined : goal || undefined,
     jev: engineResult.trace,
+    ...(view ? { view } : {}),
     // only actions that ran; doMultiAction stops early on errors or page changes
     actions: results.map((result, i) => {
       const [name, rawArgs] = Object.entries(actions[i] ?? {})[0] ?? ['unknown', {}];
       const args = (rawArgs ?? {}) as Record<string, unknown>;
       // intent only: typed text may be a password and meta is persisted in chat history
       const detail = typeof args.intent === 'string' && args.intent.trim() ? args.intent : undefined;
+      const node = typeof args.index === 'number' ? selectorMap?.get(args.index) : undefined;
+      const label = node ? targetLabel(node) : undefined;
+      const value = actionValue(name, args);
       return {
         name,
         target: typeof args.index === 'number' ? `[${args.index}]` : undefined,
+        ...(label ? { label } : {}),
+        ...(value ? { value } : {}),
         detail,
         ok: !result.error,
         error: result.error ?? undefined,
@@ -316,6 +412,17 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       const observeMs = Math.round(performance.now() - observeStarted);
       browserStateHistory = new BrowserStateHistory(currentState);
 
+      // the side panel shows what the model is looking at while it decides
+      const pageText = currentState.elementTree.clickableElementsToString(this.context.options.includeAttributes);
+      const view = pageView(currentState, pageText, {
+        screenshot: Boolean(currentState.screenshot && this.context.options.useVision),
+        ...messageManager.tokenUsage(),
+      });
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_OBSERVE, view.title || view.url, {
+        kind: 'observe',
+        view,
+      });
+
       // check if the task is paused or stopped
       if (this.context.paused || this.context.stopped) {
         cancelled = true;
@@ -357,7 +464,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       // goes into memory with the results, so the navigator and the planner both read it
       const repeatNote = this.repeats.record(
         actions,
-        `${currentState.url}\n${currentState.scrollY}\n${currentState.elementTree.clickableElementsToString(this.context.options.includeAttributes)}`,
+        `${currentState.url}\n${currentState.scrollY}\n${pageText}`,
       );
       if (repeatNote) logger.warning(repeatNote);
       const cutShort = this.cutShort;
@@ -386,6 +493,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           // the note about the page changing stands for no action
           results: actionResults.filter(result => result !== cutShort),
           notes: [cutShort?.extractedContent, repeatNote].filter((note): note is string => !!note),
+          view,
+          selectorMap: currentState.selectorMap,
         }),
       );
       let done = false;

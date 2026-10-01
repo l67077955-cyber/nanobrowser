@@ -31,9 +31,25 @@ export interface JevTrace {
 export interface StepAction {
   name: string; // action name, e.g. click_element
   target?: string; // "[83]"
+  label?: string; // what the page calls the element acted on; never what a field holds
+  value?: string; // the address, search, key or option the action was given; never typed text
   detail?: string; // the action's intent; never the typed text, which may be a secret
   ok: boolean;
   error?: string;
+}
+
+/** What the model was given about the page when it decided a step */
+export interface PageView {
+  url: string;
+  title: string;
+  elements: number; // interactive elements listed for the model
+  seen?: [number, number]; // the part of the page in view, as shares of its height from the top
+  screenshot: boolean; // whether a picture of the page went with the text
+  tabs: number; // other tabs the model was told about
+  unreadable?: boolean; // the page could not be read
+  tokens?: number; // size of everything the model was sent, by the message manager's estimate
+  maxTokens?: number;
+  text?: string; // the page as it was listed for the model; shown while the chat is open, not saved with it
 }
 
 /** Structured record of one planner or navigator step, rendered as a row in the side panel */
@@ -55,6 +71,12 @@ export type StepMeta =
       notes?: string[]; // what the step told the model besides the action results, e.g. that it is going round in circles
       goal?: string;
       jev?: JevTrace;
+      view?: PageView;
+    }
+  | {
+      // the navigator has read the page and is about to decide; shown live, never saved
+      kind: 'observe';
+      view: PageView;
     };
 
 export interface Message {

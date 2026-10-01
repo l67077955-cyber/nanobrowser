@@ -211,6 +211,11 @@ export default class MessageManager {
     return this.history.messages.length;
   }
 
+  /** Estimated size of the history against what the model is allowed to be sent */
+  public tokenUsage(): { tokens: number; maxTokens: number } {
+    return { tokens: this.history.totalTokens, maxTokens: this.settings.maxInputTokens };
+  }
+
   /**
    * Adds a new task to execute, it will be executed based on the history
    * @param newTask - The raw description of the new task

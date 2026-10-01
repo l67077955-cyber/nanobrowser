@@ -32,6 +32,8 @@ export enum ExecutionState {
 
   // Step level states
   STEP_START = 'step.start',
+  /** the page has been read; the event carries what the model is given about it */
+  STEP_OBSERVE = 'step.observe',
   STEP_OK = 'step.ok',
   STEP_FAIL = 'step.fail',
   STEP_CANCEL = 'step.cancel',

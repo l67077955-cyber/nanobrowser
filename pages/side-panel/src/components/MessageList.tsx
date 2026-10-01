@@ -2,25 +2,84 @@ import {
   type DecisionAlternative,
   type JevTrace,
   type Message,
-  type StepMeta,
+  type PageView,
   DEFAULT_GENERAL_SETTINGS,
   generalSettingsStore,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react';
-import { ACTOR_PROFILES } from '../types/message';
+import type { IconType } from 'react-icons';
+import {
+  FiAlertCircle,
+  FiArrowLeft,
+  FiCheck,
+  FiChevronDown,
+  FiChevronsDown,
+  FiClock,
+  FiCommand,
+  FiCompass,
+  FiCopy,
+  FiEdit3,
+  FiGlobe,
+  FiInfo,
+  FiLayers,
+  FiList,
+  FiMousePointer,
+  FiRotateCcw,
+  FiSearch,
+  FiSettings,
+  FiShield,
+  FiType,
+  FiZap,
+} from 'react-icons/fi';
+import Markdown from './Markdown';
+import { ViewFacts } from './ModelView';
+import {
+  type Entry,
+  type NavigatorMeta,
+  type PlannerMeta,
+  type Turn,
+  type WorkStats,
+  answerText,
+  classifyFailure,
+  describeAction,
+  describeStep,
+  formatDuration,
+  formatMs,
+  groupTurns,
+  hostOf,
+  humanizeIntent,
+  humanizeNote,
+  planLines,
+  shortModel,
+  stepReason,
+  workStats,
+} from './steps';
 import './StepList.css';
+
+/** What the agent is doing right now, between the steps it has finished */
+export interface Activity {
+  phase: 'planning' | 'reading' | 'deciding' | 'acting' | 'waiting';
+  /** the action under way, in the words of whoever chose it */
+  text?: string;
+  /** the page the model has just been shown */
+  view?: PageView;
+}
 
 interface MessageListProps {
   messages: Message[];
+  /** a task is under way: the last turn shows what is happening now */
+  running: boolean;
+  activity: Activity | null;
+  /** show who decided each step, how sure and how fast */
+  detailed: boolean;
+  onRetry?: (task: string) => void;
 }
 
-type NavigatorMeta = Extract<StepMeta, { kind: 'navigator' }>;
-type PlannerMeta = Extract<StepMeta, { kind: 'planner' }>;
-
-const PROGRESS_MESSAGE = 'Showing progress...';
-// Long runs produce hundreds of rows; render the tail and fold the rest
+// Long chats hold hundreds of rows; render the latest turns and fold the rest
 const VISIBLE_MESSAGES = 80;
+// A long run keeps its latest steps in view and folds the ones before
+const VISIBLE_STEPS = 60;
 
 interface ConfidenceFloors {
   operation: number;
@@ -52,86 +111,80 @@ function useConfidenceFloors(): ConfidenceFloors {
   return floors;
 }
 
-const OPERATION_NAMES: Record<string, string> = {
-  click_element: 'CLICK',
-  input_text: 'TYPE',
-  select_dropdown_option: 'SELECT',
-  get_dropdown_options: 'OPTIONS',
-  go_to_url: 'OPEN',
-  search_google: 'SEARCH',
-  go_back: 'BACK',
-  next_page: 'SCROLL',
-  previous_page: 'SCROLL UP',
-  scroll_to_percent: 'SCROLL',
-  scroll_to_top: 'TOP',
-  scroll_to_bottom: 'BOTTOM',
-  scroll_to_text: 'FIND',
-  send_keys: 'KEYS',
-  switch_tab: 'TAB',
-  open_tab: 'NEW TAB',
-  close_tab: 'CLOSE TAB',
-  cache_content: 'NOTE',
-  wait: 'WAIT',
-  done: 'DONE',
+/** The time, ticking once a second while something is under way */
+function useNow(ticking: boolean): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [ticking]);
+  return now;
+}
+
+const ACTION_ICONS: Record<string, IconType> = {
+  click_element: FiMousePointer,
+  input_text: FiType,
+  solve_captcha: FiShield,
+  go_to_url: FiGlobe,
+  open_tab: FiGlobe,
+  search_google: FiSearch,
+  go_back: FiArrowLeft,
+  wait: FiClock,
+  switch_tab: FiLayers,
+  close_tab: FiLayers,
+  cache_content: FiEdit3,
+  scroll_to_percent: FiChevronsDown,
+  scroll_to_top: FiChevronsDown,
+  scroll_to_bottom: FiChevronsDown,
+  previous_page: FiChevronsDown,
+  next_page: FiChevronsDown,
+  scroll_to_text: FiSearch,
+  send_keys: FiCommand,
+  get_dropdown_options: FiList,
+  select_dropdown_option: FiList,
+  done: FiCheck,
 };
 
-export const shortModel = (model: string) => (model.split('/').pop() ?? model).replace(/:latest$/, '');
-export const formatMs = (ms: number) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
 const pct = (p: number) => `${Math.round(p * 100)}`;
 
-interface StepStats {
-  jev: number;
-  llm: number;
-  avgMs: number;
-  fallbacks: number;
-  errors: number;
-}
-
-export function stepStats(messages: Message[]): StepStats | null {
-  const steps = messages.map(m => m.meta).filter((m): m is NavigatorMeta => m?.kind === 'navigator');
-  if (steps.length === 0) return null;
-  return {
-    jev: steps.filter(s => s.engine === 'jev').length,
-    llm: steps.filter(s => s.engine === 'llm').length,
-    avgMs: Math.round(steps.reduce((sum, s) => sum + s.latencyMs, 0) / steps.length),
-    fallbacks: steps.filter(s => s.engine === 'llm' && s.jev?.deferred).length,
-    errors: steps.reduce((sum, s) => sum + s.actions.filter(a => !a.ok).length, 0),
-  };
-}
-
-export default memo(function MessageList({ messages }: MessageListProps) {
+export default memo(function MessageList({ messages, running, activity, detailed, onRetry }: MessageListProps) {
   const [showAll, setShowAll] = useState(false);
   const floors = useConfidenceFloors();
-  const stats = useMemo(() => stepStats(messages), [messages]);
+  const turns = useMemo(() => groupTurns(messages), [messages]);
 
-  // Step numbers restart with every task the user sends
-  const stepNumbers = useMemo(() => {
-    let step = 0;
-    return messages.map(m => {
-      if (m.actor === 'user') step = 0;
-      return m.meta?.kind === 'navigator' ? ++step : 0;
-    });
-  }, [messages]);
-
-  const hidden = showAll ? 0 : Math.max(0, messages.length - VISIBLE_MESSAGES);
+  // whole turns are folded, the latest one never
+  let firstShown = 0;
+  if (!showAll) {
+    let shown = 0;
+    firstShown = Math.max(0, turns.length - 1);
+    for (let i = turns.length - 1; i >= 0; i--) {
+      shown += turns[i].size;
+      if (shown > VISIBLE_MESSAGES && i < turns.length - 1) break;
+      firstShown = i;
+    }
+  }
+  const hidden = turns.slice(0, firstShown).reduce((sum, turn) => sum + turn.size, 0);
 
   return (
-    <div className="nb-stream">
-      {stats && <Summary stats={stats} />}
+    <div className={`nb-stream${detailed ? ' detailed' : ''}`}>
       {hidden > 0 && (
         <button type="button" className="nb-more" onClick={() => setShowAll(true)}>
           {t('chat_steps_showEarlier', [String(hidden)])}
         </button>
       )}
       <FloorsContext.Provider value={floors}>
-        {messages.slice(hidden).map((message, i) => {
-          const index = i + hidden;
+        {turns.slice(firstShown).map((turn, i) => {
+          const isLast = i + firstShown === turns.length - 1;
           return (
-            <MessageRow
-              key={`${message.actor}-${message.timestamp}-${index}`}
-              message={message}
-              step={stepNumbers[index]}
-              isLast={index === messages.length - 1}
+            <TurnView
+              key={`${turn.index}-${turn.startedAt}`}
+              turn={turn}
+              running={running && isLast}
+              activity={isLast ? activity : null}
+              detailed={detailed}
+              onRetry={isLast && !running ? onRetry : undefined}
             />
           );
         })}
@@ -140,15 +193,370 @@ export default memo(function MessageList({ messages }: MessageListProps) {
   );
 });
 
-function Summary({ stats }: { stats: StepStats }) {
-  const total = stats.jev + stats.llm;
+interface TurnViewProps {
+  turn: Turn;
+  running: boolean;
+  activity: Activity | null;
+  detailed: boolean;
+  onRetry?: (task: string) => void;
+}
+
+function TurnView({ turn, running, activity, detailed, onRetry }: TurnViewProps) {
+  const segments = turn.segments;
+  // what is happening now is shown as work, also before the first step has finished
+  const pendingWork = running && segments[segments.length - 1]?.kind !== 'work';
+  // a task with files attached, or one another agent sent, cannot be sent again from its text
+  const task = turn.user && !turn.user.content.includes('📎') ? turn.user.content : undefined;
+
+  return (
+    <section className="nb-turn">
+      {turn.user && (
+        <div className="nb-user" title={formatTime(turn.user.timestamp)}>
+          {turn.user.content}
+        </div>
+      )}
+      {segments.map((segment, i) => {
+        const key = segment.kind === 'work' ? `work-${segment.entries[0].index}` : `${segment.kind}-${segment.entry.index}`;
+        switch (segment.kind) {
+          case 'work':
+            return (
+              <Work
+                key={key}
+                entries={segment.entries}
+                startedAt={turn.startedAt}
+                running={running && i === segments.length - 1}
+                activity={activity}
+                detailed={detailed}
+              />
+            );
+          case 'answer':
+            return <Answer key={key} message={segment.entry.message} detailed={detailed} />;
+          case 'failure':
+            return (
+              <Failure
+                key={key}
+                message={segment.entry.message}
+                onRetry={onRetry && task ? () => onRetry(task) : undefined}
+              />
+            );
+          default:
+            return <Notice key={key} message={segment.entry.message} />;
+        }
+      })}
+      {pendingWork && (
+        <Work entries={[]} startedAt={turn.startedAt} running activity={activity} detailed={detailed} />
+      )}
+    </section>
+  );
+}
+
+interface WorkProps {
+  entries: Entry[];
+  startedAt: number;
+  running: boolean;
+  activity: Activity | null;
+  detailed: boolean;
+}
+
+/** The steps taken for a request: open while they happen, one line once they are done */
+function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const open = chosen ?? (running || detailed);
+  const stats = useMemo(() => workStats(entries), [entries]);
+  const now = useNow(running);
+
+  // steps on a page the model had not been shown the step before are introduced by that page
+  const newPages = useMemo(() => {
+    const indices = new Set<number>();
+    let shown: string | undefined;
+    for (const entry of entries) {
+      const meta = entry.message.meta;
+      if (meta?.kind !== 'navigator' || !meta.view) continue;
+      const page = meta.view.url.split('#')[0];
+      if (page !== shown) indices.add(entry.index);
+      shown = page;
+    }
+    return indices;
+  }, [entries]);
+
+  const last = entries[entries.length - 1];
+  const elapsed = formatDuration((running ? now : (last?.message.timestamp ?? startedAt)) - startedAt);
+  let title: string;
+  if (running) title = `${t('chat_work_running')} · ${elapsed}`;
+  else title = stats.steps > 0 ? t('chat_work_done', [elapsed]) : t('chat_work_thought', [elapsed]);
+  const steps =
+    stats.steps === 0
+      ? ''
+      : stats.steps === 1
+        ? t('chat_work_steps_one')
+        : t('chat_work_steps', [String(stats.steps)]);
+
+  const folded = showAll ? 0 : Math.max(0, entries.length - VISIBLE_STEPS);
+
+  return (
+    <div className={`nb-work${open ? ' open' : ''}${running ? ' running' : ''}`}>
+      <button type="button" className="nb-work-head" aria-expanded={open} onClick={() => setChosen(!open)}>
+        <span className="nb-work-mark" aria-hidden>
+          {running ? <i className="nb-pulse" /> : <FiCheck />}
+        </span>
+        <span className="nb-work-title">{title}</span>
+        {steps && <span className="nb-work-steps">· {steps}</span>}
+        <FiChevronDown className="nb-chevron" aria-hidden />
+      </button>
+      {open && (
+        <div className="nb-work-body">
+          {detailed && stats.steps > 0 && <Summary stats={stats} />}
+          {folded > 0 && (
+            <button type="button" className="nb-more" onClick={() => setShowAll(true)}>
+              {t('chat_steps_showEarlier', [String(folded)])}
+            </button>
+          )}
+          <ol className="nb-trail">
+            {entries.slice(folded).map(entry => (
+              <TrailEntry
+                key={`${entry.message.actor}-${entry.message.timestamp}-${entry.index}`}
+                entry={entry}
+                detailed={detailed}
+                newPage={newPages.has(entry.index)}
+              />
+            ))}
+            {running && <LiveItem activity={activity} />}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function liveText(activity: Activity | null): string {
+  switch (activity?.phase) {
+    case 'planning':
+      return t('chat_live_planning');
+    case 'reading':
+      return t('chat_live_reading');
+    case 'deciding': {
+      const page = activity.view && (activity.view.title || hostOf(activity.view.url));
+      return page ? t('chat_live_deciding', [page]) : t('chat_live_working');
+    }
+    case 'acting':
+      return activity.text && activity.text !== 'done' ? humanizeIntent(activity.text) : t('chat_live_wrappingUp');
+    case 'waiting':
+      return t('chat_live_waiting');
+    default:
+      return t('chat_live_working');
+  }
+}
+
+function LiveItem({ activity }: { activity: Activity | null }) {
+  return (
+    <li className="nb-item live" aria-live="polite">
+      <div className="nb-line">
+        <span className="nb-dot">
+          <i className="nb-pulse" />
+        </span>
+        <span className="nb-say">
+          <span className="nb-what nb-shimmer">{liveText(activity).replace(/[.…]+$/, '')}…</span>
+        </span>
+      </div>
+    </li>
+  );
+}
+
+function TrailEntry({ entry, detailed, newPage }: { entry: Entry; detailed: boolean; newPage: boolean }) {
+  const { message, step } = entry;
+  if (message.meta?.kind === 'navigator') {
+    return (
+      <>
+        {newPage && message.meta.view && <PageMark view={message.meta.view} />}
+        <NavigatorItem meta={message.meta} step={step} detailed={detailed} />
+      </>
+    );
+  }
+  if (message.meta?.kind === 'planner') {
+    return <PlanItem meta={message.meta} content={message.content} detailed={detailed} />;
+  }
+  // Rows without a record: failed actions, replayed ones, and history saved before step records existed
+  const failed = message.failed ?? /fail|error/i.test(message.content);
+  return (
+    <li className={`nb-item plain${failed ? ' bad' : ''}`}>
+      <div className="nb-line">
+        <span className="nb-dot">{failed ? <FiAlertCircle /> : <FiInfo />}</span>
+        <span className="nb-say">
+          <span className="nb-what">{message.content}</span>
+        </span>
+      </div>
+    </li>
+  );
+}
+
+/** The page the following steps happened on */
+function PageMark({ view }: { view: PageView }) {
+  const host = hostOf(view.url);
+  return (
+    <li className="nb-pagemark">
+      <span className="nb-dot">
+        <FiGlobe />
+      </span>
+      <span className="nb-pagemark-text" title={view.url}>
+        {t('chat_step_page')} <b>{view.title || host}</b>
+        {view.title && /^https?:/.test(view.url) && <small> {host}</small>}
+      </span>
+    </li>
+  );
+}
+
+function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: number; detailed: boolean }) {
+  const [open, setOpen] = useState(false);
+  const floors = useContext(FloorsContext);
+  const byJev = meta.engine === 'jev';
+  const jev = meta.jev;
+  const failed = meta.actions.filter(a => !a.ok);
+  const Icon = ACTION_ICONS[meta.actions[0]?.name ?? ''] ?? FiZap;
+  const reason = stepReason(meta);
+  const more = meta.actions.length - 1;
+  const pick = byJev && jev ? (jev.targetConfidence ?? jev.confidence) : undefined;
+  const pickFloor = jev?.targetConfidence !== undefined ? floors.target : floors.operation;
+
+  return (
+    <li className={`nb-item${open ? ' open' : ''}${failed.length > 0 ? ' bad' : ''}`}>
+      <button type="button" className="nb-line" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="nb-dot">
+          <Icon />
+        </span>
+        <span className="nb-say">
+          <span className="nb-what">
+            {describeStep(meta)}
+            {more > 0 && <small> {t('chat_work_more', [String(more)])}</small>}
+          </span>
+          {reason && <span className="nb-why">{reason}</span>}
+        </span>
+        {detailed && (
+          <span className="nb-metrics">
+            <span className={`nb-chip ${byJev ? 'jev' : 'llm'}`} title={meta.model}>
+              <i />
+              {shortModel(meta.model)}
+            </span>
+            {pick !== undefined && <span className={pick < pickFloor ? 'low' : ''}>{pct(pick)}%</span>}
+            <span>{formatMs(meta.latencyMs)}</span>
+            <span className="nb-step">#{step}</span>
+          </span>
+        )}
+      </button>
+      {detailed && !byJev && jev?.deferred && (
+        <div className="nb-note warn">
+          {t('chat_steps_deferred', [jev.deferred])}
+          {jev.target ? ` · ${jev.operation} ${jev.target}` : ''}
+        </div>
+      )}
+      {failed.map((action, i) => (
+        <div key={i} className="nb-note bad">
+          {action === meta.actions[0] ? action.error : `${describeAction(action)}: ${action.error}`}
+        </div>
+      ))}
+      {meta.notes?.map((note, i) => (
+        <div key={i} className="nb-note warn">
+          {detailed ? note : humanizeNote(note)}
+        </div>
+      ))}
+      {open && (
+        <div className="nb-detail">
+          {meta.view && (
+            <section>
+              <h4 className="nb-label">{t('chat_step_saw')}</h4>
+              <ViewFacts view={meta.view} />
+            </section>
+          )}
+          <section>
+            <h4 className="nb-label">{t('chat_step_decided')}</h4>
+            {jev && <JevDetail trace={jev} deferred={!byJev} />}
+            <div className="nb-kv">
+              <span>{t('chat_steps_detail_model')}</span>
+              <span>{meta.model}</span>
+              <span>{t('chat_steps_detail_time')}</span>
+              <span className="nb-num">{formatMs(meta.latencyMs)}</span>
+              {meta.observeMs !== undefined && (
+                <>
+                  <span>{t('chat_steps_detail_observe')}</span>
+                  <span className="nb-num">{formatMs(meta.observeMs)}</span>
+                </>
+              )}
+              {meta.actMs !== undefined && (
+                <>
+                  <span>{t('chat_steps_detail_act')}</span>
+                  <span className="nb-num">{formatMs(meta.actMs)}</span>
+                </>
+              )}
+              {meta.goal && (
+                <>
+                  <span>{t('chat_steps_detail_goal')}</span>
+                  <span>{meta.goal}</span>
+                </>
+              )}
+            </div>
+            {(more > 0 || failed.length > 0) && (
+              <ul className="nb-actions">
+                {meta.actions.map((action, i) => (
+                  <li key={i} className={action.ok ? '' : 'bad'}>
+                    <i />
+                    <span>{describeAction(action)}</span>
+                    {action.error && <span className="err">{action.error}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function PlanItem({ meta, content, detailed }: { meta: PlannerMeta; content: string; detailed: boolean }) {
+  const [open, setOpen] = useState(false);
+  const lines = planLines(content);
+
+  return (
+    <li className={`nb-item plan${open ? ' open' : ''}`}>
+      <button type="button" className="nb-line" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="nb-dot">
+          <FiCompass />
+        </span>
+        <span className="nb-say">
+          <span className="nb-what">{t('chat_step_plan')}</span>
+          {!open && lines[0] && <span className="nb-why">{lines[0]}</span>}
+        </span>
+        {detailed && (
+          <span className="nb-metrics">
+            <span className="nb-chip plan" title={meta.model}>
+              <i />
+              {shortModel(meta.model)}
+            </span>
+            <span>{formatMs(meta.latencyMs)}</span>
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="nb-detail">
+          <ol className="nb-plan-text">
+            {lines.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function Summary({ stats }: { stats: WorkStats }) {
   return (
     <div className="nb-summary" aria-label={t('chat_steps_summary_a11y')}>
       <SharePie jev={stats.jev} llm={stats.llm} />
       <div className="nb-stats">
         <div className="nb-stat">
           <span className="nb-label">{t('chat_steps_summary_steps')}</span>
-          <b>{total}</b>
+          <b>{stats.steps}</b>
         </div>
         <div className="nb-stat">
           <span className="nb-label">Jev · LLM</span>
@@ -195,137 +603,6 @@ function SharePie({ jev, llm }: { jev: number; llm: number }) {
       <circle cx="15" cy="15" r={r} fill={share === 1 ? 'var(--nb-jev)' : 'var(--nb-llm)'} />
       {slice}
     </svg>
-  );
-}
-
-function MessageRow({ message, step, isLast }: { message: Message; step: number; isLast: boolean }) {
-  if (message.content === PROGRESS_MESSAGE) {
-    return isLast ? (
-      <div className="nb-progress">
-        <div />
-      </div>
-    ) : null;
-  }
-  if (message.meta?.kind === 'navigator') return <NavigatorRow meta={message.meta} step={step} />;
-  if (message.meta?.kind === 'planner') return <PlannerRow meta={message.meta} content={message.content} />;
-  if (message.actor === 'user') {
-    return (
-      <div className="nb-user">
-        <span className="nb-label">{t('chat_steps_you')}</span>
-        {message.content}
-      </div>
-    );
-  }
-  // Messages without meta: system notices, failures, and history saved before step records existed
-  const actor = ACTOR_PROFILES[message.actor as keyof typeof ACTOR_PROFILES];
-  // history saved before failures were marked is told apart by its wording
-  const failed = message.failed ?? /fail|error/i.test(message.content);
-  return (
-    <div className={`nb-plain${failed ? ' bad' : ''}`}>
-      <span className="nb-label">{actor?.name ?? message.actor}</span>
-      <span>{message.content}</span>
-      <span className="nb-time">{formatTime(message.timestamp)}</span>
-    </div>
-  );
-}
-
-function NavigatorRow({ meta, step }: { meta: NavigatorMeta; step: number }) {
-  const [open, setOpen] = useState(false);
-  const floors = useContext(FloorsContext);
-  const byJev = meta.engine === 'jev';
-  const jev = meta.jev;
-  const first = meta.actions[0];
-  const failed = meta.actions.filter(a => !a.ok);
-
-  let operation: string;
-  let subject: string | undefined;
-  if (byJev && jev) {
-    operation = jev.operation;
-    subject = jev.target;
-  } else {
-    operation = first ? (OPERATION_NAMES[first.name] ?? first.name) : '—';
-    subject = [first?.target, first?.detail ?? meta.goal].filter(Boolean).join(' ');
-  }
-  const extra = meta.actions.length > 1 ? ` +${meta.actions.length - 1}` : '';
-  const pick = byJev && jev ? (jev.targetConfidence ?? jev.confidence) : undefined;
-  const pickFloor = jev?.targetConfidence !== undefined ? floors.target : floors.operation;
-
-  return (
-    <div className={`nb-row${open ? ' open' : ''}`}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="nb-step">{step}</span>
-        <span className={`nb-chip ${byJev ? 'jev' : 'llm'}`} title={meta.model}>
-          <i />
-          {shortModel(meta.model)}
-        </span>
-        <span className="nb-main">
-          <span className="nb-op">{operation}</span>
-          {subject && <span className="nb-sub"> {subject}</span>}
-          {extra && <span className="nb-sub">{extra}</span>}
-        </span>
-        <span className="nb-metrics">
-          {pick !== undefined && <span className={pick < pickFloor ? 'low' : ''}>{pct(pick)}%</span>}
-          <span>{formatMs(meta.latencyMs)}</span>
-        </span>
-      </button>
-      {!byJev && jev?.deferred && (
-        <div className="nb-note warn">
-          {t('chat_steps_deferred', [jev.deferred])}
-          {jev.target ? ` · ${jev.operation} ${jev.target}` : ''}
-        </div>
-      )}
-      {failed.map((action, i) => (
-        <div key={i} className="nb-note bad">
-          {OPERATION_NAMES[action.name] ?? action.name} {action.target}: {action.error}
-        </div>
-      ))}
-      {meta.notes?.map((note, i) => (
-        <div key={i} className="nb-note warn">
-          {note}
-        </div>
-      ))}
-      {open && (
-        <div className="nb-detail">
-          {jev && <JevDetail trace={jev} deferred={!byJev} />}
-          <div className="nb-kv">
-            <span>{t('chat_steps_detail_model')}</span>
-            <span>{meta.model}</span>
-            <span>{t('chat_steps_detail_time')}</span>
-            <span className="nb-num">{formatMs(meta.latencyMs)}</span>
-            {meta.observeMs !== undefined && (
-              <>
-                <span>{t('chat_steps_detail_observe')}</span>
-                <span className="nb-num">{formatMs(meta.observeMs)}</span>
-              </>
-            )}
-            {meta.actMs !== undefined && (
-              <>
-                <span>{t('chat_steps_detail_act')}</span>
-                <span className="nb-num">{formatMs(meta.actMs)}</span>
-              </>
-            )}
-            {meta.goal && (
-              <>
-                <span>{t('chat_steps_detail_goal')}</span>
-                <span>{meta.goal}</span>
-              </>
-            )}
-          </div>
-          {(!byJev || failed.length > 0) && (
-            <ul className="nb-actions">
-              {meta.actions.map((action, i) => (
-                <li key={i} className={action.ok ? '' : 'bad'}>
-                  <i />
-                  <code>{action.name}</code>
-                  <span>{action.detail ?? action.target}</span>
-                  {action.error && <span className="err">{action.error}</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -422,57 +699,94 @@ function Bar({ value, floor }: { value: number; floor: number }) {
   );
 }
 
-/** Planner steps arrive as one string; models number them and sometimes double-escape newlines */
-export function planLines(content: string): string[] {
-  return content
-    .split(/\\n|\n/)
-    .map(line => line.replace(/^\s*\d+[.)]\s*/, '').trim())
-    .filter(Boolean);
-}
+/** What the task came to: the part of a turn the user is waiting for */
+function Answer({ message, detailed }: { message: Message; detailed: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const meta = message.meta?.kind === 'planner' ? message.meta : undefined;
+  const text = answerText(message.content).trim() || t('chat_answer_done');
 
-function PlannerRow({ meta, content }: { meta: PlannerMeta; content: string }) {
-  const [open, setOpen] = useState(false);
-  const lines = planLines(content);
-
-  if (meta.done) {
-    return (
-      <div className="nb-answer">
-        <div className="nb-label">
-          {t('chat_steps_answer')}
-          <span className="nb-num" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>
-            {shortModel(meta.model)} · {formatMs(meta.latencyMs)}
-          </span>
-        </div>
-        {content}
-      </div>
-    );
-  }
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch (error) {
+      console.error('Failed to copy the answer:', error);
+    }
+  };
 
   return (
-    <div className={`nb-row${open ? ' open' : ''}`}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="nb-step" />
-        <span className="nb-chip plan" title={meta.model}>
-          <i />
-          {shortModel(meta.model)}
+    <div className="nb-answer">
+      <Markdown>{text}</Markdown>
+      <div className="nb-answer-foot">
+        <button type="button" className="nb-ghost" onClick={copy}>
+          {copied ? <FiCheck aria-hidden /> : <FiCopy aria-hidden />}
+          {copied ? t('chat_answer_copied') : t('chat_answer_copy')}
+        </button>
+        <span className="nb-time">
+          {formatTime(message.timestamp)}
+          {detailed && meta && ` · ${shortModel(meta.model)} · ${formatMs(meta.latencyMs)}`}
         </span>
-        <span className="nb-main">
-          <span className="nb-op">{t('chat_steps_plan')}</span>
-          <span className="nb-sub"> {lines[0]}</span>
-        </span>
-        <span className="nb-metrics">
-          <span>{formatMs(meta.latencyMs)}</span>
-        </span>
-      </button>
-      {open && (
-        <div className="nb-detail">
-          <ol className="nb-plan-text">
-            {lines.map((line, i) => (
-              <li key={i}>{line}</li>
-            ))}
-          </ol>
-        </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+// these are fixed in the settings, not by trying again
+const SETTINGS_KINDS = ['setup', 'auth', 'forbidden', 'blocked'];
+
+/** A task that ended badly: what happened in plain words, what to do about it, and the error for those who want it */
+function Failure({ message, onRetry }: { message: Message; onRetry?: () => void }) {
+  const { kind, raw } = classifyFailure(message.content);
+  const [showRaw, setShowRaw] = useState(false);
+  const settingsFirst = SETTINGS_KINDS.includes(kind);
+  const offerSettings = settingsFirst || kind === 'maxSteps' || kind === 'timeout';
+
+  return (
+    <div className="nb-failure" role="alert">
+      <div className="nb-failure-title">
+        <FiAlertCircle aria-hidden />
+        {t(`chat_fail_${kind}_title`)}
+      </div>
+      <p>{t(`chat_fail_${kind}_hint`)}</p>
+      <div className="nb-failure-actions">
+        {offerSettings && (
+          <button
+            type="button"
+            className={`nb-button${settingsFirst ? ' primary' : ''}`}
+            onClick={() => chrome.runtime.openOptionsPage()}>
+            <FiSettings aria-hidden />
+            {t('chat_fail_settings')}
+          </button>
+        )}
+        {onRetry && (
+          <button type="button" className={`nb-button${settingsFirst ? '' : ' primary'}`} onClick={onRetry}>
+            <FiRotateCcw aria-hidden />
+            {t('chat_fail_retry')}
+          </button>
+        )}
+        {raw && (
+          <button
+            type="button"
+            className={`nb-disclose${showRaw ? ' open' : ''}`}
+            aria-expanded={showRaw}
+            onClick={() => setShowRaw(!showRaw)}>
+            <FiChevronDown aria-hidden />
+            {t('chat_fail_details')}
+          </button>
+        )}
+      </div>
+      {showRaw && <pre className="nb-failure-raw">{raw}</pre>}
+    </div>
+  );
+}
+
+/** Something the user should know that is neither work nor an answer: a stop, a saved memory */
+function Notice({ message }: { message: Message }) {
+  const stopped = message.content === t('exec_task_cancel');
+  return (
+    <div className="nb-notice" title={formatTime(message.timestamp)}>
+      {stopped ? t('chat_notice_stopped') : message.content}
     </div>
   );
 }

@@ -10,6 +10,8 @@ interface ChatInputProps {
   isProcessingSpeech?: boolean;
   disabled: boolean;
   showStopButton: boolean;
+  /** what the empty field says: it differs for a new chat, a follow-up and a task under way */
+  placeholder?: string;
   setContent?: (setter: (text: string) => void) => void;
   // Historical session ID - if provided, shows a replay button next to the send button
   historicalSessionId?: string | null;
@@ -31,6 +33,7 @@ export default function ChatInput({
   isProcessingSpeech = false,
   disabled,
   showStopButton,
+  placeholder,
   setContent,
   historicalSessionId,
   onReplay,
@@ -53,7 +56,7 @@ export default function ChatInput({
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 100)}px`;
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
     }
   };
 
@@ -69,7 +72,7 @@ export default function ChatInput({
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 100)}px`;
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
     }
   }, []);
 
@@ -185,8 +188,8 @@ export default function ChatInput({
   return (
     <form
       onSubmit={handleSubmit}
-      className={`overflow-hidden rounded-xl border bg-nb-tile shadow-nb transition-colors ${
-        disabled ? 'cursor-not-allowed border-nb-hair' : 'border-nb-line focus-within:border-nb-llm'
+      className={`nb-input overflow-hidden rounded-[18px] border bg-nb-tile transition-[border-color,box-shadow] ${
+        disabled ? 'border-nb-hair' : 'border-nb-line focus-within:border-nb-muted'
       }`}
       aria-label={t('chat_input_form')}>
       <div className="flex flex-col">
@@ -218,11 +221,11 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           disabled={disabled}
           aria-disabled={disabled}
-          rows={4}
-          className={`w-full resize-none border-none bg-transparent px-3 pt-2.5 text-[13px] leading-relaxed focus:outline-none ${
+          rows={2}
+          className={`w-full resize-none border-none bg-transparent px-3.5 pt-3 text-[13.5px] leading-relaxed focus:outline-none ${
             disabled ? 'cursor-not-allowed text-nb-muted' : 'text-nb-ink'
           }`}
-          placeholder={attachedFiles.length > 0 ? 'Add a message (optional)...' : t('chat_input_placeholder')}
+          placeholder={attachedFiles.length > 0 ? 'Add a message (optional)...' : (placeholder ?? t('chat_input_placeholder'))}
           aria-label={t('chat_input_editor')}
         />
 
@@ -285,7 +288,7 @@ export default function ChatInput({
             <button
               type="button"
               onClick={onStopTask}
-              className="flex items-center gap-1.5 rounded-lg border border-nb-line bg-nb-tile-2 px-2.5 py-1 text-[12.5px] font-medium text-nb-critical transition-colors hover:border-nb-critical">
+              className="flex items-center gap-1.5 rounded-full border border-nb-line bg-nb-tile-2 px-3 py-1 text-[12.5px] font-medium text-nb-critical transition-colors hover:border-nb-critical">
               <FiSquare className="size-3 fill-current" />
               {t('chat_buttons_stop')}
             </button>
@@ -295,7 +298,7 @@ export default function ChatInput({
                 <button
                   type="button"
                   onClick={handleReplay}
-                  className="flex items-center gap-1.5 rounded-lg border border-nb-line bg-nb-tile-2 px-2.5 py-1 text-[12.5px] font-medium text-nb-ink transition-colors hover:border-nb-muted">
+                  className="flex items-center gap-1.5 rounded-full border border-nb-line bg-nb-tile-2 px-3 py-1 text-[12.5px] font-medium text-nb-ink transition-colors hover:border-nb-muted">
                   <FiRotateCcw className="size-3.5" />
                   {t('chat_buttons_replay')}
                 </button>
@@ -304,9 +307,10 @@ export default function ChatInput({
                 type="submit"
                 disabled={isSendButtonDisabled}
                 aria-disabled={isSendButtonDisabled}
-                className="flex items-center gap-1 rounded-lg bg-nb-llm px-2.5 py-1 text-[12.5px] font-medium text-white transition-opacity hover:enabled:opacity-90 disabled:cursor-not-allowed disabled:bg-nb-track disabled:text-nb-muted">
-                {t('chat_buttons_send')}
-                <FiArrowUp className="size-3.5" />
+                aria-label={t('chat_buttons_send')}
+                title={t('chat_buttons_send')}
+                className="flex size-7 items-center justify-center rounded-full bg-nb-ink text-nb-tile transition-opacity hover:enabled:opacity-85 disabled:cursor-not-allowed disabled:bg-nb-track disabled:text-nb-muted">
+                <FiArrowUp className="size-4" />
               </button>
             </div>
           )}
