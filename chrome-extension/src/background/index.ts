@@ -10,6 +10,7 @@ import {
   chatHistoryStore,
   captchaModelStore,
   remoteControlStore,
+  type ScheduledTask,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
@@ -17,7 +18,7 @@ import { setupStandaloneWindow } from './services/standaloneWindow';
 import { Executor, type ExecutorSnapshot } from './agent/executor';
 import { snapshotFromChat } from './agent/resume';
 import { createLogger } from './log';
-import { ExecutionState, type AgentEvent } from './agent/event/types';
+import { Actors, ExecutionState, type AgentEvent } from './agent/event/types';
 import { createChatModel } from './agent/helper';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { DEFAULT_AGENT_OPTIONS } from './agent/types';
@@ -26,6 +27,7 @@ import { injectBuildDomTreeScripts } from './browser/dom/service';
 import { analytics } from './services/analytics';
 import { formatMemoryContext, memoryInstructions, rememberFromMessages, rememberFromText } from './services/memory';
 import { RemoteControl, type RemoteTaskEnd } from './services/remote';
+import { Scheduler, type ScheduledRunEnd } from './services/scheduler';
 
 const logger = createLogger('background');
 
@@ -35,7 +37,7 @@ let currentExecutor: Executor | null = null;
 let memoryLLM: BaseChatModel | null = null;
 let currentPort: chrome.runtime.Port | null = null;
 /** The task being worked on now and who asked for it: the side panel, or an agent through the bridge */
-let activeTask: { taskId: string; source: 'panel' | 'remote' } | null = null;
+let activeTask: { taskId: string; source: 'panel' | 'remote' | 'scheduled' } | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
@@ -123,6 +125,8 @@ chrome.runtime.onConnect.addListener(port => {
     }
 
     currentPort = port;
+    // the dot on the toolbar icon says a scheduled task has finished since the panel was last open
+    void chrome.action.setBadgeText({ text: '' });
 
     port.onMessage.addListener(async message => {
       try {
@@ -148,6 +152,18 @@ chrome.runtime.onConnect.addListener(port => {
             break;
           }
 
+          case 'steer': {
+            if (!message.task) return port.postMessage({ type: 'error', error: t('bg_cmd_followUpTask_noTask') });
+            if (!message.taskId) return port.postMessage({ type: 'error', error: t('bg_errors_noTaskId') });
+            // a message sent while the task runs is taken in by it, as the next thing to consider
+            if (activeTask?.taskId === message.taskId && currentExecutor?.steer(message.task)) {
+              logger.info('steer', message.task);
+              break;
+            }
+            // the task ended in the meantime: once it has wound down, the message is a follow-up
+            await panelRun?.catch(() => {});
+          }
+          // falls through
           case 'follow_up_task': {
             if (!message.task) return port.postMessage({ type: 'error', error: t('bg_cmd_followUpTask_noTask') });
             if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
@@ -318,21 +334,24 @@ chrome.runtime.onConnect.addListener(port => {
       // this event is also triggered when the side panel is closed, so we need to cancel the task
       console.log('Side panel disconnected');
       currentPort = null;
-      // a task run for a remote agent does not need the side panel
-      if (activeTask?.source !== 'remote') currentExecutor?.cancel();
+      // a task run for a remote agent or on a schedule does not need the side panel
+      if (!activeTask || activeTask.source === 'panel') currentExecutor?.cancel();
     });
   }
 });
+
+/** The run of the latest task the side panel asked for, until it has ended */
+let panelRun: Promise<void> | null = null;
 
 /** Run a task the side panel asked for. It takes over from whatever task was running. */
 async function executeForPanel(executor: Executor, taskId: string): Promise<void> {
   const claim = { taskId, source: 'panel' as const };
   activeTask = claim;
-  try {
-    await executor.execute();
-  } finally {
+  const run = executor.execute().finally(() => {
     if (activeTask === claim) activeTask = null;
-  }
+  });
+  panelRun = run;
+  await run;
 }
 
 /**
@@ -389,6 +408,10 @@ async function startRemoteTask(task: string): Promise<string> {
         // action is declined instead of left waiting.
         if (!currentPort) executor.confirmAction(false);
         break;
+      case ExecutionState.ACT_ASK:
+        // the agent that sent the task wants it done without a person in the loop: the navigator decides
+        executor.answerQuestion(null);
+        break;
     }
   });
 
@@ -405,6 +428,88 @@ async function startRemoteTask(task: string): Promise<string> {
     });
   return taskId;
 }
+
+/**
+ * Run a scheduled task in a window of its own, behind the user's, so it neither takes over the tab they
+ * are using nor stalls the way a hidden tab does. The run is written to a chat of its own, where its
+ * answer can be read and the conversation carried on. Returns null when the browser is busy.
+ */
+async function runScheduledTask(entry: ScheduledTask): Promise<ScheduledRunEnd | null> {
+  if (activeTask) return null;
+  const session = await chatHistoryStore.createSession(`Scheduled · ${entry.task}`.slice(0, 60));
+  const taskId = session.id;
+  const claim = { taskId, source: 'scheduled' as const };
+  activeTask = claim;
+  let windowId: number | undefined;
+  const end: ScheduledRunEnd = {
+    status: 'failed',
+    result: 'The task stopped before it was finished',
+    sessionId: taskId,
+  };
+  try {
+    await currentExecutor?.cancel();
+    const window = await chrome.windows.create({ url: 'about:blank', focused: false, state: 'normal' });
+    windowId = window?.id;
+    const tabId = window?.tabs?.[0]?.id;
+    if (!tabId) throw new Error('Could not open a window for the scheduled task');
+    const executor = await setupExecutor(taskId, entry.task, browserContext, null, { scheduled: true });
+    if (activeTask !== claim) throw new Error('The user started a task of their own');
+    browserContext.updateCurrentTabId(tabId);
+    currentExecutor = executor;
+    executor.clearExecutionEvents();
+    executor.subscribeExecutionEvents(async (event: AgentEvent) => {
+      switch (event.state) {
+        case ExecutionState.TASK_OK:
+          end.status = 'completed';
+          end.result = event.data.details === taskId ? '' : event.data.details;
+          break;
+        case ExecutionState.TASK_FAIL:
+          end.status = 'failed';
+          end.result = event.data.details;
+          break;
+        case ExecutionState.TASK_CANCEL:
+          end.status = 'cancelled';
+          end.result = event.data.details;
+          break;
+        case ExecutionState.ACT_CONFIRM:
+          // nobody is there to approve: a step that needs approval is left for the user
+          executor.confirmAction(false);
+          break;
+        case ExecutionState.ACT_ASK:
+          executor.answerQuestion(null);
+          break;
+      }
+    });
+    await chatHistoryStore.addMessage(taskId, { actor: Actors.USER, content: entry.task, timestamp: Date.now() });
+    logger.info('scheduled task', entry.id, entry.task);
+    await executor.execute();
+    void updateMemories(executor);
+  } catch (error) {
+    end.result = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (activeTask === claim) activeTask = null;
+    await currentExecutor?.cleanup();
+    if (windowId !== undefined) await chrome.windows.remove(windowId).catch(() => {});
+  }
+  // the answer, or what went wrong, as the panel shows it in that chat
+  await chatHistoryStore
+    .addMessage(
+      taskId,
+      end.status === 'completed'
+        ? {
+            actor: Actors.PLANNER,
+            content: end.result || 'Done.',
+            timestamp: Date.now(),
+            meta: { kind: 'planner', model: '', latencyMs: 0, done: true },
+          }
+        : { actor: Actors.SYSTEM, content: end.result, timestamp: Date.now(), failed: end.status === 'failed' },
+    )
+    .catch(error => logger.error('Failed to save the scheduled run:', error));
+  if (!currentPort) void chrome.action.setBadgeText({ text: '•' });
+  return end;
+}
+
+new Scheduler(runScheduledTask).start();
 
 const remoteControl = new RemoteControl(
   {
@@ -472,6 +577,7 @@ async function setupExecutor(
   task: string,
   browserContext: BrowserContext,
   snapshot: ExecutorSnapshot | null = null,
+  { scheduled = false } = {},
 ) {
   const providers = await llmProviderStore.getAllProviders();
   // if no providers, need to display the options page
@@ -553,6 +659,7 @@ async function setupExecutor(
     captchaLLM,
     memoryContext,
     snapshot: snapshot ?? undefined,
+    allowScheduling: !scheduled,
     agentOptions: {
       maxSteps: generalSettings.maxSteps,
       maxFailures: generalSettings.maxFailures,
@@ -583,9 +690,10 @@ async function importMemories(text: string) {
   });
 }
 
-/** After a task, store what the user said about themselves and tell the side panel what changed */
+/** After a task, keep what it taught about the user, quietly: the memory shows in Settings, not in the chat */
 async function updateMemories(executor: Executor) {
   const { messages, earlier, attachments } = executor.takeUserMessagesToRemember();
+  const work = executor.takeWorkToRemember();
   const llm = memoryLLM;
   try {
     const settings = await generalSettingsStore.getSettings();
@@ -595,11 +703,10 @@ async function updateMemories(executor: Executor) {
       jevApiKey: settings.fastMode ? settings.fastModeApiKey : undefined,
       earlier,
       attachments,
+      work,
     });
-    // a request to remember gets an answer even when nothing was stored
-    if (change.added.length + change.updated.length === 0 && !change.asked) return;
-    logger.info('memories updated', change);
-    currentPort?.postMessage({ type: 'memory_updated', ...change });
+    if (change.added.length + change.updated.length + change.removed.length > 0)
+      logger.info('memories updated', change);
   } catch (error) {
     logger.error('Failed to update memories:', error);
   }

@@ -25,7 +25,7 @@ import {
 import { URLNotAllowedError } from '../browser/views';
 import { chatHistoryStore } from '@extension/storage/lib/chat';
 import type { AgentStepHistory } from './history';
-import type { GeneralSettingsConfig } from '@extension/storage';
+import { type GeneralSettingsConfig, describeRepeat, parseRepeat, scheduleStore } from '@extension/storage';
 import { analytics } from '../services/analytics';
 import { JevDecisionEngine } from './engines/jev';
 
@@ -62,6 +62,8 @@ export interface ExecutorExtraArgs {
   memoryContext?: string;
   /** an earlier executor of this session: the task is then a follow-up to what that one knew */
   snapshot?: ExecutorSnapshot;
+  /** a run of a scheduled task does not set up more of them */
+  allowScheduling?: boolean;
 }
 
 export class Executor {
@@ -71,9 +73,18 @@ export class Executor {
   private readonly plannerPrompt: PlannerPrompt;
   private readonly navigatorPrompt: NavigatorPrompt;
   private readonly generalSettings: GeneralSettingsConfig | undefined;
+  private readonly allowScheduling: boolean;
   private tasks: string[] = [];
   /** how many of the tasks have already been read for things to remember */
   private tasksRemembered = 0;
+  /** the request being worked on now is tasks[goalStart]; what the user said after it adds to it */
+  private goalStart = 0;
+  /** what the user said while the task runs, taken in at the start of the next step */
+  private steers: string[] = [];
+  /** the step loop is going: a message sent now is taken in by this run */
+  private running = false;
+  /** how many history steps have already been read for things to remember */
+  private stepsRemembered = 0;
   private latestNextSteps: string | null = null;
   /** step the latest plan was made on: its element indices are only valid on that step */
   private latestPlanStep = 0;
@@ -98,6 +109,7 @@ export class Executor {
     );
 
     this.generalSettings = extraArgs?.generalSettings;
+    this.allowScheduling = extraArgs?.allowScheduling ?? true;
     this.navigatorPrompt = new NavigatorPrompt(context.options.maxActionsPerStep);
     this.plannerPrompt = new PlannerPrompt();
 
@@ -182,6 +194,7 @@ export class Executor {
   }
 
   addFollowUpTask(task: string): void {
+    this.goalStart = this.tasks.length;
     this.tasks.push(task);
     // the plan belonged to the previous task
     this.latestNextSteps = null;
@@ -195,6 +208,37 @@ export class Executor {
 
     // need to reset previous action results that are not included in memory
     this.context.actionResults = this.context.actionResults.filter(result => result.includeInMemory);
+  }
+
+  /**
+   * Something the user sent while this task runs. It answers a question the agent is waiting on, or it is
+   * taken in at the start of the next step and the plan is made again with it. Returns false when the run
+   * is over (or about to be): the message is then a follow-up task of its own.
+   */
+  steer(text: string): boolean {
+    if (!this.running || this.context.stopped) return false;
+    this.tasks.push(text);
+    if (this.context.answerQuestion(text)) return true;
+    // a message instead of a click on Approve or Decline: the action waits no longer, the message says why
+    if (this.context.awaitingConfirmation) this.context.resolveConfirmation(false);
+    this.steers.push(text);
+    return true;
+  }
+
+  /** The user's messages from the middle of the run go into the history, and the plan is redone with them */
+  private takeInSteers(): void {
+    const steers = this.steers.splice(0);
+    if (this.context.stateMessageAdded) {
+      this.context.messageManager.removeLastStateMessage();
+      this.context.stateMessageAdded = false;
+    }
+    for (const text of steers) {
+      this.context.messageManager.addUserNote(
+        `While you were working, the user added: """${text}""". Take it into account from now on: it may add to, narrow, change or replace the task.`,
+      );
+    }
+    this.latestNextSteps = null;
+    this.navigator.resetRepeats();
   }
 
   /**
@@ -217,11 +261,29 @@ export class Executor {
   }
 
   /**
+   * What the work since the last call showed: the sites it went to and what it came to. Memory reads it
+   * alongside the user's messages, so that it learns from what was done and not only from what was said.
+   */
+  takeWorkToRemember(): { sites: string[]; outcome: string } {
+    const steps = this.context.history.history.slice(this.stepsRemembered);
+    this.stepsRemembered = this.context.history.history.length;
+    const sites = new Set<string>();
+    for (const step of steps) {
+      const { url, title } = step.state;
+      if (!/^https?:/.test(url)) continue;
+      const page = url.split(/[?#]/)[0];
+      sites.add(title ? `${page} (${title})` : page);
+    }
+    return { sites: [...sites].slice(0, 20), outcome: (this.context.finalAnswer ?? '').slice(0, 1500) };
+  }
+
+  /**
    * Only the task being worked on: earlier tasks are finished, and handing them over made Jev see
    * their results (e.g. an already-starred repo) as evidence that the new task is DONE.
    */
   private decisionGoal(): string {
-    const goal = this.tasks[this.tasks.length - 1];
+    const [task, ...added] = this.tasks.slice(this.goalStart);
+    const goal = added.length > 0 ? `${task}\nThe user added: ${added.join(' / ')}` : task;
     if (!this.latestNextSteps) return goal;
     // "[92]" in an older plan now points at some other element; keep the words, drop the numbers
     const plan =
@@ -258,6 +320,7 @@ export class Executor {
     const allowedMaxSteps = this.context.options.maxSteps;
 
     let backgroundPlan: BackgroundPlan | null = null;
+    this.running = true;
     try {
       this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_START, this.context.taskId);
 
@@ -279,6 +342,16 @@ export class Executor {
           break;
         }
 
+        // What the user said since the last step: a plan already under way did not know it
+        let replan = false;
+        if (this.steers.length > 0) {
+          await backgroundPlan?.promise.catch(() => null);
+          backgroundPlan = null;
+          this.takeInSteers();
+          navigatorDone = false;
+          replan = true;
+        }
+
         // Pick up a periodic plan that finished while the navigator kept going
         let finishToConfirm = false;
         if (backgroundPlan?.settled) {
@@ -288,7 +361,7 @@ export class Executor {
             // The plan read the page before the navigator's latest steps. A finish the navigator claims as
             // well stands; otherwise it is checked on the page as it is now, so that the task does not end
             // on something the planner never saw (a file the navigator went on to open, a 404).
-            if (navigatorDone && this.checkTaskCompletion(latestPlanOutput)) {
+            if (navigatorDone && this.steers.length === 0 && this.checkTaskCompletion(latestPlanOutput)) {
               break;
             }
             logger.info('Planner found the task done on an earlier page, checking on the current one');
@@ -296,16 +369,21 @@ export class Executor {
           }
         }
 
-        if (navigatorDone || finishToConfirm || context.nSteps === 0) {
+        if (navigatorDone || finishToConfirm || replan || context.nSteps === 0) {
           // The first plan steers the first steps, and a claimed finish needs checking before going on:
           // both wait for the planner
           navigatorDone = false;
           // a plan already under way that also finds the task done confirms the finish without a second call
           const pendingPlan = backgroundPlan ? await backgroundPlan.promise.catch(() => null) : null;
           backgroundPlan = null;
-          latestPlanOutput = pendingPlan?.result?.done ? pendingPlan : await this.runPlanner();
-          if (this.checkTaskCompletion(latestPlanOutput)) {
+          latestPlanOutput = pendingPlan?.result?.done && !replan ? pendingPlan : await this.runPlanner();
+          // a message that came in while the planner was at work is taken in before the task can end
+          if (this.steers.length === 0 && this.checkTaskCompletion(latestPlanOutput)) {
             break;
+          }
+          if (this.steers.length > 0) {
+            latestPlanOutput = null;
+            continue;
           }
         } else if (context.nSteps % context.options.planningInterval === 0 && !backgroundPlan) {
           // Periodic re-planning runs alongside navigation instead of pausing it for a whole LLM call
@@ -321,10 +399,14 @@ export class Executor {
         }
       }
 
+      // from here on a message from the user starts a task of its own
+      this.running = false;
+
       // Determine task completion status
       const isCompleted = latestPlanOutput?.result?.done === true;
 
       if (isCompleted) {
+        await this.applySchedule(latestPlanOutput?.result ?? null);
         // Emit final answer if available, otherwise use task ID
         const finalMessage = this.context.finalAnswer || this.context.taskId;
         this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_OK, finalMessage);
@@ -363,6 +445,7 @@ export class Executor {
         void analytics.trackTaskFailed(this.context.taskId, errorCategory);
       }
     } finally {
+      this.running = false;
       // a plan still in flight would otherwise land in the history of a follow-up task
       await backgroundPlan?.promise.catch(() => null);
       if (import.meta.env.DEV) {
@@ -380,6 +463,31 @@ export class Executor {
       } else {
         logger.info('Replay historical tasks is disabled, skipping history storage');
       }
+    }
+  }
+
+  /**
+   * The planner found that the user wants something done later or repeatedly: store it. When the time
+   * cannot be read, the answer asks for it again instead of confirming a schedule that does not exist.
+   */
+  private async applySchedule(plan: PlannerOutput | null): Promise<void> {
+    const when = plan?.schedule?.trim();
+    const task = plan?.schedule_task?.trim();
+    if (!when || !task) return;
+    const repeat = this.allowScheduling ? parseRepeat(when) : null;
+    if (!repeat) {
+      logger.warning('Could not read the schedule', when);
+      this.context.finalAnswer = this.allowScheduling
+        ? 'I couldn’t pin down when to run that. When should it happen? For example “every weekday at 9:00” or “in 30 minutes”.'
+        : this.context.finalAnswer;
+      return;
+    }
+    try {
+      const entry = await scheduleStore.add(task, repeat);
+      logger.info('Scheduled', entry.id, describeRepeat(repeat), task);
+    } catch (error) {
+      logger.error('Failed to store the schedule:', error);
+      this.context.finalAnswer = 'I couldn’t save that schedule just now. Please try again in a moment.';
     }
   }
 
@@ -529,6 +637,11 @@ export class Executor {
 
   async pause(): Promise<void> {
     this.context.pause();
+  }
+
+  /** null tells the agent nobody will answer, and it decides for itself */
+  answerQuestion(answer: string | null): void {
+    this.context.answerQuestion(answer);
   }
 
   confirmAction(approved: boolean): void {

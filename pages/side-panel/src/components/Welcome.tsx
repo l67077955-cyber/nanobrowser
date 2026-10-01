@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { FiGlobe } from 'react-icons/fi';
 import { getTargetTab } from '../utils';
 import { hostOf } from './steps';
+import RoutineList from './RoutineList';
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -35,8 +36,14 @@ function useTargetTab(): chrome.tabs.Tab | undefined {
   return tab;
 }
 
-/** What a new chat opens to: a greeting, the page a task would start on, and the saved tasks */
-export default function Welcome({ children }: { children?: ReactNode }) {
+/** What a new chat opens to: a greeting, the page a task would start on, the routines and the saved tasks */
+export default function Welcome({
+  children,
+  onOpenSession,
+}: {
+  children?: ReactNode;
+  onOpenSession?: (sessionId: string) => void;
+}) {
   const tab = useTargetTab();
   const [iconFailed, setIconFailed] = useState(false);
   const isWebPage = tab?.url ? /^https?:/.test(tab.url) : false;
@@ -61,6 +68,7 @@ export default function Welcome({ children }: { children?: ReactNode }) {
           </div>
         )}
       </div>
+      <RoutineList onOpenSession={onOpenSession} />
       {children}
     </div>
   );

@@ -12,7 +12,17 @@ vi.mock('../../services/analytics', () => ({
 
 const plan = (done: boolean, final_answer = ''): AgentOutput<PlannerOutput> => ({
   id: 'planner',
-  result: { observation: '', challenges: '', done, next_steps: '', final_answer, reasoning: '', web_task: true },
+  result: {
+    observation: '',
+    challenges: '',
+    done,
+    next_steps: '',
+    final_answer,
+    reasoning: '',
+    web_task: true,
+    schedule: '',
+    schedule_task: '',
+  },
 });
 
 /**
@@ -20,7 +30,12 @@ const plan = (done: boolean, final_answer = ''): AgentOutput<PlannerOutput> => (
  * has taken as many further steps as `stepsDuringPlan` says (0: the navigator waits for the plan).
  */
 function scripted(plans: AgentOutput<PlannerOutput>[], stepsDuringPlan: number[], navigatorDoneAt = -1) {
-  const executor = new Executor('read the code', 'task', {} as BrowserContext, { modelName: 'm' } as unknown as BaseChatModel);
+  const executor = new Executor(
+    'read the code',
+    'task',
+    {} as BrowserContext,
+    { modelName: 'm' } as unknown as BaseChatModel,
+  );
   const internals = executor as unknown as {
     context: AgentContext;
     planner: { execute: () => Promise<AgentOutput<PlannerOutput>> };
@@ -69,5 +84,67 @@ describe('Executor planning', () => {
     await run.executor.execute();
     expect(run.pagesPlanned).toEqual([0, 3]);
     expect(run.context.finalAnswer).toBe('both agree');
+  });
+});
+
+describe('Executor steering', () => {
+  const history = (context: AgentContext) =>
+    context.messageManager
+      .getMessages()
+      .map(m => (typeof m.content === 'string' ? m.content : ''))
+      .join('\n');
+
+  it('takes in a message sent during the run and plans again with it', async () => {
+    const run = scripted([plan(false), plan(false), plan(true, 'only the docs')], [0, 0, 0], 3);
+    const navigate = (run.executor as unknown as { navigator: { execute: () => Promise<unknown> } }).navigator;
+    const step = navigate.execute;
+    navigate.execute = async () => {
+      if (run.steps() === 1) expect(run.executor.steer('only look at the docs folder')).toBe(true);
+      return step();
+    };
+    await run.executor.execute();
+    // a plan at the start, one right after the message, and the check of the finish
+    expect(run.pagesPlanned).toEqual([0, 2, 3]);
+    expect(history(run.context)).toContain(
+      'While you were working, the user added: """only look at the docs folder"""',
+    );
+    expect(run.context.finalAnswer).toBe('only the docs');
+  });
+
+  it('does not end on a finish when a message came in while it was being planned', async () => {
+    const run = scripted([plan(true, 'too soon'), plan(true, 'with the message')], [0, 0]);
+    const internals = run.executor as unknown as { planner: { execute: () => Promise<AgentOutput<PlannerOutput>> } };
+    const planOnce = internals.planner.execute;
+    let calls = 0;
+    internals.planner.execute = () => {
+      if (calls++ === 0) run.executor.steer('and add the changelog');
+      return planOnce();
+    };
+    await run.executor.execute();
+    expect(run.context.finalAnswer).toBe('with the message');
+  });
+
+  it('answers a question the agent is waiting on instead of queueing the message', async () => {
+    const run = scripted([plan(false), plan(true, 'done')], [0, 0], 2);
+    const navigate = (run.executor as unknown as { navigator: { execute: () => Promise<unknown> } }).navigator;
+    const step = navigate.execute;
+    let reply: string | null | undefined;
+    navigate.execute = async () => {
+      if (run.steps() === 0) {
+        const asked = run.context.askUser('navigator' as never, 'Which account?');
+        expect(run.executor.steer('the work one')).toBe(true);
+        reply = await asked;
+      }
+      return step();
+    };
+    await run.executor.execute();
+    expect(reply).toBe('the work one');
+    expect(history(run.context)).not.toContain('While you were working');
+  });
+
+  it('turns a message away once the run is over, so it can start a task of its own', async () => {
+    const run = scripted([plan(true, 'done')], [0]);
+    await run.executor.execute();
+    expect(run.executor.steer('one more thing')).toBe(false);
   });
 });

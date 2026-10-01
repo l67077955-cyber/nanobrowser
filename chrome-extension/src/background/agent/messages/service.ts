@@ -106,10 +106,7 @@ export default class MessageManager {
               the tool did not direct me to a new page. I then used the 'click_element' tool to click 
               on a element labelled 'Apple' which redirected me to the 'Apple' company homepage. 
               Currently at step 3/15.`.trim(),
-            next_goal: `Looking at reported structure of the current page, I can see the item '[127]<h3 iPhone/>' 
-              in the content. I think this button will lead to more information and potentially prices 
-              for iPhones. I'll click on the link to 'iPhone' at index [127] using the 'click_element' 
-              tool and hope to see prices on the next page.`.trim(),
+            next_goal: `Opening the iPhone page to find current prices`,
           },
           action: [{ click_element: { index: 127 } }],
         },
@@ -238,6 +235,14 @@ export default class MessageManager {
 
     const msg = new HumanMessage({ content: finalContent });
     this.addMessageWithTokens(msg);
+  }
+
+  /**
+   * Something the user said while the task was running: a reply to a question asked, or a remark that
+   * changes or adds to the task. It stays in the history, unlike the action results of a single step.
+   */
+  public addUserNote(note: string): void {
+    this.addMessageWithTokens(new HumanMessage({ content: wrapUserRequest(filterExternalContent(note), false) }));
   }
 
   /**

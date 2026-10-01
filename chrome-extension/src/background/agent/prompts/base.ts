@@ -10,6 +10,13 @@ export function viewportShareOfScroll(viewportHeight: number, scrollHeight: numb
   return `${Math.round((viewportHeight / scrollable) * 100)}%`;
 }
 
+/** YYYY-MM-DD HH:mm (Weekday) in the browser's time zone: "at 9" from the user means their 9 */
+export function localDateTime(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const day = date.toLocaleDateString('en-US', { weekday: 'long' });
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())} (${day})`;
+}
+
 const logger = createLogger('BasePrompt');
 /**
  * Abstract base class for all prompt types
@@ -55,8 +62,7 @@ abstract class BasePrompt {
       stepInfoDescription = `Current step: ${context.stepInfo.stepNumber + 1}/${context.stepInfo.maxSteps}`;
     }
 
-    const timeStr = new Date().toISOString().slice(0, 16).replace('T', ' '); // Format: YYYY-MM-DD HH:mm
-    stepInfoDescription += `Current date and time: ${timeStr}`;
+    stepInfoDescription += `\nCurrent date and time: ${localDateTime(new Date())}`;
 
     let actionResultsDescription = '';
     if (context.actionResults.length > 0) {

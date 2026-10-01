@@ -61,6 +61,8 @@ const SidePanel = () => {
   const [showStopButton, setShowStopButton] = useState(false);
   // action text awaiting the user's approval (confirm sensitive clicks setting)
   const [pendingConfirmation, setPendingConfirmation] = useState<string | null>(null);
+  // the agent asked something in the chat and waits for the reply
+  const [awaitingReply, setAwaitingReply] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [chatSessions, setChatSessions] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
@@ -184,6 +186,7 @@ const SidePanel = () => {
             case ExecutionState.TASK_OK:
               setActivity(null);
               setPendingConfirmation(null);
+              setAwaitingReply(false);
               setIsFollowUpMode(true);
               setInputEnabled(true);
               setShowStopButton(false);
@@ -192,6 +195,7 @@ const SidePanel = () => {
             case ExecutionState.TASK_FAIL:
               setActivity(null);
               setPendingConfirmation(null);
+              setAwaitingReply(false);
               setIsFollowUpMode(true);
               setInputEnabled(true);
               setShowStopButton(false);
@@ -201,6 +205,7 @@ const SidePanel = () => {
             case ExecutionState.TASK_CANCEL:
               setActivity(null);
               setPendingConfirmation(null);
+              setAwaitingReply(false);
               setIsFollowUpMode(false);
               setInputEnabled(true);
               setShowStopButton(false);
@@ -245,6 +250,10 @@ const SidePanel = () => {
               // the page has been read: what the model is given about it is shown while it decides
               if (data?.meta?.kind === 'observe') setActivity({ phase: 'deciding', view: data.meta.view });
               break;
+            case ExecutionState.STEP_DECIDED:
+              // what the model is about to do, in its own words, stands for the step until it is done
+              setActivity(prev => ({ phase: 'acting', text: content, goal: true, view: prev?.view }));
+              break;
             case ExecutionState.STEP_OK:
               // one row per step, carrying who decided and what ran
               skip = !data?.meta;
@@ -256,8 +265,9 @@ const SidePanel = () => {
             case ExecutionState.STEP_CANCEL:
               break;
             case ExecutionState.ACT_START:
-              // the step row comes once the step finishes; until then the action is what is happening now
-              setActivity(prev => ({ phase: 'acting', text: content, view: prev?.view }));
+              // the step row comes once the step finishes; until then the action is what is happening now,
+              // unless the model has already said so in its own words
+              setActivity(prev => (prev?.goal ? prev : { phase: 'acting', text: content, view: prev?.view }));
               break;
             case ExecutionState.ACT_OK:
               skip = !isReplayingRef.current;
@@ -268,6 +278,12 @@ const SidePanel = () => {
             case ExecutionState.ACT_CONFIRM:
               setPendingConfirmation(content || '');
               setActivity(prev => ({ phase: 'waiting', view: prev?.view }));
+              break;
+            case ExecutionState.ACT_ASK:
+              // the question is part of the conversation; the next message the user sends answers it
+              skip = false;
+              setAwaitingReply(true);
+              setActivity(prev => ({ phase: 'asking', view: prev?.view }));
               break;
             default:
               console.error('Invalid action', state);
@@ -301,6 +317,7 @@ const SidePanel = () => {
           content: content || '',
           timestamp: timestamp,
           ...(data?.meta ? { meta: data.meta } : {}),
+          ...(state === ExecutionState.ACT_ASK ? { meta: { kind: 'question' as const } } : {}),
           ...(FAILURE_STATES.includes(state) ? { failed: true } : {}),
         });
       }
@@ -387,15 +404,6 @@ const SidePanel = () => {
             timestamp: Date.now(),
           });
           setIsProcessingSpeech(false);
-        } else if (message && message.type === 'memory_updated') {
-          // Facts the background kept from what the user wrote in the last task; an empty list
-          // answers a request to remember that added nothing
-          const kept = [...message.added, ...message.updated];
-          appendMessage({
-            actor: Actors.SYSTEM,
-            content: kept.length > 0 ? t('chat_memory_updated', [kept.join('; ')]) : t('chat_memory_unchanged'),
-            timestamp: Date.now(),
-          });
         } else if (message && message.type === 'remote_task') {
           void showRemoteTask(String(message.task ?? ''));
         } else if (message && message.type === 'heartbeat_ack') {
@@ -630,13 +638,32 @@ const SidePanel = () => {
       if (wasHandled) return;
     }
 
+    // While the agent works, a message is taken in by the task under way: a reply to its question, or
+    // something to add or change. It does not wait for the task to end.
+    if (showStopButton && !isReplaying && sessionIdRef.current) {
+      const userMessage = { actor: Actors.USER, content: displayText || text, timestamp: Date.now() };
+      appendMessage(userMessage, sessionIdRef.current);
+      followRef.current = true;
+      setAwayFromEnd(false);
+      setAwaitingReply(false);
+      // a message instead of a click: the action waiting for approval is not taken
+      setPendingConfirmation(null);
+      setActivity(prev => ({ phase: 'planning', view: prev?.view }));
+      try {
+        const tabId = (await getTargetTab())?.id;
+        sendMessage({ type: 'steer', task: text, taskId: sessionIdRef.current, tabId, sentAt: userMessage.timestamp });
+      } catch (err) {
+        console.error('steer error', err);
+      }
+      return;
+    }
+
     try {
       const tabId = (await getTargetTab())?.id;
       if (!tabId) {
         throw new Error('No active tab found');
       }
 
-      setInputEnabled(false);
       setShowStopButton(true);
       // whoever sends a message wants to see what comes of it
       followRef.current = true;
@@ -729,6 +756,7 @@ const SidePanel = () => {
       });
     }
     setActivity(null);
+    setAwaitingReply(false);
     setInputEnabled(true);
     setShowStopButton(false);
   };
@@ -1135,7 +1163,8 @@ const SidePanel = () => {
   };
 
   let placeholder = t('chat_input_placeholder');
-  if (showStopButton) placeholder = t('chat_input_placeholder_working');
+  if (awaitingReply) placeholder = t('chat_input_placeholder_reply');
+  else if (showStopButton) placeholder = t('chat_input_placeholder_working');
   else if (messages.length > 0) placeholder = t('chat_input_placeholder_followUp');
 
   const chatInput = (
@@ -1236,7 +1265,11 @@ const SidePanel = () => {
             {menuOpen && (
               <div className="nb-menu" role="menu">
                 <div className="nb-label px-2.5 pb-1 pt-1.5">{t('nav_view')}</div>
-                <button type="button" role="menuitemradio" aria-checked={!detailed} onClick={() => chooseDetailed(false)}>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={!detailed}
+                  onClick={() => chooseDetailed(false)}>
                   <span className="nb-menu-check">{!detailed && <FiCheck size={14} />}</span>
                   <span>
                     {t('nav_view_simple')}
@@ -1305,7 +1338,10 @@ const SidePanel = () => {
                 <img src="/icon-128.png" alt="" className="nb-welcome-logo" />
                 <h1>{t('welcome_title')}</h1>
                 <p>{t('welcome_instruction')}</p>
-                <button type="button" onClick={() => chrome.runtime.openOptionsPage()} className="nb-button primary mt-4">
+                <button
+                  type="button"
+                  onClick={() => chrome.runtime.openOptionsPage()}
+                  className="nb-button primary mt-4">
                   <FiSettings aria-hidden />
                   {t('welcome_openSettings')}
                 </button>
@@ -1338,7 +1374,7 @@ const SidePanel = () => {
                 className="scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll">
                 <div className="nb-col flex min-h-full flex-col px-3 py-3">
                   {messages.length === 0 ? (
-                    <Welcome>
+                    <Welcome onOpenSession={handleSessionSelect}>
                       {favoritePrompts.length > 0 && (
                         <BookmarkList
                           bookmarks={favoritePrompts}
@@ -1356,7 +1392,7 @@ const SidePanel = () => {
                         running={showStopButton}
                         activity={activity}
                         detailed={detailed}
-                        onRetry={inputEnabled ? handleSendMessage : undefined}
+                        onRetry={inputEnabled && !showStopButton ? handleSendMessage : undefined}
                       />
                       <div ref={messagesEndRef} />
                     </>

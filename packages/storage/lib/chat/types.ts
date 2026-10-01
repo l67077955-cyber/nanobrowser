@@ -77,6 +77,10 @@ export type StepMeta =
       // the navigator has read the page and is about to decide; shown live, never saved
       kind: 'observe';
       view: PageView;
+    }
+  | {
+      // the agent asked the user something and waits for the reply before it goes on
+      kind: 'question';
     };
 
 export interface Message {

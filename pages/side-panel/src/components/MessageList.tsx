@@ -59,9 +59,11 @@ import './StepList.css';
 
 /** What the agent is doing right now, between the steps it has finished */
 export interface Activity {
-  phase: 'planning' | 'reading' | 'deciding' | 'acting' | 'waiting';
+  phase: 'planning' | 'reading' | 'deciding' | 'acting' | 'waiting' | 'asking';
   /** the action under way, in the words of whoever chose it */
   text?: string;
+  /** text is the model's own account of the whole step, not one action's */
+  goal?: boolean;
   /** the page the model has just been shown */
   view?: PageView;
 }
@@ -216,7 +218,8 @@ function TurnView({ turn, running, activity, detailed, onRetry }: TurnViewProps)
         </div>
       )}
       {segments.map((segment, i) => {
-        const key = segment.kind === 'work' ? `work-${segment.entries[0].index}` : `${segment.kind}-${segment.entry.index}`;
+        const key =
+          segment.kind === 'work' ? `work-${segment.entries[0].index}` : `${segment.kind}-${segment.entry.index}`;
         switch (segment.kind) {
           case 'work':
             return (
@@ -231,21 +234,22 @@ function TurnView({ turn, running, activity, detailed, onRetry }: TurnViewProps)
             );
           case 'answer':
             return <Answer key={key} message={segment.entry.message} detailed={detailed} />;
+          case 'question':
+            return <Question key={key} message={segment.entry.message} />;
           case 'failure':
             return (
               <Failure
                 key={key}
                 message={segment.entry.message}
                 onRetry={onRetry && task ? () => onRetry(task) : undefined}
+                onContinue={onRetry ? () => onRetry(t('chat_fail_continue_message')) : undefined}
               />
             );
           default:
             return <Notice key={key} message={segment.entry.message} />;
         }
       })}
-      {pendingWork && (
-        <Work entries={[]} startedAt={turn.startedAt} running activity={activity} detailed={detailed} />
-      )}
+      {pendingWork && <Work entries={[]} startedAt={turn.startedAt} running activity={activity} detailed={detailed} />}
     </section>
   );
 }
@@ -286,11 +290,7 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
   if (running) title = `${t('chat_work_running')} · ${elapsed}`;
   else title = stats.steps > 0 ? t('chat_work_done', [elapsed]) : t('chat_work_thought', [elapsed]);
   const steps =
-    stats.steps === 0
-      ? ''
-      : stats.steps === 1
-        ? t('chat_work_steps_one')
-        : t('chat_work_steps', [String(stats.steps)]);
+    stats.steps === 0 ? '' : stats.steps === 1 ? t('chat_work_steps_one') : t('chat_work_steps', [String(stats.steps)]);
 
   const folded = showAll ? 0 : Math.max(0, entries.length - VISIBLE_STEPS);
 
@@ -343,6 +343,8 @@ function liveText(activity: Activity | null): string {
       return activity.text && activity.text !== 'done' ? humanizeIntent(activity.text) : t('chat_live_wrappingUp');
     case 'waiting':
       return t('chat_live_waiting');
+    case 'asking':
+      return t('chat_live_asking');
     default:
       return t('chat_live_working');
   }
@@ -732,24 +734,49 @@ function Answer({ message, detailed }: { message: Message; detailed: boolean }) 
   );
 }
 
+/** Something the agent asked mid-task: it goes on once the user replies */
+function Question({ message }: { message: Message }) {
+  return (
+    <div className="nb-answer nb-question" title={formatTime(message.timestamp)}>
+      <Markdown>{message.content}</Markdown>
+    </div>
+  );
+}
+
 // these are fixed in the settings, not by trying again
 const SETTINGS_KINDS = ['setup', 'auth', 'forbidden', 'blocked'];
 
 /** A task that ended badly: what happened in plain words, what to do about it, and the error for those who want it */
-function Failure({ message, onRetry }: { message: Message; onRetry?: () => void }) {
+function Failure({
+  message,
+  onRetry,
+  onContinue,
+}: {
+  message: Message;
+  onRetry?: () => void;
+  onContinue?: () => void;
+}) {
   const { kind, raw } = classifyFailure(message.content);
   const [showRaw, setShowRaw] = useState(false);
   const settingsFirst = SETTINGS_KINDS.includes(kind);
-  const offerSettings = settingsFirst || kind === 'maxSteps' || kind === 'timeout';
+  // running out of steps is a pause in the work, not an error: the way on is to carry on
+  const paused = kind === 'maxSteps';
+  const offerSettings = settingsFirst || kind === 'timeout';
 
   return (
-    <div className="nb-failure" role="alert">
+    <div className={`nb-failure${paused ? ' soft' : ''}`} role={paused ? 'status' : 'alert'}>
       <div className="nb-failure-title">
-        <FiAlertCircle aria-hidden />
+        {paused ? <FiClock aria-hidden /> : <FiAlertCircle aria-hidden />}
         {t(`chat_fail_${kind}_title`)}
       </div>
       <p>{t(`chat_fail_${kind}_hint`)}</p>
       <div className="nb-failure-actions">
+        {paused && onContinue && (
+          <button type="button" className="nb-button primary" onClick={onContinue}>
+            <FiChevronsDown aria-hidden />
+            {t('chat_fail_continue')}
+          </button>
+        )}
         {offerSettings && (
           <button
             type="button"
@@ -759,7 +786,7 @@ function Failure({ message, onRetry }: { message: Message; onRetry?: () => void 
             {t('chat_fail_settings')}
           </button>
         )}
-        {onRetry && (
+        {onRetry && !paused && (
           <button type="button" className={`nb-button${settingsFirst ? '' : ' primary'}`} onClick={onRetry}>
             <FiRotateCcw aria-hidden />
             {t('chat_fail_retry')}

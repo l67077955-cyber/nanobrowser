@@ -78,6 +78,8 @@ function actionPhrase(action: StepAction, label: string | undefined): Phrase {
       return ['Chose', 'choose', [value ? quote(value) : 'an option', named ? `in ${named}` : ''].join(' ').trim()];
     case 'done':
       return ['Wrapped up', 'wrap up'];
+    case 'ask_user':
+      return ['Asked you', 'ask you', 'something'];
     default:
       return ['Ran', 'run', action.name.replace(/_/g, ' ')];
   }
@@ -137,7 +139,7 @@ export interface Entry {
 
 export type Segment =
   | { kind: 'work'; entries: Entry[] }
-  | { kind: 'answer' | 'failure' | 'notice'; entry: Entry };
+  | { kind: 'answer' | 'question' | 'failure' | 'notice'; entry: Entry };
 
 /** What the user asked and everything that came of it */
 export interface Turn {
@@ -150,6 +152,7 @@ export interface Turn {
 }
 
 function segmentKind(message: Message): Segment['kind'] {
+  if (message.meta?.kind === 'question') return 'question';
   if (message.meta?.kind === 'planner') return message.meta.done ? 'answer' : 'work';
   if (message.meta?.kind === 'navigator') return 'work';
   if (message.actor !== 'system') return 'work';

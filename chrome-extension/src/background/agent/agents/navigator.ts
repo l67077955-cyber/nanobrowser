@@ -451,6 +451,9 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       this.removeLastStateMessageFromMemory();
       this.addModelOutputToMemory(modelOutput);
 
+      const goal = modelOutput.current_state?.next_goal?.trim();
+      if (goal) this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_DECIDED, goal);
+
       // take the actions, resolving indices against the state the decision was made on
       const actStarted = performance.now();
       actionResults = await this.doMultiAction(actions, currentState);
@@ -462,10 +465,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       // logger.info('Action results', JSON.stringify(actionResults, null, 2));
 
       // goes into memory with the results, so the navigator and the planner both read it
-      const repeatNote = this.repeats.record(
-        actions,
-        `${currentState.url}\n${currentState.scrollY}\n${pageText}`,
-      );
+      const repeatNote = this.repeats.record(actions, `${currentState.url}\n${currentState.scrollY}\n${pageText}`);
       if (repeatNote) logger.warning(repeatNote);
       const cutShort = this.cutShort;
       this.context.actionResults = repeatNote
@@ -803,6 +803,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         if (this.context.paused || this.context.stopped) {
           return results;
         }
+        // actions planned before the user's reply may no longer be what they want
+        if (actionName === 'ask_user') break;
         // Let the page react before the next action; after the last one, the next step's observation
         // already waits for the network to go idle.
         if (i < actions.length - 1) {

@@ -225,7 +225,9 @@ export default function ChatInput({
           className={`w-full resize-none border-none bg-transparent px-3.5 pt-3 text-[13.5px] leading-relaxed focus:outline-none ${
             disabled ? 'cursor-not-allowed text-nb-muted' : 'text-nb-ink'
           }`}
-          placeholder={attachedFiles.length > 0 ? 'Add a message (optional)...' : (placeholder ?? t('chat_input_placeholder'))}
+          placeholder={
+            attachedFiles.length > 0 ? 'Add a message (optional)...' : (placeholder ?? t('chat_input_placeholder'))
+          }
           aria-label={t('chat_input_editor')}
         />
 
@@ -284,25 +286,28 @@ export default function ChatInput({
             )}
           </div>
 
-          {showStopButton ? (
-            <button
-              type="button"
-              onClick={onStopTask}
-              className="flex items-center gap-1.5 rounded-full border border-nb-line bg-nb-tile-2 px-3 py-1 text-[12.5px] font-medium text-nb-critical transition-colors hover:border-nb-critical">
-              <FiSquare className="size-3 fill-current" />
-              {t('chat_buttons_stop')}
-            </button>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              {historicalSessionId && (
-                <button
-                  type="button"
-                  onClick={handleReplay}
-                  className="flex items-center gap-1.5 rounded-full border border-nb-line bg-nb-tile-2 px-3 py-1 text-[12.5px] font-medium text-nb-ink transition-colors hover:border-nb-muted">
-                  <FiRotateCcw className="size-3.5" />
-                  {t('chat_buttons_replay')}
-                </button>
-              )}
+          <div className="flex items-center gap-1.5">
+            {/* while a task runs, a message is taken in by it; Stop is there for when it should end */}
+            {showStopButton && (
+              <button
+                type="button"
+                onClick={onStopTask}
+                aria-label={t('chat_buttons_stop')}
+                title={t('chat_buttons_stop')}
+                className="flex size-7 items-center justify-center rounded-full border border-nb-line bg-nb-tile-2 text-nb-ink-2 transition-colors hover:border-nb-muted hover:text-nb-ink">
+                <FiSquare className="size-2.5 fill-current" />
+              </button>
+            )}
+            {!showStopButton && historicalSessionId && (
+              <button
+                type="button"
+                onClick={handleReplay}
+                className="flex items-center gap-1.5 rounded-full border border-nb-line bg-nb-tile-2 px-3 py-1 text-[12.5px] font-medium text-nb-ink transition-colors hover:border-nb-muted">
+                <FiRotateCcw className="size-3.5" />
+                {t('chat_buttons_replay')}
+              </button>
+            )}
+            {!(showStopButton && isSendButtonDisabled) && (
               <button
                 type="submit"
                 disabled={isSendButtonDisabled}
@@ -312,8 +317,8 @@ export default function ChatInput({
                 className="flex size-7 items-center justify-center rounded-full bg-nb-ink text-nb-tile transition-opacity hover:enabled:opacity-85 disabled:cursor-not-allowed disabled:bg-nb-track disabled:text-nb-muted">
                 <FiArrowUp className="size-4" />
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </form>

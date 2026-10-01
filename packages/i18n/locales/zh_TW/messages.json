@@ -68,7 +68,7 @@
     "message": "傳送"
   },
   "chat_input_placeholder": {
-    "message": "有什麼需要協助的嗎？"
+    "message": "我們要做什麼？"
   },
   "chat_input_form": {
     "message": "對話輸入表單"
@@ -1145,7 +1145,7 @@
     "message": "計畫"
   },
   "act_confirm_click": {
-    "message": "允許點擊 [$INDEX$]「$LABEL$」嗎？",
+    "message": "接下來我會點擊「$LABEL$」，這可能難以復原。也可以直接告訴我改做什麼。",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1171,10 +1171,10 @@
     }
   },
   "chat_confirm_approve": {
-    "message": "允許"
+    "message": "繼續"
   },
   "chat_confirm_decline": {
-    "message": "拒絕"
+    "message": "先不要"
   },
   "options_general_confirmSensitive": {
     "message": "敏感點擊需確認"
@@ -1216,7 +1216,7 @@
     "message": "Remember automatically"
   },
   "options_memory_autoExtract_desc": {
-    "message": "After each task, keep lasting facts from what you wrote. A file you attach is read when you say it is about you or ask to remember it. The Planner model picks the facts out."
+    "message": "從你的對話和替你完成的工作中默默學習：你是誰、你用哪些網站和帳號、你喜歡怎麼做事。聊天中不會出現任何提示，記住的內容都列在這裡。"
   },
   "options_memory_list_header": {
     "message": "What is remembered"
@@ -1271,7 +1271,7 @@
     "message": "How it works"
   },
   "options_memory_howItWorks": {
-    "message": "Only your own messages, the files you attach and the text you add here are read for things to remember, never page content.\nText you add here is not stored as it is: the Planner model picks the lasting facts out of it.\nPasswords, keys and card numbers are never stored. To sign in, the agent relies on the passwords saved in your browser.\nWhen memory is full, a new memory replaces the least useful one. With Fast mode on, Jev makes that choice.\nMemories are stored on this device and sent to your model providers with each task."
+    "message": "你寫的內容、你附加的檔案，以及每個任務做了什麼（去過的網站和結果）都會被讀取，找出值得記住的事。網頁文字本身不會被儲存。\n你在這裡新增的文字不會原樣儲存：Planner 模型會從中挑出長期有用的事實。\n密碼、金鑰和卡號永遠不會被儲存。登入時，代理依賴瀏覽器中儲存的密碼。\n記憶滿了時，新的記憶會取代最不實用的一條。開啟快速模式時，由 Jev 做這個選擇。\n記憶儲存在這台裝置上，並在每個任務中傳送給你的模型供應商。"
   },
   "chat_memory_updated": {
     "message": "Memory updated: $ITEMS$",
@@ -1281,9 +1281,6 @@
         "example": "The user lives in Berlin"
       }
     }
-  },
-  "chat_memory_unchanged": {
-    "message": "Nothing new was saved to memory."
   },
   "chat_remote_task": {
     "message": "Remote agent: $TASK$",
@@ -1382,22 +1379,22 @@
     "message": "Good evening"
   },
   "welcome_prompt": {
-    "message": "Tell me what you need done and I’ll do it in your browser, step by step, where you can watch."
+    "message": "說出你需要什麼，我會在瀏覽器裡幫你搞定。我工作時你隨時可以插話。"
   },
   "welcome_startsOn": {
     "message": "I’ll start on"
   },
   "chat_input_placeholder_followUp": {
-    "message": "Reply, or ask for the next thing"
+    "message": "回覆，或告訴我下一件事"
   },
   "chat_input_placeholder_working": {
-    "message": "Working on it. Press Stop to interrupt."
+    "message": "想補充或改方向都可以，我會邊做邊調整"
   },
   "chat_jumpToLatest": {
     "message": "Latest"
   },
   "chat_confirm_title": {
-    "message": "Before I go on, is this okay?"
+    "message": "動手前先確認一下"
   },
   "chat_work_running": {
     "message": "Working"
@@ -1445,13 +1442,13 @@
     "message": "Working on it"
   },
   "chat_live_planning": {
-    "message": "Thinking about the next move"
+    "message": "正在想"
   },
   "chat_live_reading": {
     "message": "Reading the page"
   },
   "chat_live_deciding": {
-    "message": "Looking at $PAGE$ and deciding what to do",
+    "message": "正在閱讀 $PAGE$",
     "placeholders": {
       "page": {
         "content": "$1",
@@ -1529,10 +1526,10 @@
     "message": "Nothing went wrong on the page. Try again, or choose a faster model in the settings."
   },
   "chat_fail_maxSteps_title": {
-    "message": "I ran out of steps before finishing"
+    "message": "我先停在這裡"
   },
   "chat_fail_maxSteps_hint": {
-    "message": "The task needed more steps than the limit allows. Ask me to carry on from here, or raise the limit in the settings."
+    "message": "這件事用到的步數超過了上限。我可以從目前的位置繼續，也可以在設定中調高上限。"
   },
   "chat_fail_network_title": {
     "message": "I lost the connection"
@@ -1547,10 +1544,10 @@
     "message": "The firewall in the settings does not allow it. The list can be changed there."
   },
   "chat_fail_unknown_title": {
-    "message": "Something went wrong and I had to stop"
+    "message": "遇到問題，先停下了"
   },
   "chat_fail_unknown_hint": {
-    "message": "Trying again often helps. The error itself is below if you want to look."
+    "message": "再試一次通常就好。想看細節的話在下方。"
   },
   "chat_view_seeing": {
     "message": "Seeing"
@@ -1637,5 +1634,53 @@
   },
   "chat_view_text_gone": {
     "message": "The exact page text is kept only while the chat it was read in stays open."
+  },
+  "chat_input_placeholder_reply": {
+    "message": "回覆後我就繼續"
+  },
+  "chat_live_asking": {
+    "message": "等你回覆"
+  },
+  "chat_fail_continue": {
+    "message": "繼續"
+  },
+  "chat_fail_continue_message": {
+    "message": "從剛才停下的地方繼續。"
+  },
+  "chat_routines_header": {
+    "message": "例行任務"
+  },
+  "chat_routines_today": {
+    "message": "今天"
+  },
+  "chat_routines_tomorrow": {
+    "message": "明天"
+  },
+  "chat_routines_next": {
+    "message": "下次 $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1",
+        "example": "Tomorrow 09:00"
+      }
+    }
+  },
+  "chat_routines_done": {
+    "message": "已執行，沒有後續排程"
+  },
+  "chat_routines_paused": {
+    "message": "已暫停"
+  },
+  "chat_routines_openLast": {
+    "message": "打開上次的執行"
+  },
+  "chat_routines_pause": {
+    "message": "暫停"
+  },
+  "chat_routines_resume": {
+    "message": "恢復"
+  },
+  "chat_routines_delete": {
+    "message": "刪除"
   }
 }

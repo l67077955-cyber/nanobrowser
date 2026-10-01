@@ -279,8 +279,8 @@ describe('rememberFromText', () => {
 });
 
 describe('memoryInstructions', () => {
-  it('tells the agents that storing is not theirs to claim, and when it is off', () => {
-    expect(memoryInstructions(true, true)).toContain('Never claim or list what was stored');
+  it('has the agents acknowledge without talking about the memory, and say when it is off', () => {
+    expect(memoryInstructions(true, true)).toContain('Do not talk about the memory');
     expect(memoryInstructions(true, false)).toContain('"Remember automatically" is turned off');
     expect(memoryInstructions(false, true)).toContain('Memory is turned off');
   });

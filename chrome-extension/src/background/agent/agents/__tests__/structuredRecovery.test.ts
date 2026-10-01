@@ -30,6 +30,8 @@ const plan = {
   final_answer: '',
   reasoning: 'Posts remain',
   web_task: true,
+  schedule: '',
+  schedule_task: '',
 };
 
 describe('structured output recovery', () => {

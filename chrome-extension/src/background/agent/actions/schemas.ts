@@ -15,6 +15,16 @@ export const doneActionSchema: ActionSchema = {
   }),
 };
 
+export const askUserActionSchema: ActionSchema = {
+  name: 'ask_user',
+  description:
+    'Ask the user one short question in the chat and wait for the reply, then carry on with it. For what only the user can decide, know or do: a choice between options that matters to them, a detail that cannot be found, signing in, a code sent to their phone. Not for things you can reasonably decide yourself. Always the last action of a step.',
+  schema: z.object({
+    intent: z.string().default('').describe('purpose of this action'),
+    question: z.string().describe('the question, written to the user in their language'),
+  }),
+};
+
 // Basic Navigation Actions
 export const searchGoogleActionSchema: ActionSchema = {
   name: 'search_google',

@@ -3,6 +3,7 @@ import { t } from '@extension/i18n';
 import {
   clickElementActionSchema,
   doneActionSchema,
+  askUserActionSchema,
   goBackActionSchema,
   goToUrlActionSchema,
   inputTextActionSchema,
@@ -196,6 +197,24 @@ export class ActionBuilder {
       });
     }, doneActionSchema);
     actions.push(done);
+
+    // The question shows in the chat; the reply is whatever the user sends next
+    const askUser = new Action(async (input: z.infer<typeof askUserActionSchema.schema>) => {
+      const question = input.question.trim();
+      const answer = await this.context.askUser(Actors.NAVIGATOR, question);
+      if (answer === null) {
+        return new ActionResult({
+          extractedContent: `You asked the user: "${question}". No reply came. Go on with the most reasonable choice and say which one you made, or finish with done and say what is left for them.`,
+          includeInMemory: true,
+        });
+      }
+      this.context.messageManager.addUserNote(`You asked: "${question}". The user replied: """${answer}"""`);
+      return new ActionResult({
+        extractedContent: 'The user replied to your question; the reply is in the history. Carry on with it.',
+        includeInMemory: true,
+      });
+    }, askUserActionSchema);
+    actions.push(askUser);
 
     const searchGoogle = new Action(async (input: z.infer<typeof searchGoogleActionSchema.schema>) => {
       const context = this.context;

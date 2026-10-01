@@ -34,6 +34,9 @@ export const plannerOutputSchema = z.object({
   next_steps: z.string(),
   final_answer: z.string(),
   reasoning: z.string(),
+  /** when to run a task the user asked to have done later or repeatedly, e.g. "daily 09:00" */
+  schedule: z.string(),
+  schedule_task: z.string(),
   web_task: z.union([
     z.boolean(),
     z.string().transform(val => {
@@ -48,7 +51,7 @@ export type PlannerOutput = z.infer<typeof plannerOutputSchema>;
 
 export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerOutput> {
   // A plan that does not say the task is done leaves it going: the next plan decides again
-  protected override readonly fieldDefaults = { done: false };
+  protected override readonly fieldDefaults = { done: false, schedule: '', schedule_task: '' };
 
   constructor(options: BaseAgentOptions, extraOptions?: Partial<ExtraAgentOptions>) {
     super(plannerOutputSchema, options, { ...extraOptions, id: 'planner' });

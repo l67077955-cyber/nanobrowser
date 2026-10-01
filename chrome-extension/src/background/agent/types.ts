@@ -57,6 +57,7 @@ export class AgentContext {
   /** element indices as the deciding model saw them; actions resolve their index here, not in a re-read DOM */
   observedSelectorMap: Map<number, DOMElementNode> | null;
   private pendingConfirmation: ((approved: boolean) => void) | null;
+  private pendingQuestion: ((answer: string | null) => void) | null = null;
 
   constructor(
     taskId: string,
@@ -107,6 +108,7 @@ export class AgentContext {
   async stop() {
     this.stopped = true;
     this.resolveConfirmation(false);
+    this.answerQuestion(null);
     setTimeout(() => this.controller.abort(), 300);
   }
 
@@ -123,6 +125,27 @@ export class AgentContext {
     const resolve = this.pendingConfirmation;
     this.pendingConfirmation = null;
     resolve?.(approved);
+  }
+
+  get awaitingConfirmation(): boolean {
+    return this.pendingConfirmation !== null;
+  }
+
+  /** Ask the user a question in the chat; resolves with their reply, or null when the task stops first */
+  askUser(actor: Actors, question: string): Promise<string | null> {
+    this.answerQuestion(null);
+    return new Promise(resolve => {
+      this.pendingQuestion = resolve;
+      void this.emitEvent(actor, ExecutionState.ACT_ASK, question);
+    });
+  }
+
+  /** Returns false when no question was waiting for an answer */
+  answerQuestion(answer: string | null): boolean {
+    const resolve = this.pendingQuestion;
+    this.pendingQuestion = null;
+    resolve?.(answer);
+    return resolve !== null;
   }
 }
 

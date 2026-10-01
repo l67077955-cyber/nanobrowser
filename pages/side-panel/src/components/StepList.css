@@ -1229,3 +1229,18 @@ button.nb-line:hover .nb-dot {
     color: var(--nb-ink-2);
   }
 }
+
+/* Out of steps: the work paused, nothing broke */
+.nb-failure.soft {
+  border-color: var(--nb-line);
+  background: var(--nb-tile);
+}
+.nb-failure.soft .nb-failure-title svg {
+  color: var(--nb-muted);
+}
+
+/* A question the agent asked mid-task: it reads as part of the conversation, and waits for a reply */
+.nb-question {
+  border-left: 2px solid var(--nb-llm);
+  padding-left: 12px;
+}

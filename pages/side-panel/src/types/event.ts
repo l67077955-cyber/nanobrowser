@@ -34,6 +34,8 @@ export enum ExecutionState {
   STEP_START = 'step.start',
   /** the page has been read; the event carries what the model is given about it */
   STEP_OBSERVE = 'step.observe',
+  /** the model has decided; the event says, in its words, what it is about to do */
+  STEP_DECIDED = 'step.decided',
   STEP_OK = 'step.ok',
   STEP_FAIL = 'step.fail',
   STEP_CANCEL = 'step.cancel',
@@ -44,6 +46,8 @@ export enum ExecutionState {
   ACT_FAIL = 'act.fail',
   /** waiting for the user to approve or decline the next action */
   ACT_CONFIRM = 'act.confirm',
+  /** the agent asked the user something and waits for the reply */
+  ACT_ASK = 'act.ask',
 }
 
 export interface EventData {

@@ -68,7 +68,7 @@
     "message": "Send"
   },
   "chat_input_placeholder": {
-    "message": "What should I do?"
+    "message": "What are we working on?"
   },
   "chat_input_form": {
     "message": "Chat input form"
@@ -1145,7 +1145,7 @@
     "message": "PLAN"
   },
   "act_confirm_click": {
-    "message": "I’m about to click “$LABEL$”. That may be hard to undo.",
+    "message": "Next I’d click “$LABEL$”, which may be hard to undo. Or just tell me what to do instead.",
     "placeholders": {
       "index": {
         "content": "$1",
@@ -1171,10 +1171,10 @@
     }
   },
   "chat_confirm_approve": {
-    "message": "Approve"
+    "message": "Go ahead"
   },
   "chat_confirm_decline": {
-    "message": "Decline"
+    "message": "Don’t"
   },
   "options_general_confirmSensitive": {
     "message": "Confirm sensitive clicks"
@@ -1216,7 +1216,7 @@
     "message": "Remember automatically"
   },
   "options_memory_autoExtract_desc": {
-    "message": "After each task, keep lasting facts from what you wrote. A file you attach is read when you say it is about you or ask to remember it. The Planner model picks the facts out."
+    "message": "Quietly learn from your conversations and from the work done for you: who you are, the sites and accounts you use, how you like things done. Nothing about it shows in the chat; everything kept is listed here."
   },
   "options_memory_list_header": {
     "message": "What is remembered"
@@ -1271,19 +1271,7 @@
     "message": "How it works"
   },
   "options_memory_howItWorks": {
-    "message": "Only your own messages, the files you attach and the text you add here are read for things to remember, never page content.\nText you add here is not stored as it is: the Planner model picks the lasting facts out of it.\nPasswords, keys and card numbers are never stored. To sign in, the agent relies on the passwords saved in your browser.\nWhen memory is full, a new memory replaces the least useful one. With Fast mode on, Jev makes that choice.\nMemories are stored on this device and sent to your model providers with each task."
-  },
-  "chat_memory_updated": {
-    "message": "Memory updated: $ITEMS$",
-    "placeholders": {
-      "items": {
-        "content": "$1",
-        "example": "The user lives in Berlin"
-      }
-    }
-  },
-  "chat_memory_unchanged": {
-    "message": "Nothing new was saved to memory."
+    "message": "What you write, the files you attach, and what each task did (the sites it went to and its result) are read for things worth keeping. Page text itself is not stored.\nText you add here is not stored as it is: the Planner model picks the lasting facts out of it.\nPasswords, keys and card numbers are never stored. To sign in, the agent relies on the passwords saved in your browser.\nWhen memory is full, a new memory replaces the least useful one. With Fast mode on, Jev makes that choice.\nMemories are stored on this device and sent to your model providers with each task."
   },
   "chat_remote_task": {
     "message": "Remote agent: $TASK$",
@@ -1382,22 +1370,22 @@
     "message": "Good evening"
   },
   "welcome_prompt": {
-    "message": "Tell me what you need done and I’ll do it in your browser, step by step, where you can watch."
+    "message": "Say what you need and I’ll take care of it in your browser. You can chime in any time while I work."
   },
   "welcome_startsOn": {
     "message": "I’ll start on"
   },
   "chat_input_placeholder_followUp": {
-    "message": "Reply, or ask for the next thing"
+    "message": "Reply, or tell me what’s next"
   },
   "chat_input_placeholder_working": {
-    "message": "Working on it. Press Stop to interrupt."
+    "message": "Add a thought or change course. I’ll pick it up as I go"
   },
   "chat_jumpToLatest": {
     "message": "Latest"
   },
   "chat_confirm_title": {
-    "message": "Before I go on, is this okay?"
+    "message": "One check before I do this"
   },
   "chat_work_running": {
     "message": "Working"
@@ -1445,13 +1433,13 @@
     "message": "Working on it"
   },
   "chat_live_planning": {
-    "message": "Thinking about the next move"
+    "message": "Thinking it through"
   },
   "chat_live_reading": {
     "message": "Reading the page"
   },
   "chat_live_deciding": {
-    "message": "Looking at $PAGE$ and deciding what to do",
+    "message": "Reading $PAGE$",
     "placeholders": {
       "page": {
         "content": "$1",
@@ -1529,10 +1517,10 @@
     "message": "Nothing went wrong on the page. Try again, or choose a faster model in the settings."
   },
   "chat_fail_maxSteps_title": {
-    "message": "I ran out of steps before finishing"
+    "message": "I paused here"
   },
   "chat_fail_maxSteps_hint": {
-    "message": "The task needed more steps than the limit allows. Ask me to carry on from here, or raise the limit in the settings."
+    "message": "This took more steps than my limit allows. I can keep going from where I am, or the limit can be raised in the settings."
   },
   "chat_fail_network_title": {
     "message": "I lost the connection"
@@ -1547,10 +1535,10 @@
     "message": "The firewall in the settings does not allow it. The list can be changed there."
   },
   "chat_fail_unknown_title": {
-    "message": "Something went wrong and I had to stop"
+    "message": "I hit a snag and stopped"
   },
   "chat_fail_unknown_hint": {
-    "message": "Trying again often helps. The error itself is below if you want to look."
+    "message": "Trying again usually works. The details are below if you want them."
   },
   "chat_view_seeing": {
     "message": "Seeing"
@@ -1637,5 +1625,62 @@
   },
   "chat_view_text_gone": {
     "message": "The exact page text is kept only while the chat it was read in stays open."
+  },
+  "chat_input_placeholder_reply": {
+    "message": "Reply and I’ll carry on"
+  },
+  "chat_live_asking": {
+    "message": "Waiting for your reply"
+  },
+  "chat_fail_continue": {
+    "message": "Keep going"
+  },
+  "chat_fail_continue_message": {
+    "message": "Keep going from where you left off."
+  },
+  "chat_routines_header": {
+    "message": "Routines"
+  },
+  "chat_routines_today": {
+    "message": "Today"
+  },
+  "chat_routines_tomorrow": {
+    "message": "Tomorrow"
+  },
+  "chat_routines_next": {
+    "message": "next $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1",
+        "example": "Tomorrow 09:00"
+      }
+    }
+  },
+  "chat_routines_done": {
+    "message": "Ran, nothing more planned"
+  },
+  "chat_routines_paused": {
+    "message": "Paused"
+  },
+  "chat_routines_openLast": {
+    "message": "Open the last run"
+  },
+  "chat_routines_pause": {
+    "message": "Pause"
+  },
+  "chat_routines_resume": {
+    "message": "Resume"
+  },
+  "chat_routines_delete": {
+    "message": "Delete"
+  },
+  "chat_memory_updated": {
+    "message": "Memory updated: $ITEMS$",
+    "placeholders": {
+      "items": {
+        "content": "$1",
+        "example": "The user lives in Berlin"
+      }
+    }
   }
 }
