@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { RxDiscordLogo } from 'react-icons/rx';
 import { FiSettings, FiPlus, FiClock, FiChevronLeft, FiMoreHorizontal, FiCheck, FiArrowDown } from 'react-icons/fi';
 import {
   type Message,
@@ -962,6 +961,8 @@ const SidePanel = () => {
     if (!scroller) return;
     const observer = new ResizeObserver(() => {
       if (followRef.current) scroller.scrollTop = scroller.scrollHeight;
+      // a stream that shrank to fit fires no scroll, so whether it is at its end is asked again here
+      else handleScroll();
     });
     observer.observe(scroller);
     if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
@@ -1222,8 +1223,9 @@ const SidePanel = () => {
   );
 
   return (
-    <div className="nb-panel flex h-screen flex-col overflow-hidden">
-      <header className="header">
+    <div className="nb-panel relative flex h-screen flex-col overflow-hidden">
+      {/* in a chat it floats over the stream's top edge, so the stream gets the panel's whole height */}
+      <header className={`header${showHistory ? '' : ' floating'}`}>
         <div className="header-lead">
           {showHistory ? (
             <button
@@ -1311,12 +1313,6 @@ const SidePanel = () => {
                   </span>
                   {t('nav_settings_a11y')}
                 </button>
-                <a href="https://discord.gg/NN3ABHggMK" target="_blank" rel="noopener noreferrer" role="menuitem">
-                  <span className="nb-menu-check">
-                    <RxDiscordLogo size={14} />
-                  </span>
-                  Discord
-                </a>
               </div>
             )}
           </div>
@@ -1367,13 +1363,6 @@ const SidePanel = () => {
                   className="hover:text-nb-ink">
                   {t('welcome_quickStart')} ↗
                 </a>
-                <a
-                  href="https://discord.gg/NN3ABHggMK"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-nb-ink">
-                  {t('welcome_joinCommunity')} ↗
-                </a>
               </div>
             </div>
           )}
@@ -1385,7 +1374,7 @@ const SidePanel = () => {
                 ref={scrollRef}
                 onScroll={handleScroll}
                 className="scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll">
-                <div className="nb-col flex min-h-full flex-col px-3 py-3">
+                <div className="nb-col flex min-h-full flex-col px-3 pb-3 pt-11">
                   {messages.length === 0 ? (
                     <Welcome onOpenSession={handleSessionSelect}>
                       {favoritePrompts.length > 0 && (

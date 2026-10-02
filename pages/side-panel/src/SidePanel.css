@@ -83,6 +83,37 @@ code {
   outline-offset: -2px;
 }
 
+/* Grok-style: no bar, just the corners, over a fade so the stream can scroll beneath */
+.header.floating {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 10;
+  padding-right: 14px;
+  border-bottom: 0;
+  background: linear-gradient(var(--nb-page) 60%, transparent);
+  pointer-events: none;
+}
+.header.floating .header-title,
+.header.floating .header-icons {
+  pointer-events: auto;
+}
+.header.floating .header-title {
+  color: var(--nb-ink-2);
+  font-weight: 500;
+}
+.header.floating .header-icon {
+  opacity: 0.55;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+.header.floating .header-icons:hover .header-icon,
+.header.floating .header-icon:focus-visible,
+.header.floating .header-icon[aria-expanded='true'] {
+  opacity: 1;
+}
+
 textarea::placeholder,
 input::placeholder {
   color: var(--nb-muted);

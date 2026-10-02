@@ -296,17 +296,19 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
 
   return (
     <div className={`nb-work${open ? ' open' : ''}${running ? ' running' : ''}`}>
-      <button type="button" className="nb-work-head" aria-expanded={open} onClick={() => setChosen(!open)}>
-        <span className="nb-work-mark" aria-hidden>
-          {running ? <i className="nb-pulse" /> : <FiCheck />}
-        </span>
-        <span className="nb-work-title">{title}</span>
-        {steps && <span className="nb-work-steps">· {steps}</span>}
-        <FiChevronDown className="nb-chevron" aria-hidden />
-      </button>
+      <div className="nb-work-top">
+        <button type="button" className="nb-work-head" aria-expanded={open} onClick={() => setChosen(!open)}>
+          <span className="nb-work-mark" aria-hidden>
+            {running ? <i className="nb-pulse" /> : <FiCheck />}
+          </span>
+          <span className="nb-work-title">{title}</span>
+          {steps && <span className="nb-work-steps">· {steps}</span>}
+          <FiChevronDown className="nb-chevron" aria-hidden />
+        </button>
+        {detailed && stats.steps > 0 && <SummaryChip stats={stats} />}
+      </div>
       {open && (
         <div className="nb-work-body">
-          {detailed && stats.steps > 0 && <Summary stats={stats} />}
           {folded > 0 && (
             <button type="button" className="nb-more" onClick={() => setShowAll(true)}>
               {t('chat_steps_showEarlier', [String(folded)])}
@@ -548,6 +550,29 @@ function PlanItem({ meta, content, detailed }: { meta: PlannerMeta; content: str
         </div>
       )}
     </li>
+  );
+}
+
+/** The run's numbers as a small mark beside its line; the full card shows on hover, or stays when clicked */
+function SummaryChip({ stats }: { stats: WorkStats }) {
+  const [pinned, setPinned] = useState(false);
+  const warn = stats.fallbacks > 0 || stats.errors > 0;
+  return (
+    <div className={`nb-sum${pinned ? ' pinned' : ''}`}>
+      <button
+        type="button"
+        className="nb-sum-chip"
+        aria-expanded={pinned}
+        aria-label={t('chat_steps_summary_a11y')}
+        onClick={() => setPinned(!pinned)}>
+        <SharePie jev={stats.jev} llm={stats.llm} />
+        <span className="nb-num">
+          {stats.jev}·{stats.llm}
+        </span>
+        {warn && <i className="nb-sum-warn" aria-hidden />}
+      </button>
+      <Summary stats={stats} />
+    </div>
   );
 }
 

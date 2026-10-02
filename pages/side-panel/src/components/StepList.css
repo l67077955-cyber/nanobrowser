@@ -397,6 +397,70 @@ button.nb-line:hover .nb-dot {
   color: var(--nb-critical);
 }
 
+/* the run's numbers: a small mark on its line, the card only on hover or once clicked */
+.nb-work-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* the card hangs from the whole line, not the mark, so it stays inside a narrow panel */
+.nb-sum-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--nb-muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.nb-sum-chip:hover,
+.nb-sum.pinned .nb-sum-chip {
+  background: var(--nb-tile-2);
+  color: var(--nb-ink-2);
+}
+.nb-sum-chip:focus-visible {
+  outline: 2px solid var(--nb-llm);
+  outline-offset: -2px;
+}
+.nb-sum-chip svg {
+  width: 11px;
+  height: 11px;
+}
+.nb-sum-warn {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--nb-warning);
+}
+.nb-sum .nb-summary {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  display: none;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+  box-shadow:
+    var(--nb-glow),
+    0 10px 30px rgba(30, 25, 20, 0.14);
+}
+.nb-sum:hover .nb-summary,
+.nb-sum:focus-within .nb-summary,
+.nb-sum.pinned .nb-summary {
+  display: flex;
+  animation: nb-rise 0.12s ease-out;
+}
+.nb-sum .nb-summary svg {
+  width: 30px;
+  height: 30px;
+}
+
 .nb-summary {
   display: flex;
   align-items: center;
