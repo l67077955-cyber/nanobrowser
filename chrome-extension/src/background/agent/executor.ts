@@ -1,7 +1,7 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { ActionResult, AgentContext, type AgentOptions, type AgentOutput } from './types';
 import { t } from '@extension/i18n';
-import { NavigatorAgent, NavigatorActionRegistry } from './agents/navigator';
+import { NavigatorAgent, NavigatorActionRegistry, PAGE_INPUT_ACTIONS } from './agents/navigator';
 import { PlannerAgent, type PlannerOutput } from './agents/planner';
 import { NavigatorPrompt } from './prompts/navigator';
 import { PlannerPrompt } from './prompts/planner';
@@ -25,7 +25,7 @@ import {
 import { URLNotAllowedError } from '../browser/views';
 import { chatHistoryStore } from '@extension/storage/lib/chat';
 import type { AgentStepHistory } from './history';
-import { type GeneralSettingsConfig, describeRepeat, parseRepeat, scheduleStore } from '@extension/storage';
+import { type ActionMode, type GeneralSettingsConfig, describeRepeat, parseRepeat, scheduleStore } from '@extension/storage';
 import { analytics } from '../services/analytics';
 import { JevDecisionEngine } from './engines/jev';
 
@@ -115,6 +115,10 @@ export class Executor {
 
     const actionBuilder = new ActionBuilder(context, extractorLLM, extraArgs?.captchaLLM ?? null);
     const navigatorActionRegistry = new NavigatorActionRegistry(actionBuilder.buildDefaultActions());
+    // a read-only run is not offered the actions it may not take
+    if (context.options.actionMode === 'readonly') {
+      for (const name of PAGE_INPUT_ACTIONS) navigatorActionRegistry.unregisterAction(name);
+    }
 
     // Initialize agents with their respective prompts
     this.navigator = new NavigatorAgent(navigatorActionRegistry, {
@@ -123,7 +127,12 @@ export class Executor {
       prompt: this.navigatorPrompt,
     });
 
-    if (this.generalSettings?.fastMode && this.generalSettings.fastModeApiKey) {
+    // Jev decides clicks and typing, none of which a read-only run takes
+    if (
+      this.generalSettings?.fastMode &&
+      this.generalSettings.fastModeApiKey &&
+      context.options.actionMode !== 'readonly'
+    ) {
       this.navigator.setDecisionEngine(
         new JevDecisionEngine({
           apiKey: this.generalSettings.fastModeApiKey,
@@ -642,6 +651,14 @@ export class Executor {
   /** null tells the agent nobody will answer, and it decides for itself */
   answerQuestion(answer: string | null): void {
     this.context.answerQuestion(answer);
+  }
+
+  /**
+   * The mode the user switched to while this executor lives. Read-only and manual hold from the next action on;
+   * leaving read-only does not bring back the actions it dropped until a new executor is set up.
+   */
+  setActionMode(mode: ActionMode): void {
+    this.context.options.actionMode = mode;
   }
 
   confirmAction(approved: boolean): void {

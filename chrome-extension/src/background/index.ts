@@ -11,6 +11,7 @@ import {
   captchaModelStore,
   remoteControlStore,
   type ScheduledTask,
+  type ActionMode,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
@@ -83,6 +84,24 @@ for (const store of [llmProviderStore, agentModelStore, generalSettingsStore, fi
   store.subscribe(() => {
     settingsChanged = true;
   });
+}
+
+// A stricter action mode holds for a running task from its next action on, not only from the next message
+generalSettingsStore.subscribe(async () => {
+  const { actionMode } = await generalSettingsStore.getSettings();
+  currentExecutor?.setActionMode(actionMode);
+});
+
+/** What the agents are told about the action mode the user picked; auto needs no words */
+function actionModeInstructions(mode: ActionMode): string {
+  switch (mode) {
+    case 'readonly':
+      return 'Action mode: read-only. The user lets you read pages and nothing more: open URLs, search, switch tabs, scroll and read. Never click, type, choose options, press keys or submit anything; those actions are not available in this mode. If the task needs one of them, gather what can be read and finish with done, telling the user what is left for them to do by hand.';
+    case 'manual':
+      return 'Action mode: manual. The user approves every click, keystroke and text entry before it runs, so do not also ask in the chat before routine steps. An action they decline did not happen.';
+    default:
+      return '';
+  }
 }
 
 // Listen for analytics settings changes
@@ -654,6 +673,7 @@ async function setupExecutor(
   const memoryContext = [
     generalSettings.memoryEnabled ? formatMemoryContext(await memoryStore.getAll()) : '',
     memoryInstructions(generalSettings.memoryEnabled, generalSettings.memoryAutoExtract),
+    actionModeInstructions(generalSettings.actionMode),
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -671,7 +691,7 @@ async function setupExecutor(
       useVision: generalSettings.useVision,
       useVisionForPlanner: true,
       planningInterval: generalSettings.planningInterval,
-      confirmSensitiveActions: generalSettings.confirmSensitiveActions,
+      actionMode: generalSettings.actionMode,
     },
     generalSettings: generalSettings,
   });

@@ -1153,43 +1153,130 @@
   "chat_steps_plan": {
     "message": "PLAN"
   },
-  "act_confirm_click": {
-    "message": "Next I’d click “$LABEL$”, which may be hard to undo. Or just tell me what to do instead.",
+  "act_confirm_manual": {
+    "message": "Next I’d $ACTION$. Or just tell me what to do instead.",
     "placeholders": {
-      "index": {
+      "action": {
         "content": "$1",
-        "example": "3"
-      },
-      "label": {
-        "content": "$2",
-        "example": "Delete"
+        "example": "click “Sign in”"
       }
     }
   },
-  "act_confirm_declined": {
-    "message": "The user declined clicking [$INDEX$] \"$LABEL$\". Do not retry it; ask the user or choose another way.",
+  "act_confirm_manual_declined": {
+    "message": "The user declined this: $ACTION$. Do not retry it; ask the user or choose another way.",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "click “Sign in”"
+      }
+    }
+  },
+  "act_confirm_desc_click": {
+    "message": "click “$LABEL$”",
+    "placeholders": {
+      "label": {
+        "content": "$1",
+        "example": "Sign in"
+      }
+    }
+  },
+  "act_confirm_desc_input": {
+    "message": "type “$TEXT$” into “$LABEL$”",
+    "placeholders": {
+      "text": {
+        "content": "$1",
+        "example": "hello"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Search"
+      }
+    }
+  },
+  "act_confirm_desc_select": {
+    "message": "choose “$TEXT$” in “$LABEL$”",
+    "placeholders": {
+      "text": {
+        "content": "$1",
+        "example": "English"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Language"
+      }
+    }
+  },
+  "act_confirm_desc_keys": {
+    "message": "press $KEYS$",
+    "placeholders": {
+      "keys": {
+        "content": "$1",
+        "example": "Enter"
+      }
+    }
+  },
+  "act_confirm_desc_captcha": {
+    "message": "fill in the captcha at “$LABEL$”",
+    "placeholders": {
+      "label": {
+        "content": "$1",
+        "example": "Verification code"
+      }
+    }
+  },
+  "act_confirm_desc_element": {
+    "message": "element [$INDEX$]",
     "placeholders": {
       "index": {
         "content": "$1",
         "example": "3"
-      },
-      "label": {
-        "content": "$2",
-        "example": "Delete"
       }
     }
+  },
+  "act_readonly_blocked": {
+    "message": "$ACTION$ was not run: the task is in read-only mode, which only reads pages and never clicks, types or submits. Read what is on the page instead, or use done to tell the user what to do by hand.",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "click_element"
+      }
+    }
+  },
+  "options_general_actionMode": {
+    "message": "Action mode"
+  },
+  "options_general_actionMode_desc": {
+    "message": "How far Nanobrowser may act on the pages it opens. Also switchable from the chat box."
+  },
+  "chat_actionMode_label": {
+    "message": "Action mode"
+  },
+  "chat_actionMode_readonly": {
+    "message": "Read-only"
+  },
+  "chat_actionMode_readonly_desc": {
+    "message": "Opens, reads, scrolls and selects text. Never clicks, types or submits."
+  },
+  "chat_actionMode_auto": {
+    "message": "Auto"
+  },
+  "chat_actionMode_auto_desc": {
+    "message": "Clicks and types without asking."
+  },
+  "chat_actionMode_manual": {
+    "message": "Manual"
+  },
+  "chat_actionMode_manual_desc": {
+    "message": "Asks you before every click, keystroke and text it enters."
+  },
+  "chat_actionMode_next": {
+    "message": "Read-only and Manual take hold at once, even mid-task; leaving Read-only applies from the next task."
   },
   "chat_confirm_approve": {
     "message": "Go ahead"
   },
   "chat_confirm_decline": {
     "message": "Don’t"
-  },
-  "options_general_confirmSensitive": {
-    "message": "Confirm sensitive clicks"
-  },
-  "options_general_confirmSensitive_desc": {
-    "message": "Pause for your approval before clicking elements named like delete, send, post, pay or confirm."
   },
   "options_general_notifyOnFinish": {
     "message": "Notify when a task ends"

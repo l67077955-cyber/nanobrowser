@@ -39,11 +39,43 @@ import type { DOMElementNode } from '@src/background/browser/dom/views';
 
 const logger = createLogger('NavigatorAgent');
 
-// Clicks on elements named like this are hard to undo; with confirmation on, they wait for the user
-const SENSITIVE_LABEL =
-  /\b(delete|remove|discard|erase|destroy|unsubscribe|send|submit|publish|post|reply|pay|purchase|buy|checkout|order|transfer|confirm)\b|删除|刪除|移除|清空|发送|發送|发布|發布|提交|支付|付款|购买|購買|下单|下單|转账|轉帳|确认|確認/i;
+/** actions that act on a page rather than read it: read-only mode never runs them, manual mode asks before each */
+export const PAGE_INPUT_ACTIONS = new Set([
+  'click_element',
+  'input_text',
+  'select_dropdown_option',
+  'send_keys',
+  'solve_captcha',
+]);
 
-function elementLabel(node: DOMElementNode): string {
+/** What a page action would do, in words the user approves it by */
+export function describePageInput(
+  actionName: string,
+  args: unknown,
+  selectorMap: Map<number, DOMElementNode>,
+): string {
+  const input = (args ?? {}) as { index?: number; text?: string; keys?: string };
+  const node = typeof input.index === 'number' ? selectorMap.get(input.index) : undefined;
+  const label = (node && elementLabel(node)) || t('act_confirm_desc_element', [String(input.index ?? '?')]);
+  const text = input.text ?? '';
+  const shown = text.length > 80 ? `${text.slice(0, 79)}…` : text;
+  switch (actionName) {
+    case 'click_element':
+      return t('act_confirm_desc_click', [label]);
+    case 'input_text':
+      return t('act_confirm_desc_input', [shown, label]);
+    case 'select_dropdown_option':
+      return t('act_confirm_desc_select', [shown, label]);
+    case 'send_keys':
+      return t('act_confirm_desc_keys', [input.keys ?? '']);
+    case 'solve_captcha':
+      return t('act_confirm_desc_captcha', [label]);
+    default:
+      return actionName;
+  }
+}
+
+export function elementLabel(node: DOMElementNode): string {
   const attrs = node.attributes;
   const label =
     [attrs['aria-label'], node.getAllTextTillNextClickableElement(2), attrs.title, attrs.value].find(
@@ -762,20 +794,21 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           }
         }
 
-        if (this.context.options.confirmSensitiveActions && indexArg !== null) {
-          const node = browserState.selectorMap.get(indexArg);
-          const label = node ? elementLabel(node) : '';
-          if (actionName === 'click_element' && SENSITIVE_LABEL.test(label)) {
+        if (PAGE_INPUT_ACTIONS.has(actionName)) {
+          const mode = this.context.options.actionMode;
+          if (mode === 'readonly') {
+            results.push(new ActionResult({ error: t('act_readonly_blocked', [actionName]), includeInMemory: true }));
+            break;
+          }
+          if (mode === 'manual') {
+            const description = describePageInput(actionName, actionArgs, browserState.selectorMap);
             const approved = await this.context.requestConfirmation(
               Actors.NAVIGATOR,
-              t('act_confirm_click', [indexArg.toString(), label]),
+              t('act_confirm_manual', [description]),
             );
             if (!approved) {
               results.push(
-                new ActionResult({
-                  error: t('act_confirm_declined', [indexArg.toString(), label]),
-                  includeInMemory: true,
-                }),
+                new ActionResult({ error: t('act_confirm_manual_declined', [description]), includeInMemory: true }),
               );
               break;
             }

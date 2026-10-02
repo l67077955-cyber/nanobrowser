@@ -1144,43 +1144,130 @@
   "chat_steps_plan": {
     "message": "計畫"
   },
-  "act_confirm_click": {
-    "message": "接下來我會點擊「$LABEL$」，這可能難以復原。也可以直接告訴我改做什麼。",
+  "act_confirm_manual": {
+    "message": "Next I’d $ACTION$. Or just tell me what to do instead.",
     "placeholders": {
-      "index": {
+      "action": {
         "content": "$1",
-        "example": "3"
-      },
-      "label": {
-        "content": "$2",
-        "example": "Delete"
+        "example": "click “Sign in”"
       }
     }
   },
-  "act_confirm_declined": {
-    "message": "使用者拒絕點擊 [$INDEX$]「$LABEL$」。不要重試；請詢問使用者或改用其他方式。",
+  "act_confirm_manual_declined": {
+    "message": "The user declined this: $ACTION$. Do not retry it; ask the user or choose another way.",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "click “Sign in”"
+      }
+    }
+  },
+  "act_confirm_desc_click": {
+    "message": "click “$LABEL$”",
+    "placeholders": {
+      "label": {
+        "content": "$1",
+        "example": "Sign in"
+      }
+    }
+  },
+  "act_confirm_desc_input": {
+    "message": "type “$TEXT$” into “$LABEL$”",
+    "placeholders": {
+      "text": {
+        "content": "$1",
+        "example": "hello"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Search"
+      }
+    }
+  },
+  "act_confirm_desc_select": {
+    "message": "choose “$TEXT$” in “$LABEL$”",
+    "placeholders": {
+      "text": {
+        "content": "$1",
+        "example": "English"
+      },
+      "label": {
+        "content": "$2",
+        "example": "Language"
+      }
+    }
+  },
+  "act_confirm_desc_keys": {
+    "message": "press $KEYS$",
+    "placeholders": {
+      "keys": {
+        "content": "$1",
+        "example": "Enter"
+      }
+    }
+  },
+  "act_confirm_desc_captcha": {
+    "message": "fill in the captcha at “$LABEL$”",
+    "placeholders": {
+      "label": {
+        "content": "$1",
+        "example": "Verification code"
+      }
+    }
+  },
+  "act_confirm_desc_element": {
+    "message": "element [$INDEX$]",
     "placeholders": {
       "index": {
         "content": "$1",
         "example": "3"
-      },
-      "label": {
-        "content": "$2",
-        "example": "Delete"
       }
     }
+  },
+  "act_readonly_blocked": {
+    "message": "$ACTION$ was not run: the task is in read-only mode, which only reads pages and never clicks, types or submits. Read what is on the page instead, or use done to tell the user what to do by hand.",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "click_element"
+      }
+    }
+  },
+  "options_general_actionMode": {
+    "message": "Action mode"
+  },
+  "options_general_actionMode_desc": {
+    "message": "How far Nanobrowser may act on the pages it opens. Also switchable from the chat box."
+  },
+  "chat_actionMode_label": {
+    "message": "Action mode"
+  },
+  "chat_actionMode_readonly": {
+    "message": "Read-only"
+  },
+  "chat_actionMode_readonly_desc": {
+    "message": "Opens, reads, scrolls and selects text. Never clicks, types or submits."
+  },
+  "chat_actionMode_auto": {
+    "message": "Auto"
+  },
+  "chat_actionMode_auto_desc": {
+    "message": "Clicks and types without asking."
+  },
+  "chat_actionMode_manual": {
+    "message": "Manual"
+  },
+  "chat_actionMode_manual_desc": {
+    "message": "Asks you before every click, keystroke and text it enters."
+  },
+  "chat_actionMode_next": {
+    "message": "Read-only and Manual take hold at once, even mid-task; leaving Read-only applies from the next task."
   },
   "chat_confirm_approve": {
     "message": "繼續"
   },
   "chat_confirm_decline": {
     "message": "先不要"
-  },
-  "options_general_confirmSensitive": {
-    "message": "敏感點擊需確認"
-  },
-  "options_general_confirmSensitive_desc": {
-    "message": "點擊名稱像刪除、傳送、發布、付款或確認的元素前，先暫停等你允許。"
   },
   "options_general_openInWindow": {
     "message": "在獨立視窗開啟"

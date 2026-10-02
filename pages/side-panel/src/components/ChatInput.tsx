@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { FiMic, FiPaperclip, FiX, FiFileText, FiLoader, FiSquare, FiRotateCcw, FiArrowUp } from 'react-icons/fi';
 import { t } from '@extension/i18n';
+import ActionModePicker from './ActionModePicker';
 
 interface ChatInputProps {
   onSendMessage: (text: string, displayText?: string) => void;
@@ -278,6 +279,8 @@ export default function ChatInput({
                 )}
               </button>
             )}
+
+            <ActionModePicker />
           </div>
 
           <div className="min-w-0 flex-1">{aside}</div>

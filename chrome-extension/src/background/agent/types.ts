@@ -7,7 +7,7 @@ import type MessageManager from './messages/service';
 import type { EventManager } from './event/manager';
 import { type Actors, ExecutionState, AgentEvent } from './event/types';
 import { AgentStepHistory } from './history';
-import type { StepMeta } from '@extension/storage';
+import type { ActionMode, StepMeta } from '@extension/storage';
 
 export interface AgentOptions {
   maxSteps: number;
@@ -20,8 +20,8 @@ export interface AgentOptions {
   useVisionForPlanner: boolean;
   includeAttributes: string[];
   planningInterval: number;
-  /** pause for the user's approval before clicks/typing on delete, send, pay-like elements */
-  confirmSensitiveActions: boolean;
+  /** readonly drops the actions that act on a page, manual asks the user before each of them */
+  actionMode: ActionMode;
 }
 
 export const DEFAULT_AGENT_OPTIONS: AgentOptions = {
@@ -35,7 +35,7 @@ export const DEFAULT_AGENT_OPTIONS: AgentOptions = {
   useVisionForPlanner: true,
   includeAttributes: DEFAULT_INCLUDE_ATTRIBUTES,
   planningInterval: 3,
-  confirmSensitiveActions: false,
+  actionMode: 'auto',
 };
 
 export class AgentContext {

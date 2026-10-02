@@ -2,6 +2,14 @@ import { StorageEnum } from '../base/enums';
 import { createStorage } from '../base/base';
 import type { BaseStorage } from '../base/types';
 
+/**
+ * How far the agent may act on pages: readonly only reads them (navigating, scrolling, selecting text),
+ * auto takes every action without asking, manual asks before each click, keystroke or text it enters
+ */
+export type ActionMode = 'readonly' | 'auto' | 'manual';
+
+export const ACTION_MODES: ActionMode[] = ['readonly', 'auto', 'manual'];
+
 // Interface for general settings configuration
 export interface GeneralSettingsConfig {
   maxSteps: number;
@@ -19,8 +27,7 @@ export interface GeneralSettingsConfig {
   fastModeMinOperationConfidence: number;
   /** same, for which element Jev picked */
   fastModeMinTargetConfidence: number;
-  /** pause for approval before clicking delete/send/pay-like elements */
-  confirmSensitiveActions: boolean;
+  actionMode: ActionMode;
   /** give the agents the stored memories at the start of every task */
   memoryEnabled: boolean;
   /** after each task, look for new facts about the user in what they wrote */
@@ -53,7 +60,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsConfig = {
   fastModeMinOperationConfidence: 0.5,
   // Wrong picks seen in practice scored ~0.5 on the target head; correct ones 0.67+
   fastModeMinTargetConfidence: 0.6,
-  confirmSensitiveActions: false,
+  actionMode: 'auto',
   memoryEnabled: true,
   memoryAutoExtract: true,
   openInWindow: false,

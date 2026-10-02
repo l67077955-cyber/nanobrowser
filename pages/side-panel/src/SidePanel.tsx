@@ -58,7 +58,7 @@ const SidePanel = () => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [inputEnabled, setInputEnabled] = useState(true);
   const [showStopButton, setShowStopButton] = useState(false);
-  // action text awaiting the user's approval (confirm sensitive clicks setting)
+  // action text awaiting the user's approval (manual action mode)
   const [pendingConfirmation, setPendingConfirmation] = useState<string | null>(null);
   // the agent asked something in the chat and waits for the reply
   const [awaitingReply, setAwaitingReply] = useState(false);
