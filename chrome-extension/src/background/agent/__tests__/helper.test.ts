@@ -105,3 +105,54 @@ describe('createChatModel for DeepSeek', () => {
     expect(params.tool_choice).toEqual({ type: 'function', function: { name: 'planner_output' } });
   });
 });
+
+describe('createChatModel with a thinking level chosen in the settings', () => {
+  const openrouter: ProviderConfig = { apiKey: 'sk-test', type: ProviderTypeEnum.OpenRouter };
+  const custom: ProviderConfig = { apiKey: 'sk-test', type: ProviderTypeEnum.CustomOpenAI, baseUrl: 'http://x' };
+
+  function request(
+    providerConfig: ProviderConfig,
+    provider: string,
+    reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high',
+    thinking = false,
+  ) {
+    const model = createChatModel(
+      providerConfig,
+      { provider, modelName: 'deepseek-flash', parameters: { temperature: 0.1, topP: 0.1 }, reasoningEffort },
+      { thinking },
+    ) as ChatOpenAI;
+    return model.invocationParams({ tool_choice: 'planner_output' } as never) as Record<string, unknown>;
+  }
+
+  it('sends OpenRouter one reasoning object and lets a thinking model choose the tool', () => {
+    const params = request(openrouter, ProviderTypeEnum.OpenRouter, 'high');
+    expect(params.reasoning).toEqual({ effort: 'high' });
+    expect(params.tool_choice).toBe('auto');
+    expect(params.max_tokens).toBe(16384);
+  });
+
+  it('turns OpenRouter reasoning off and keeps the forced tool for Off', () => {
+    const params = request(openrouter, ProviderTypeEnum.OpenRouter, 'minimal');
+    expect(params.reasoning).toEqual({ effort: 'none' });
+    expect(params.tool_choice).toEqual({ type: 'function', function: { name: 'planner_output' } });
+  });
+
+  it('sends nothing to OpenRouter when no level is chosen', () => {
+    const params = request(openrouter, ProviderTypeEnum.OpenRouter);
+    expect(params).not.toHaveProperty('reasoning');
+    expect(params.max_tokens).toBe(4096);
+  });
+
+  it('sends reasoning_effort to a custom OpenAI-compatible provider', () => {
+    expect(request(custom, 'custom_openai_1', 'low').reasoning_effort).toBe('low');
+    expect(request(custom, 'custom_openai_1', 'minimal').reasoning_effort).toBe('none');
+  });
+
+  it('lets the chosen level decide DeepSeek thinking over the caller default', () => {
+    const on = request(deepseek, ProviderTypeEnum.DeepSeek, 'low', false);
+    expect(on.thinking).toEqual({ type: 'enabled' });
+    expect(on.reasoning_effort).toBe('low');
+    const off = request(deepseek, ProviderTypeEnum.DeepSeek, 'minimal', true);
+    expect(off.thinking).toEqual({ type: 'disabled' });
+  });
+});

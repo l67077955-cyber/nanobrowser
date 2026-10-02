@@ -10,7 +10,7 @@ const DEFAULT_SIZE = { width: 440, height: 760 };
 type Bounds = { left?: number; top?: number; width?: number; height?: number };
 
 /** The window Nanobrowser runs in when it is not docked in the side panel, if it is open */
-async function findStandaloneWindowId(): Promise<number | undefined> {
+export async function findStandaloneWindowId(): Promise<number | undefined> {
   const tabs = await chrome.tabs.query({ windowType: 'popup' });
   return tabs.find(tab => tab.url === PANEL_URL)?.windowId;
 }

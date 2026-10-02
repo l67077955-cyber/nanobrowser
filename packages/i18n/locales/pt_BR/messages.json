@@ -1682,5 +1682,29 @@
   },
   "chat_routines_delete": {
     "message": "Excluir"
+  },
+  "options_models_labels_thinking": {
+    "message": "Thinking"
+  },
+  "options_models_thinking_default": {
+    "message": "Default"
+  },
+  "options_models_thinking_hint": {
+    "message": "How hard the model thinks before it answers. Default: the Planner thinks on DeepSeek and the provider decides elsewhere. Higher levels decide better but take longer. DeepSeek knows low and high only, and treats Medium as High."
+  },
+  "options_general_notifyOnFinish": {
+    "message": "Notify when a task ends"
+  },
+  "options_general_notifyOnFinish_desc": {
+    "message": "When you are in another window, a system notification and a flashing taskbar button tell you that a task finished, failed or is waiting for your answer. Click the notification to go back to it."
+  },
+  "bg_notice_done": {
+    "message": "Task done"
+  },
+  "bg_notice_failed": {
+    "message": "Task failed"
+  },
+  "bg_notice_waiting": {
+    "message": "Nanobrowser is waiting for you"
   }
 }

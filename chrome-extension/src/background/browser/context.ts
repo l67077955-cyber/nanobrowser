@@ -43,6 +43,11 @@ export default class BrowserContext {
     this._config = { ...this._config, ...config };
   }
 
+  /** the tab the agent works in, if it has one */
+  public get currentTabId(): number | null {
+    return this._currentTabId;
+  }
+
   public updateCurrentTabId(tabId: number): void {
     // only update tab id, but don't attach it.
     this._currentTabId = tabId;

@@ -635,9 +635,20 @@ export const ModelSettings = () => {
     }
   };
 
+  // OpenRouter and custom OpenAI-compatible providers pass a thinking level on; DeepSeek turns thinking on or off
+  const supportsThinkingLevel = (modelValue: string): boolean => {
+    if (!modelValue || isOpenAIReasoningModel(modelValue)) return false;
+    const type = providers[modelValue.split('>')[0]]?.type;
+    return (
+      type === ProviderTypeEnum.DeepSeek ||
+      type === ProviderTypeEnum.OpenRouter ||
+      type === ProviderTypeEnum.CustomOpenAI
+    );
+  };
+
   const handleReasoningEffortChange = async (
     agentName: AgentNameEnum,
-    value: 'minimal' | 'low' | 'medium' | 'high',
+    value: 'minimal' | 'low' | 'medium' | 'high' | undefined,
   ) => {
     setReasoningEffort(prev => ({
       ...prev,
@@ -645,7 +656,10 @@ export const ModelSettings = () => {
     }));
 
     // Only update if we have a selected model
-    if (selectedModels[agentName] && isOpenAIReasoningModel(selectedModels[agentName])) {
+    if (
+      selectedModels[agentName] &&
+      (isOpenAIReasoningModel(selectedModels[agentName]) || supportsThinkingLevel(selectedModels[agentName]))
+    ) {
       try {
         // Extract provider and model from the "provider>model" format
         const [provider, modelName] = selectedModels[agentName].split('>');
@@ -691,6 +705,7 @@ export const ModelSettings = () => {
             provider,
             modelName,
             parameters: parametersToSave,
+            reasoningEffort: reasoningEffort[agentName],
           });
         }
       } catch (error) {
@@ -853,7 +868,35 @@ export const ModelSettings = () => {
                   handleReasoningEffortChange(agentName, e.target.value as 'minimal' | 'low' | 'medium' | 'high')
                 }
                 className={`flex-1 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-sm text-nb-ink focus:border-nb-llm focus:outline-none`}>
-                <option value="minimal/none">Minimal</option>
+                <option value="minimal">Minimal</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Thinking level for providers that serve thinking models of many makers */}
+        {supportsThinkingLevel(selectedModels[agentName]) && (
+          <div className="flex items-center">
+            <label htmlFor={`${agentName}-thinking`} className={`w-24 text-sm font-medium text-nb-ink-2`}>
+              {t('options_models_labels_thinking')}
+            </label>
+            <div className="flex flex-1 items-center space-x-2">
+              <select
+                id={`${agentName}-thinking`}
+                value={reasoningEffort[agentName] ?? ''}
+                onChange={e =>
+                  handleReasoningEffortChange(
+                    agentName,
+                    (e.target.value || undefined) as 'minimal' | 'low' | 'medium' | 'high' | undefined,
+                  )
+                }
+                title={t('options_models_thinking_hint')}
+                className={`flex-1 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-sm text-nb-ink focus:border-nb-llm focus:outline-none`}>
+                <option value="">{t('options_models_thinking_default')}</option>
+                <option value="minimal">Off</option>
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>

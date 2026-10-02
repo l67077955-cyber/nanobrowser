@@ -15,6 +15,7 @@ import {
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
 import { setupStandaloneWindow } from './services/standaloneWindow';
+import { noticeTask, setupTaskNotices } from './services/taskNotice';
 import { Executor, type ExecutorSnapshot } from './agent/executor';
 import { snapshotFromChat } from './agent/resume';
 import { createLogger } from './log';
@@ -43,6 +44,7 @@ const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
 // The toolbar icon opens the side panel, or a window of its own if set so
 setupStandaloneWindow();
+setupTaskNotices();
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (tabId && changeInfo.status === 'complete' && tab.url?.startsWith('http')) {
@@ -462,10 +464,12 @@ async function runScheduledTask(entry: ScheduledTask): Promise<ScheduledRunEnd |
         case ExecutionState.TASK_OK:
           end.status = 'completed';
           end.result = event.data.details === taskId ? '' : event.data.details;
+          void noticeTask('done', end.result, browserContext.currentTabId);
           break;
         case ExecutionState.TASK_FAIL:
           end.status = 'failed';
           end.result = event.data.details;
+          void noticeTask('failed', end.result, browserContext.currentTabId);
           break;
         case ExecutionState.TASK_CANCEL:
           end.status = 'cancelled';
@@ -725,6 +729,24 @@ async function subscribeToExecutorEvents(executor: Executor) {
       }
     } catch (error) {
       logger.error('Failed to send message to side panel:', error);
+    }
+
+    // a task from another agent reports back to that agent, which also answers its questions
+    if (activeTask?.source === 'panel') {
+      const tabId = browserContext.currentTabId;
+      switch (event.state) {
+        case ExecutionState.TASK_OK:
+          // a task that ends without an answer reports its id as the details
+          void noticeTask('done', event.data.details === activeTask.taskId ? '' : event.data.details, tabId);
+          break;
+        case ExecutionState.TASK_FAIL:
+          void noticeTask('failed', event.data.details, tabId);
+          break;
+        case ExecutionState.ACT_ASK:
+        case ExecutionState.ACT_CONFIRM:
+          void noticeTask('waiting', event.data.details, tabId);
+          break;
+      }
     }
 
     if (

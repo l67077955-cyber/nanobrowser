@@ -70,6 +70,7 @@ const manifest = withOperaSidebar(
       'unlimitedStorage',
       'webNavigation',
       'alarms',
+      'notifications',
     ],
     options_page: 'options/index.html',
     background: {

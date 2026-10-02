@@ -97,6 +97,18 @@ class ChatDeepSeekThinking extends ChatDeepSeek {
   }
 }
 
+/**
+ * Lets the model choose the tool LangChain forces for structured output: OpenAI-compatible APIs reject a
+ * forced tool from a thinking model (DeepSeek through OpenRouter, Qwen, ...).
+ */
+class ChatOpenAIThinking extends ChatOpenAI {
+  invocationParams(...args: Parameters<ChatOpenAI['invocationParams']>): ReturnType<ChatOpenAI['invocationParams']> {
+    const params = super.invocationParams(...args);
+    const forcesTool = typeof params.tool_choice === 'object' || params.tool_choice === 'required';
+    return forcesTool ? { ...params, tool_choice: 'auto' } : params;
+  }
+}
+
 /** Extra choices for the model a caller gets */
 export interface ChatModelOptions {
   /**
@@ -104,6 +116,20 @@ export interface ChatModelOptions {
    * the navigator acts on every step and stays fast without it.
    */
   thinking?: boolean;
+}
+
+type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';
+
+/** The thinking level chosen in the model settings; none chosen leaves it to the provider and the caller */
+function chosenThinkingLevel(modelConfig: ModelConfig): ThinkingLevel | undefined {
+  if (!modelConfig.reasoningEffort) return undefined;
+  return modelConfig.reasoningEffort === 'minimal' ? 'off' : modelConfig.reasoningEffort;
+}
+
+/** OpenRouter takes one reasoning object for every model; other OpenAI-compatible APIs take reasoning_effort */
+function compatibleThinkingKwargs(providerConfig: ProviderConfig, level: ThinkingLevel): Record<string, unknown> {
+  const effort = level === 'off' ? 'none' : level;
+  return providerConfig.type === ProviderTypeEnum.OpenRouter ? { reasoning: { effort } } : { reasoning_effort: effort };
 }
 
 // O series, GPT-5 or GPT-6 models that support reasoning
@@ -218,6 +244,15 @@ function createOpenAIChatModel(
     args.topP = (modelConfig.parameters?.topP ?? 0.1) as number;
     args.temperature = (modelConfig.parameters?.temperature ?? 0.1) as number;
     args.maxTokens = maxTokens;
+    // OpenAI's own chat models take no thinking level; OpenRouter and custom providers serve models that do
+    const level = chosenThinkingLevel(modelConfig);
+    if (level && providerConfig.type !== ProviderTypeEnum.OpenAI) {
+      (args as Record<string, unknown>).modelKwargs = compatibleThinkingKwargs(providerConfig, level);
+      if (level !== 'off') {
+        args.maxTokens = adaptiveThinkingMaxTokens;
+        return new ChatOpenAIThinking(args);
+      }
+    }
   }
   return new ChatOpenAI(args);
 }
@@ -354,10 +389,13 @@ export function createChatModel(
       return new ChatAnthropic(args);
     }
     case ProviderTypeEnum.DeepSeek: {
-      if (options.thinking) {
+      const level = chosenThinkingLevel(modelConfig);
+      if (level ? level !== 'off' : options.thinking) {
         return new ChatDeepSeekThinking({
           model: modelConfig.modelName,
           apiKey: providerConfig.apiKey,
+          // DeepSeek takes low, high and max, and reads medium as high
+          ...(level ? { modelKwargs: { reasoning_effort: level } } : {}),
         }) as BaseChatModel;
       }
       const args = {

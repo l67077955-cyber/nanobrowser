@@ -27,6 +27,8 @@ export interface GeneralSettingsConfig {
   memoryAutoExtract: boolean;
   /** the toolbar icon opens Nanobrowser in a window of its own instead of the side panel */
   openInWindow: boolean;
+  /** a notification and a flashing taskbar button when a task ends or waits for the user, if they look elsewhere */
+  notifyOnFinish: boolean;
 }
 
 export type GeneralSettingsStorage = BaseStorage<GeneralSettingsConfig> & {
@@ -55,6 +57,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsConfig = {
   memoryEnabled: true,
   memoryAutoExtract: true,
   openInWindow: false,
+  notifyOnFinish: true,
 };
 
 const storage = createStorage<GeneralSettingsConfig>('general-settings', DEFAULT_GENERAL_SETTINGS, {
