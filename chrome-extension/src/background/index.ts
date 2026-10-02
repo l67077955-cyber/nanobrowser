@@ -609,7 +609,7 @@ async function setupExecutor(
   if (plannerModel) {
     // Log the provider config being used for the planner
     const plannerProviderConfig = providers[plannerModel.provider];
-    plannerLLM = createChatModel(plannerProviderConfig, plannerModel);
+    plannerLLM = createChatModel(plannerProviderConfig, plannerModel, { thinking: true });
   }
 
   // Apply firewall settings to browser context
@@ -685,7 +685,7 @@ async function importMemories(text: string) {
   if (!model || !providers[model.provider]) throw new Error(t('bg_setup_noApiKeys'));
   const settings = await generalSettingsStore.getSettings();
   return rememberFromText(text, {
-    llm: createChatModel(providers[model.provider], model),
+    llm: createChatModel(providers[model.provider], model, { thinking: true }),
     jevApiKey: settings.fastMode ? settings.fastModeApiKey : undefined,
   });
 }

@@ -79,6 +79,33 @@ class ChatAnthropicAdaptiveThinking extends ChatAnthropic {
   }
 }
 
+/**
+ * DeepSeek models think unless told not to, but reject thinking together with the forced tool LangChain
+ * sets for structured output. Turns thinking on and lets the model choose the tool instead.
+ */
+class ChatDeepSeekThinking extends ChatDeepSeek {
+  invocationParams(
+    ...args: Parameters<ChatDeepSeek['invocationParams']>
+  ): ReturnType<ChatDeepSeek['invocationParams']> {
+    const params = super.invocationParams(...args);
+    const forcesTool = typeof params.tool_choice === 'object' || params.tool_choice === 'required';
+    return {
+      ...params,
+      ...(forcesTool ? { tool_choice: 'auto' } : {}),
+      thinking: { type: 'enabled' },
+    } as unknown as ReturnType<ChatDeepSeek['invocationParams']>;
+  }
+}
+
+/** Extra choices for the model a caller gets */
+export interface ChatModelOptions {
+  /**
+   * Turn thinking on where the provider makes it optional. For the calls that judge (planner, memory);
+   * the navigator acts on every step and stays fast without it.
+   */
+  thinking?: boolean;
+}
+
 // O series, GPT-5 or GPT-6 models that support reasoning
 function isOpenAIReasoningModel(modelName: string): boolean {
   let modelNameWithoutProvider = modelName;
@@ -285,7 +312,11 @@ function createAzureChatModel(providerConfig: ProviderConfig, modelConfig: Model
 }
 
 // create a chat model based on the agent name, the model name and provider
-export function createChatModel(providerConfig: ProviderConfig, modelConfig: ModelConfig): BaseChatModel {
+export function createChatModel(
+  providerConfig: ProviderConfig,
+  modelConfig: ModelConfig,
+  options: ChatModelOptions = {},
+): BaseChatModel {
   const temperature = (modelConfig.parameters?.temperature ?? 0.1) as number;
   const topP = (modelConfig.parameters?.topP ?? 0.1) as number;
 
@@ -323,6 +354,12 @@ export function createChatModel(providerConfig: ProviderConfig, modelConfig: Mod
       return new ChatAnthropic(args);
     }
     case ProviderTypeEnum.DeepSeek: {
+      if (options.thinking) {
+        return new ChatDeepSeekThinking({
+          model: modelConfig.modelName,
+          apiKey: providerConfig.apiKey,
+        }) as BaseChatModel;
+      }
       const args = {
         model: modelConfig.modelName,
         apiKey: providerConfig.apiKey,

@@ -6,6 +6,7 @@ import { createChatModel, isAnthropicAdaptiveThinkingModel } from '../helper';
 
 const anthropic: ProviderConfig = { apiKey: 'sk-test', type: ProviderTypeEnum.Anthropic };
 const openai: ProviderConfig = { apiKey: 'sk-test', type: ProviderTypeEnum.OpenAI };
+const deepseek: ProviderConfig = { apiKey: 'sk-test', type: ProviderTypeEnum.DeepSeek };
 
 function anthropicRequest(modelName: string) {
   const model = createChatModel(anthropic, {
@@ -78,5 +79,29 @@ describe('createChatModel for OpenAI GPT-6', () => {
     expect(openaiModel('gpt-6-luna', 'minimal').modelKwargs?.reasoning_effort).toBe('none');
     expect(openaiModel('gpt-6.1-sol', 'minimal').modelKwargs?.reasoning_effort).toBe('low');
     expect(openaiModel('openai/gpt-6-astra', 'minimal').modelKwargs?.reasoning_effort).toBe('low');
+  });
+});
+
+describe('createChatModel for DeepSeek', () => {
+  function deepseekRequest(thinking: boolean) {
+    const model = createChatModel(
+      deepseek,
+      { provider: ProviderTypeEnum.DeepSeek, modelName: 'deepseek-flash', parameters: { temperature: 0.1, topP: 0.1 } },
+      { thinking },
+    ) as ChatOpenAI;
+    // the tool choice withStructuredOutput sets
+    return model.invocationParams({ tool_choice: 'planner_output' } as never) as Record<string, unknown>;
+  }
+
+  it('thinks and lets the model choose the tool when asked to think', () => {
+    const params = deepseekRequest(true);
+    expect(params.thinking).toEqual({ type: 'enabled' });
+    expect(params.tool_choice).toBe('auto');
+  });
+
+  it('keeps thinking off and the forced tool otherwise', () => {
+    const params = deepseekRequest(false);
+    expect(params.thinking).toEqual({ type: 'disabled' });
+    expect(params.tool_choice).toEqual({ type: 'function', function: { name: 'planner_output' } });
   });
 });
