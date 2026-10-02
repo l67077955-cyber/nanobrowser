@@ -955,6 +955,19 @@ const SidePanel = () => {
     if (followRef.current) messagesEndRef.current?.scrollIntoView();
   }, [messages, activity]);
 
+  // Steps that grow in place, a panel that gets shorter, or a composer that gets taller don't change
+  // `messages`, so the end is also held on to whenever the stream or its viewport changes size
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const observer = new ResizeObserver(() => {
+      if (followRef.current) scroller.scrollTop = scroller.scrollHeight;
+    });
+    observer.observe(scroller);
+    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+    return () => observer.disconnect();
+  }, [hasConfiguredModels, showHistory]);
+
   const handleScroll = () => {
     const scroller = scrollRef.current;
     if (!scroller) return;
@@ -1189,7 +1202,6 @@ const SidePanel = () => {
           </div>
         </div>
       )}
-      {modelView && messages.length > 0 && <ContextPeek view={modelView} live={showStopButton} />}
       <ChatInput
         onSendMessage={handleSendMessage}
         onStopTask={handleStopTask}
@@ -1204,6 +1216,7 @@ const SidePanel = () => {
         }}
         historicalSessionId={isHistoricalSession && replayEnabled ? currentSessionId : null}
         onReplay={handleReplay}
+        aside={modelView && messages.length > 0 && <ContextPeek view={modelView} live={showStopButton} />}
       />
     </div>
   );

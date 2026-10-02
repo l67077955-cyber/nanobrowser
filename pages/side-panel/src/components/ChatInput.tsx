@@ -16,6 +16,8 @@ interface ChatInputProps {
   // Historical session ID - if provided, shows a replay button next to the send button
   historicalSessionId?: string | null;
   onReplay?: (sessionId: string) => void;
+  /** sits in the toolbar between the attach buttons and Send, so it costs no height of its own */
+  aside?: React.ReactNode;
 }
 
 // File attachment interface
@@ -37,6 +39,7 @@ export default function ChatInput({
   setContent,
   historicalSessionId,
   onReplay,
+  aside,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -47,17 +50,8 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle text changes and resize textarea
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newText = e.target.value;
-    setText(newText);
-
-    // Resize textarea
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
-    }
+    setText(e.target.value);
   };
 
   // Expose a method to set content from outside
@@ -67,14 +61,14 @@ export default function ChatInput({
     }
   }, [setContent]);
 
-  // Initial resize when component mounts
+  // The field is one line until the text needs more, whether typed or set from outside
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
       textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
     }
-  }, []);
+  }, [text]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -221,8 +215,8 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           disabled={disabled}
           aria-disabled={disabled}
-          rows={2}
-          className={`w-full resize-none border-none bg-transparent px-3.5 pt-3 text-[13.5px] leading-relaxed focus:outline-none ${
+          rows={1}
+          className={`w-full resize-none border-none bg-transparent px-3.5 pt-2.5 text-[13.5px] leading-relaxed focus:outline-none ${
             disabled ? 'cursor-not-allowed text-nb-muted' : 'text-nb-ink'
           }`}
           placeholder={
@@ -231,8 +225,8 @@ export default function ChatInput({
           aria-label={t('chat_input_editor')}
         />
 
-        <div className="flex items-center justify-between px-2 pb-2">
-          <div className="flex gap-0.5">
+        <div className="flex items-center gap-1 px-2 pb-1.5">
+          <div className="flex shrink-0 gap-0.5">
             {/* File attachment button */}
             <button
               type="button"
@@ -286,7 +280,9 @@ export default function ChatInput({
             )}
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="min-w-0 flex-1">{aside}</div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
             {/* while a task runs, a message is taken in by it; Stop is there for when it should end */}
             {showStopButton && (
               <button

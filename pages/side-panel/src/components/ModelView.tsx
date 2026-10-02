@@ -1,6 +1,6 @@
 import type { PageView } from '@extension/storage';
 import { t } from '@extension/i18n';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FiChevronDown, FiCpu, FiEye, FiGlobe, FiImage, FiLayers, FiMaximize2, FiMousePointer } from 'react-icons/fi';
 import { formatTokens, hostOf } from './steps';
 
@@ -90,15 +90,33 @@ export function ViewFacts({ view }: { view: PageView }) {
   );
 }
 
-/** A line above the composer that says what the model is looking at, and opens to show it */
+/** A line in the composer's toolbar that says what the model is looking at, and opens to show it above the composer */
 export default function ContextPeek({ view, live }: { view: PageView; live: boolean }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const share =
     view.tokens !== undefined && view.maxTokens ? Math.round((view.tokens / view.maxTokens) * 100) : undefined;
 
+  // it floats over the stream, so a click elsewhere or Escape puts it away
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   return (
-    <div className={`nb-peek${open ? ' open' : ''}`}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+    <div ref={rootRef} className={`nb-peek${open ? ' open' : ''}`}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} title={view.title || hostOf(view.url)}>
         <span className={`nb-peek-eye${live ? ' live' : ''}`}>
           <FiEye aria-hidden />
         </span>
