@@ -18,7 +18,7 @@ import { latestView, withoutPageText } from './components/steps';
 import ChatInput from './components/ChatInput';
 import ChatHistoryList from './components/ChatHistoryList';
 import BookmarkList from './components/BookmarkList';
-import OpenInWindowButton from './components/OpenInWindowButton';
+import WindowToggleButton, { useHandedOffSession } from './components/WindowToggleButton';
 import { getTargetTab } from './utils';
 import { EventType, type AgentEvent, ExecutionState } from './types/event';
 import './SidePanel.css';
@@ -822,6 +822,11 @@ const SidePanel = () => {
     }
   };
 
+  // the chat the side panel or window this one replaced had open; a running task here is not interrupted for it
+  const showHandedOffRef = useRef(handleSessionSelect);
+  showHandedOffRef.current = showStopButton ? () => Promise.resolve() : handleSessionSelect;
+  useHandedOffSession(useCallback((sessionId: string) => void showHandedOffRef.current(sessionId), []));
+
   const handleSessionDelete = async (sessionId: string) => {
     try {
       await chatHistoryStore.deleteSession(sessionId);
@@ -1264,6 +1269,7 @@ const SidePanel = () => {
               </button>
             </>
           )}
+          <WindowToggleButton sessionId={currentSessionId} busy={showStopButton} />
           <div className="relative" ref={menuRef}>
             <button
               type="button"
@@ -1297,8 +1303,6 @@ const SidePanel = () => {
                   </span>
                 </button>
                 <hr />
-                {/* closing the side panel ends a running task, so not while one runs */}
-                {!showStopButton && <OpenInWindowButton />}
                 <button
                   type="button"
                   role="menuitem"

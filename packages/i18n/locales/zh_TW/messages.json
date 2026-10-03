@@ -34,6 +34,12 @@
   "nav_openInWindow_a11y": {
     "message": "在獨立視窗開啟"
   },
+  "nav_dockToSidePanel_a11y": {
+    "message": "Move back to the side panel"
+  },
+  "nav_windowMove_busy": {
+    "message": "available once the task ends"
+  },
   "nav_back": {
     "message": "← 返回"
   },
