@@ -1,18 +1,6 @@
 import { useState, useEffect } from 'react';
-import {
-  type ActionMode,
-  type GeneralSettingsConfig,
-  ACTION_MODES,
-  generalSettingsStore,
-  DEFAULT_GENERAL_SETTINGS,
-} from '@extension/storage';
+import { type GeneralSettingsConfig, generalSettingsStore, DEFAULT_GENERAL_SETTINGS } from '@extension/storage';
 import { t } from '@extension/i18n';
-
-const ACTION_MODE_LABEL = {
-  readonly: 'chat_actionMode_readonly',
-  auto: 'chat_actionMode_auto',
-  manual: 'chat_actionMode_manual',
-} as const satisfies Record<ActionMode, string>;
 
 export const GeneralSettings = () => {
   const [settings, setSettings] = useState<GeneralSettingsConfig>(DEFAULT_GENERAL_SETTINGS);
@@ -297,27 +285,6 @@ export const GeneralSettings = () => {
               />
             </div>
           )}
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_actionMode')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_actionMode_desc')}</p>
-            </div>
-            <label htmlFor="actionMode" className="sr-only">
-              {t('options_general_actionMode')}
-            </label>
-            <select
-              id="actionMode"
-              value={settings.actionMode}
-              onChange={e => updateSetting('actionMode', e.target.value as ActionMode)}
-              className={`rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}>
-              {ACTION_MODES.map(mode => (
-                <option key={mode} value={mode}>
-                  {t(ACTION_MODE_LABEL[mode])}
-                </option>
-              ))}
-            </select>
-          </div>
 
           <div className="flex items-center justify-between">
             <div>

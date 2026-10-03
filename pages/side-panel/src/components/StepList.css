@@ -1145,27 +1145,29 @@ button.nb-line:hover .nb-dot {
   height: 12px;
 }
 .nb-confirm {
-  margin-bottom: 8px;
-  padding: 11px 14px;
-  border: 1px solid color-mix(in srgb, var(--nb-warning) 40%, transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--nb-warning) 6%, var(--nb-tile));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 5px 5px 5px 12px;
+  border: 1px solid var(--nb-line);
+  border-radius: 999px;
+  background: var(--nb-tile);
   animation: nb-rise 0.2s ease-out;
 }
-.nb-confirm-title {
-  font-size: 13.5px;
-  font-weight: 600;
-}
 .nb-confirm p {
-  margin: 2px 0 10px;
-  color: var(--nb-ink-2);
-  font-size: 13px;
-  overflow-wrap: anywhere;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--nb-ink);
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.nb-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
+.nb-confirm .nb-button {
+  flex-shrink: 0;
+  padding: 3px 10px;
 }
 
 /* ---------- a new chat ---------- */

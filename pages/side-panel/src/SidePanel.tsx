@@ -1177,7 +1177,8 @@ const SidePanel = () => {
   };
 
   let placeholder = t('chat_input_placeholder');
-  if (awaitingReply) placeholder = t('chat_input_placeholder_reply');
+  if (pendingConfirmation !== null) placeholder = t('chat_input_placeholder_confirm');
+  else if (awaitingReply) placeholder = t('chat_input_placeholder_reply');
   else if (showStopButton) placeholder = t('chat_input_placeholder_working');
   else if (messages.length > 0) placeholder = t('chat_input_placeholder_followUp');
 
@@ -1191,16 +1192,13 @@ const SidePanel = () => {
       )}
       {pendingConfirmation !== null && (
         <div role="alertdialog" aria-label={pendingConfirmation} className="nb-confirm">
-          <div className="nb-confirm-title">{t('chat_confirm_title')}</div>
-          <p>{pendingConfirmation}</p>
-          <div className="nb-confirm-actions">
-            <button type="button" onClick={() => handleConfirmAction(false)} className="nb-button">
-              {t('chat_confirm_decline')}
-            </button>
-            <button type="button" onClick={() => handleConfirmAction(true)} className="nb-button primary warn">
-              {t('chat_confirm_approve')}
-            </button>
-          </div>
+          <p title={pendingConfirmation}>{pendingConfirmation}</p>
+          <button type="button" onClick={() => handleConfirmAction(false)} className="nb-button">
+            {t('chat_confirm_decline')}
+          </button>
+          <button type="button" onClick={() => handleConfirmAction(true)} className="nb-button primary">
+            {t('chat_confirm_approve')}
+          </button>
         </div>
       )}
       <ChatInput

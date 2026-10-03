@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { FiMic, FiPaperclip, FiX, FiFileText, FiLoader, FiSquare, FiRotateCcw, FiArrowUp } from 'react-icons/fi';
 import { t } from '@extension/i18n';
-import ActionModePicker from './ActionModePicker';
+import ActionModePicker, { cycleActionMode } from './ActionModePicker';
 
 interface ChatInputProps {
   onSendMessage: (text: string, displayText?: string) => void;
@@ -113,6 +113,11 @@ export default function ChatInput({
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         handleSubmit(e);
+      }
+      // as in Claude Code: Shift+Tab steps through the action modes
+      if (e.key === 'Tab' && e.shiftKey) {
+        e.preventDefault();
+        void cycleActionMode();
       }
     },
     [handleSubmit],
@@ -279,9 +284,9 @@ export default function ChatInput({
                 )}
               </button>
             )}
-
-            <ActionModePicker />
           </div>
+
+          <ActionModePicker />
 
           <div className="min-w-0 flex-1">{aside}</div>
 

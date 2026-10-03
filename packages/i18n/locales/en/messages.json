@@ -1154,7 +1154,7 @@
     "message": "PLAN"
   },
   "act_confirm_manual": {
-    "message": "Next I’d $ACTION$. Or just tell me what to do instead.",
+    "message": "$ACTION$?",
     "placeholders": {
       "action": {
         "content": "$1",
@@ -1172,7 +1172,7 @@
     }
   },
   "act_confirm_desc_click": {
-    "message": "click “$LABEL$”",
+    "message": "Click “$LABEL$”",
     "placeholders": {
       "label": {
         "content": "$1",
@@ -1181,7 +1181,7 @@
     }
   },
   "act_confirm_desc_input": {
-    "message": "type “$TEXT$” into “$LABEL$”",
+    "message": "Type “$TEXT$” into “$LABEL$”",
     "placeholders": {
       "text": {
         "content": "$1",
@@ -1194,7 +1194,7 @@
     }
   },
   "act_confirm_desc_select": {
-    "message": "choose “$TEXT$” in “$LABEL$”",
+    "message": "Choose “$TEXT$” in “$LABEL$”",
     "placeholders": {
       "text": {
         "content": "$1",
@@ -1207,7 +1207,7 @@
     }
   },
   "act_confirm_desc_keys": {
-    "message": "press $KEYS$",
+    "message": "Press $KEYS$",
     "placeholders": {
       "keys": {
         "content": "$1",
@@ -1216,7 +1216,7 @@
     }
   },
   "act_confirm_desc_captcha": {
-    "message": "fill in the captcha at “$LABEL$”",
+    "message": "Fill in the captcha at “$LABEL$”",
     "placeholders": {
       "label": {
         "content": "$1",
@@ -1242,14 +1242,8 @@
       }
     }
   },
-  "options_general_actionMode": {
-    "message": "Action mode"
-  },
-  "options_general_actionMode_desc": {
-    "message": "How far Nanobrowser may act on the pages it opens. Also switchable from the chat box."
-  },
   "chat_actionMode_label": {
-    "message": "Action mode"
+    "message": "Action mode (Shift+Tab to switch)"
   },
   "chat_actionMode_readonly": {
     "message": "Read-only"
@@ -1270,13 +1264,13 @@
     "message": "Asks you before every click, keystroke and text it enters."
   },
   "chat_actionMode_next": {
-    "message": "Read-only and Manual take hold at once, even mid-task; leaving Read-only applies from the next task."
+    "message": "Click or Shift+Tab to switch."
   },
   "chat_confirm_approve": {
-    "message": "Go ahead"
+    "message": "Allow"
   },
   "chat_confirm_decline": {
-    "message": "Don’t"
+    "message": "Skip"
   },
   "options_general_notifyOnFinish": {
     "message": "Notify when a task ends"
@@ -1494,9 +1488,6 @@
   },
   "chat_jumpToLatest": {
     "message": "Latest"
-  },
-  "chat_confirm_title": {
-    "message": "One check before I do this"
   },
   "chat_work_running": {
     "message": "Working"
@@ -1793,5 +1784,8 @@
         "example": "The user lives in Berlin"
       }
     }
+  },
+  "chat_input_placeholder_confirm": {
+    "message": "Or tell me what to do instead…"
   }
 }
