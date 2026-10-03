@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
+import { FiChevronRight } from 'react-icons/fi';
 import { type GeneralSettingsConfig, generalSettingsStore, DEFAULT_GENERAL_SETTINGS } from '@extension/storage';
 import { t } from '@extension/i18n';
+import { SettingsGroup, SettingsRow, Toggle, NumberField, ConfidenceSlider } from './SettingsList';
 
 export const GeneralSettings = () => {
   const [settings, setSettings] = useState<GeneralSettingsConfig>(DEFAULT_GENERAL_SETTINGS);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     // Load initial settings
@@ -27,201 +30,72 @@ export const GeneralSettings = () => {
     setSettings(latestSettings);
   };
 
+  // most used first: how the app opens and talks to you, what the agent sees, then Fast Mode;
+  // limits and experiments wait behind Advanced
   return (
-    <section className="space-y-6">
-      <div className={`rounded-xl border border-nb-line bg-nb-tile p-6 text-left shadow-nb`}>
-        <h2 className={`mb-4 text-left text-base font-semibold tracking-tight text-nb-ink`}>
-          {t('options_general_header')}
-        </h2>
+    <div className="mx-auto max-w-2xl space-y-7 text-left">
+      <h2 className="px-4 text-xl font-semibold tracking-tight text-nb-ink">{t('options_general_header')}</h2>
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_maxSteps')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_maxSteps_desc')}</p>
-            </div>
-            <label htmlFor="maxSteps" className="sr-only">
-              {t('options_general_maxSteps')}
-            </label>
-            <input
-              id="maxSteps"
-              type="number"
-              min={1}
-              max={50}
-              value={settings.maxSteps}
-              onChange={e => updateSetting('maxSteps', Number.parseInt(e.target.value, 10))}
-              className={`w-20 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
-            />
-          </div>
+      <SettingsGroup title={t('options_general_group_window')} footer={t('options_general_group_window_footer')}>
+        <SettingsRow
+          title={t('options_general_openInWindow')}
+          subtitle={t('options_general_openInWindow_desc')}
+          htmlFor="openInWindow">
+          <Toggle id="openInWindow" checked={settings.openInWindow} onChange={v => updateSetting('openInWindow', v)} />
+        </SettingsRow>
+        <SettingsRow
+          title={t('options_general_notifyOnFinish')}
+          subtitle={t('options_general_notifyOnFinish_desc')}
+          htmlFor="notifyOnFinish">
+          <Toggle
+            id="notifyOnFinish"
+            checked={settings.notifyOnFinish}
+            onChange={v => updateSetting('notifyOnFinish', v)}
+          />
+        </SettingsRow>
+      </SettingsGroup>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_maxActions')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_maxActions_desc')}</p>
-            </div>
-            <label htmlFor="maxActionsPerStep" className="sr-only">
-              {t('options_general_maxActions')}
-            </label>
-            <input
-              id="maxActionsPerStep"
-              type="number"
-              min={1}
-              max={50}
-              value={settings.maxActionsPerStep}
-              onChange={e => updateSetting('maxActionsPerStep', Number.parseInt(e.target.value, 10))}
-              className={`w-20 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
-            />
-          </div>
+      <SettingsGroup title={t('options_general_group_seeing')} footer={t('options_general_group_seeing_footer')}>
+        <SettingsRow
+          title={t('options_general_enableVision')}
+          subtitle={t('options_general_enableVision_desc')}
+          htmlFor="useVision">
+          <Toggle id="useVision" checked={settings.useVision} onChange={v => updateSetting('useVision', v)} />
+        </SettingsRow>
+        <SettingsRow
+          title={t('options_general_displayHighlights')}
+          subtitle={
+            settings.useVision
+              ? t('options_general_displayHighlights_locked')
+              : t('options_general_displayHighlights_desc')
+          }
+          htmlFor="displayHighlights">
+          {/* the store keeps highlights on while vision is on */}
+          <Toggle
+            id="displayHighlights"
+            checked={settings.displayHighlights}
+            disabled={settings.useVision}
+            onChange={v => updateSetting('displayHighlights', v)}
+          />
+        </SettingsRow>
+      </SettingsGroup>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_maxFailures')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_maxFailures_desc')}</p>
-            </div>
-            <label htmlFor="maxFailures" className="sr-only">
-              {t('options_general_maxFailures')}
-            </label>
-            <input
-              id="maxFailures"
-              type="number"
-              min={1}
-              max={10}
-              value={settings.maxFailures}
-              onChange={e => updateSetting('maxFailures', Number.parseInt(e.target.value, 10))}
-              className={`w-20 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_enableVision')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_enableVision_desc')}</p>
-            </div>
-            <div className="relative inline-flex cursor-pointer items-center">
-              <input
-                id="useVision"
-                type="checkbox"
-                checked={settings.useVision}
-                onChange={e => updateSetting('useVision', e.target.checked)}
-                className="peer sr-only"
-              />
-              <label
-                htmlFor="useVision"
-                className={`peer h-6 w-11 rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-nb-line after:bg-nb-tile after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-full peer-checked:after:border-nb-llm peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`}>
-                <span className="sr-only">{t('options_general_enableVision')}</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_displayHighlights')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_displayHighlights_desc')}</p>
-            </div>
-            <div className="relative inline-flex cursor-pointer items-center">
-              <input
-                id="displayHighlights"
-                type="checkbox"
-                checked={settings.displayHighlights}
-                onChange={e => updateSetting('displayHighlights', e.target.checked)}
-                className="peer sr-only"
-              />
-              <label
-                htmlFor="displayHighlights"
-                className={`peer h-6 w-11 rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-nb-line after:bg-nb-tile after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-full peer-checked:after:border-nb-llm peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`}>
-                <span className="sr-only">{t('options_general_displayHighlights')}</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_planningInterval')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_planningInterval_desc')}</p>
-            </div>
-            <label htmlFor="planningInterval" className="sr-only">
-              {t('options_general_planningInterval')}
-            </label>
-            <input
-              id="planningInterval"
-              type="number"
-              min={1}
-              max={20}
-              value={settings.planningInterval}
-              onChange={e => updateSetting('planningInterval', Number.parseInt(e.target.value, 10))}
-              className={`w-20 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_minWaitPageLoad')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_minWaitPageLoad_desc')}</p>
-            </div>
-            <div className="flex items-center space-x-2">
-              <label htmlFor="minWaitPageLoad" className="sr-only">
-                {t('options_general_minWaitPageLoad')}
-              </label>
-              <input
-                id="minWaitPageLoad"
-                type="number"
-                min={250}
-                max={5000}
-                step={50}
-                value={settings.minWaitPageLoad}
-                onChange={e => updateSetting('minWaitPageLoad', Number.parseInt(e.target.value, 10))}
-                className={`w-20 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_replayHistoricalTasks')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_replayHistoricalTasks_desc')}</p>
-            </div>
-            <div className="relative inline-flex cursor-pointer items-center">
-              <input
-                id="replayHistoricalTasks"
-                type="checkbox"
-                checked={settings.replayHistoricalTasks}
-                onChange={e => updateSetting('replayHistoricalTasks', e.target.checked)}
-                className="peer sr-only"
-              />
-              <label
-                htmlFor="replayHistoricalTasks"
-                className={`peer h-6 w-11 rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-nb-line after:bg-nb-tile after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-full peer-checked:after:border-nb-llm peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`}>
-                <span className="sr-only">{t('options_general_replayHistoricalTasks')}</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_fastMode')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_fastMode_desc')}</p>
-            </div>
-            <div className="relative inline-flex cursor-pointer items-center">
-              <input
-                id="fastMode"
-                type="checkbox"
-                checked={settings.fastMode}
-                onChange={e => updateSetting('fastMode', e.target.checked)}
-                className="peer sr-only"
-              />
-              <label
-                htmlFor="fastMode"
-                className={`peer h-6 w-11 rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-nb-line after:bg-nb-tile after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-full peer-checked:after:border-nb-llm peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`}>
-                <span className="sr-only">{t('options_general_fastMode')}</span>
-              </label>
-            </div>
-          </div>
-
-          {settings.fastMode && (
-            <div className="flex items-center justify-between">
-              <label htmlFor="fastModeApiKey" className={`text-base font-medium text-nb-ink-2`}>
-                {t('options_general_fastModeApiKey')}
-              </label>
+      <SettingsGroup
+        title={t('options_general_group_speed')}
+        footer={settings.fastMode ? t('options_general_group_fastMode_footer') : undefined}>
+        <SettingsRow
+          title={t('options_general_fastMode')}
+          badge={t('options_general_experimental')}
+          subtitle={t('options_general_fastMode_desc')}
+          htmlFor="fastMode">
+          <Toggle id="fastMode" checked={settings.fastMode} onChange={v => updateSetting('fastMode', v)} />
+        </SettingsRow>
+        {settings.fastMode && (
+          <>
+            <SettingsRow
+              title={t('options_general_fastModeApiKey')}
+              subtitle={t('options_general_fastModeApiKey_desc')}
+              htmlFor="fastModeApiKey">
               <input
                 id="fastModeApiKey"
                 type="password"
@@ -229,106 +103,114 @@ export const GeneralSettings = () => {
                 placeholder="sk-or-..."
                 value={settings.fastModeApiKey}
                 onChange={e => updateSetting('fastModeApiKey', e.target.value.trim())}
-                className={`w-64 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
+                className="w-60 rounded-md border border-nb-line bg-nb-tile-2 px-2.5 py-1.5 text-sm text-nb-ink focus:border-nb-llm focus:outline-none"
               />
-            </div>
-          )}
-
-          {settings.fastMode && (
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_fastModeMinOperation')}</h3>
-                <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_fastModeMinOperation_desc')}</p>
-              </div>
-              <label htmlFor="fastModeMinOperationConfidence" className="sr-only">
-                {t('options_general_fastModeMinOperation')}
-              </label>
-              <input
+            </SettingsRow>
+            <SettingsRow
+              title={t('options_general_fastModeMinOperation')}
+              subtitle={t('options_general_fastModeMinOperation_desc')}
+              htmlFor="fastModeMinOperationConfidence">
+              <ConfidenceSlider
                 id="fastModeMinOperationConfidence"
-                type="number"
-                min={0}
-                max={1}
-                step={0.05}
                 value={settings.fastModeMinOperationConfidence}
-                onChange={e => {
-                  const value = Number.parseFloat(e.target.value);
-                  if (Number.isFinite(value))
-                    updateSetting('fastModeMinOperationConfidence', Math.min(1, Math.max(0, value)));
-                }}
-                className={`w-20 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
+                onChange={v => updateSetting('fastModeMinOperationConfidence', v)}
               />
-            </div>
-          )}
-
-          {settings.fastMode && (
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_fastModeMinTarget')}</h3>
-                <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_fastModeMinTarget_desc')}</p>
-              </div>
-              <label htmlFor="fastModeMinTargetConfidence" className="sr-only">
-                {t('options_general_fastModeMinTarget')}
-              </label>
-              <input
+            </SettingsRow>
+            <SettingsRow
+              title={t('options_general_fastModeMinTarget')}
+              subtitle={t('options_general_fastModeMinTarget_desc')}
+              htmlFor="fastModeMinTargetConfidence">
+              <ConfidenceSlider
                 id="fastModeMinTargetConfidence"
-                type="number"
-                min={0}
-                max={1}
-                step={0.05}
                 value={settings.fastModeMinTargetConfidence}
-                onChange={e => {
-                  const value = Number.parseFloat(e.target.value);
-                  if (Number.isFinite(value))
-                    updateSetting('fastModeMinTargetConfidence', Math.min(1, Math.max(0, value)));
-                }}
-                className={`w-20 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-nb-ink focus:border-nb-llm focus:outline-none`}
+                onChange={v => updateSetting('fastModeMinTargetConfidence', v)}
               />
-            </div>
-          )}
+            </SettingsRow>
+          </>
+        )}
+      </SettingsGroup>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_openInWindow')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_openInWindow_desc')}</p>
-            </div>
-            <div className="relative inline-flex cursor-pointer items-center">
-              <input
-                id="openInWindow"
-                type="checkbox"
-                checked={settings.openInWindow}
-                onChange={e => updateSetting('openInWindow', e.target.checked)}
-                className="peer sr-only"
-              />
-              <label
-                htmlFor="openInWindow"
-                className={`peer h-6 w-11 rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-nb-line after:bg-nb-tile after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-full peer-checked:after:border-nb-llm peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`}>
-                <span className="sr-only">{t('options_general_openInWindow')}</span>
-              </label>
-            </div>
-          </div>
+      <SettingsGroup>
+        <button
+          type="button"
+          aria-expanded={showAdvanced}
+          onClick={() => setShowAdvanced(open => !open)}
+          className="flex min-h-[52px] w-full items-center justify-between gap-6 px-4 py-2.5 text-left hover:bg-nb-tile-2 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-nb-llm">
+          <span>
+            <span className="block text-[13.5px] font-medium text-nb-ink">{t('options_general_advanced')}</span>
+            <span className="mt-0.5 block text-xs text-nb-muted">{t('options_general_advanced_desc')}</span>
+          </span>
+          <FiChevronRight className={`size-4 text-nb-muted transition-transform ${showAdvanced ? 'rotate-90' : ''}`} />
+        </button>
+      </SettingsGroup>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className={`text-base font-medium text-nb-ink-2`}>{t('options_general_notifyOnFinish')}</h3>
-              <p className={`text-sm font-normal text-nb-muted`}>{t('options_general_notifyOnFinish_desc')}</p>
-            </div>
-            <div className="relative inline-flex cursor-pointer items-center">
-              <input
-                id="notifyOnFinish"
-                type="checkbox"
-                checked={settings.notifyOnFinish}
-                onChange={e => updateSetting('notifyOnFinish', e.target.checked)}
-                className="peer sr-only"
+      {showAdvanced && (
+        <>
+          <SettingsGroup title={t('options_general_group_limits')} footer={t('options_general_group_limits_footer')}>
+            <SettingsRow title={t('options_general_maxSteps')} htmlFor="maxSteps">
+              <NumberField
+                id="maxSteps"
+                min={1}
+                max={500}
+                value={settings.maxSteps}
+                onChange={v => updateSetting('maxSteps', v)}
               />
-              <label
-                htmlFor="notifyOnFinish"
-                className={`peer h-6 w-11 rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-nb-line after:bg-nb-tile after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-full peer-checked:after:border-nb-llm peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`}>
-                <span className="sr-only">{t('options_general_notifyOnFinish')}</span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
+            </SettingsRow>
+            <SettingsRow title={t('options_general_maxActions')} htmlFor="maxActionsPerStep">
+              <NumberField
+                id="maxActionsPerStep"
+                min={1}
+                max={50}
+                value={settings.maxActionsPerStep}
+                onChange={v => updateSetting('maxActionsPerStep', v)}
+              />
+            </SettingsRow>
+            <SettingsRow title={t('options_general_maxFailures')} htmlFor="maxFailures">
+              <NumberField
+                id="maxFailures"
+                min={1}
+                max={10}
+                value={settings.maxFailures}
+                onChange={v => updateSetting('maxFailures', v)}
+              />
+            </SettingsRow>
+            <SettingsRow title={t('options_general_planningInterval')} htmlFor="planningInterval">
+              <NumberField
+                id="planningInterval"
+                min={1}
+                max={20}
+                unit={t('options_general_unit_steps')}
+                value={settings.planningInterval}
+                onChange={v => updateSetting('planningInterval', v)}
+              />
+            </SettingsRow>
+            <SettingsRow title={t('options_general_minWaitPageLoad')} htmlFor="minWaitPageLoad">
+              <NumberField
+                id="minWaitPageLoad"
+                min={250}
+                max={5000}
+                step={50}
+                unit="ms"
+                value={settings.minWaitPageLoad}
+                onChange={v => updateSetting('minWaitPageLoad', v)}
+              />
+            </SettingsRow>
+          </SettingsGroup>
+
+          <SettingsGroup title={t('options_general_experimental')}>
+            <SettingsRow
+              title={t('options_general_replayHistoricalTasks')}
+              subtitle={t('options_general_replayHistoricalTasks_desc')}
+              htmlFor="replayHistoricalTasks">
+              <Toggle
+                id="replayHistoricalTasks"
+                checked={settings.replayHistoricalTasks}
+                onChange={v => updateSetting('replayHistoricalTasks', v)}
+              />
+            </SettingsRow>
+          </SettingsGroup>
+        </>
+      )}
+    </div>
   );
 };

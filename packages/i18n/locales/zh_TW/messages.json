@@ -1793,5 +1793,47 @@
   },
   "chat_input_placeholder_confirm": {
     "message": "Or tell me what to do instead…"
+  },
+  "options_general_group_window": {
+    "message": "Window"
+  },
+  "options_general_group_window_footer": {
+    "message": "Notifications only show while you are in another window. Click one to go back to the task."
+  },
+  "options_general_group_seeing": {
+    "message": "Seeing the page"
+  },
+  "options_general_group_seeing_footer": {
+    "message": "Vision gives better results and uses more tokens on every step."
+  },
+  "options_general_displayHighlights_locked": {
+    "message": "Always on while Vision is on"
+  },
+  "options_general_group_speed": {
+    "message": "Speed"
+  },
+  "options_general_group_fastMode_footer": {
+    "message": "When Jev is less sure than these values, the Navigator model takes the step. Page text and element labels are sent to OpenRouter or TypeSafe."
+  },
+  "options_general_fastModeApiKey_desc": {
+    "message": "OpenRouter or TypeSafe"
+  },
+  "options_general_experimental": {
+    "message": "Experimental"
+  },
+  "options_general_advanced": {
+    "message": "Advanced"
+  },
+  "options_general_advanced_desc": {
+    "message": "Task limits and experimental features"
+  },
+  "options_general_group_limits": {
+    "message": "Task limits"
+  },
+  "options_general_group_limits_footer": {
+    "message": "Higher limits let long tasks finish, and cost more tokens when a task goes wrong."
+  },
+  "options_general_unit_steps": {
+    "message": "steps"
   }
 }

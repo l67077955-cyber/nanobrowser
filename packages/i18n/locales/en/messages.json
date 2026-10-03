@@ -224,61 +224,61 @@
     "message": "General"
   },
   "options_general_maxSteps": {
-    "message": "Max Steps per Task"
+    "message": "Steps per task"
   },
   "options_general_maxSteps_desc": {
     "message": "Step limit per task"
   },
   "options_general_maxActions": {
-    "message": "Max Actions per Step"
+    "message": "Actions per step"
   },
   "options_general_maxActions_desc": {
     "message": "Action limit per step"
   },
   "options_general_maxFailures": {
-    "message": "Failure Tolerance"
+    "message": "Failures in a row before stopping"
   },
   "options_general_maxFailures_desc": {
     "message": "How many consecutive failures before stopping"
   },
   "options_general_enableVision": {
-    "message": "Enable Vision"
+    "message": "Vision"
   },
   "options_general_enableVision_desc": {
-    "message": "Use vision capability of LLMs (consumes more tokens for better results)"
+    "message": "Send screenshots of the page to the model"
   },
   "options_general_displayHighlights": {
-    "message": "Display Highlights"
+    "message": "Highlight elements"
   },
   "options_general_displayHighlights_desc": {
-    "message": "Show visual highlights on interactive elements (e.g. buttons, links, etc.)"
+    "message": "Outline the buttons and links the agent can use"
   },
   "options_general_planningInterval": {
-    "message": "Replanning Frequency"
+    "message": "Replan every"
   },
   "options_general_planningInterval_desc": {
     "message": "Reconsider and update the plan every [Number] steps"
   },
   "options_general_minWaitPageLoad": {
-    "message": "Page Load Wait Time"
+    "message": "Wait after a page loads"
   },
   "options_general_minWaitPageLoad_desc": {
     "message": "Minimum wait time after page loads (250-5000ms)"
   },
   "options_general_replayHistoricalTasks": {
-    "message": "Replay Historical Tasks( experimental )"
+    "message": "Replay past tasks"
   },
   "options_general_replayHistoricalTasks_desc": {
-    "message": "Enable storing and replaying of agent step history (experimental, may have issues)"
+    "message": "Store each task's steps so it can be run again. May have issues."
   },
   "options_general_fastMode": {
-    "message": "Fast Mode (experimental)"
+    "message": "Fast Mode"
   },
   "options_general_fastMode_desc": {
-    "message": "Let the Jev decision model pick clicks, typing and dropdown choices in about 0.5s per step. Falls back to the Navigator model when unsure. Page text and element labels are sent to OpenRouter/TypeSafe."
+    "message": "Jev picks clicks, typing and dropdown choices in about 0.5 s per step"
   },
   "options_general_fastModeApiKey": {
-    "message": "OpenRouter or TypeSafe API Key"
+    "message": "API key"
   },
   "options_models_providers_header": {
     "message": "LLM Providers"
@@ -1282,7 +1282,7 @@
     "message": "Notify when a task ends"
   },
   "options_general_notifyOnFinish_desc": {
-    "message": "When you are in another window, a system notification and a flashing taskbar button tell you that a task finished, failed or is waiting for your answer. Click the notification to go back to it."
+    "message": "When a task finishes, fails or needs your answer"
   },
   "bg_notice_done": {
     "message": "Task done"
@@ -1297,19 +1297,19 @@
     "message": "Open in a separate window"
   },
   "options_general_openInWindow_desc": {
-    "message": "The toolbar icon opens Nanobrowser in a window of its own instead of the side panel. It works on the tab in front in your browser window."
+    "message": "The toolbar icon opens a window instead of the side panel"
   },
   "options_general_fastModeMinOperation": {
-    "message": "Jev operation threshold"
+    "message": "Action confidence"
   },
   "options_general_fastModeMinOperation_desc": {
-    "message": "Below this confidence in the operation, the step goes to the Navigator model (default 0.5)."
+    "message": "How sure Jev must be of what to do. Default 0.50"
   },
   "options_general_fastModeMinTarget": {
-    "message": "Jev element threshold"
+    "message": "Element confidence"
   },
   "options_general_fastModeMinTarget_desc": {
-    "message": "Below this confidence in the element, the step goes to the Navigator model (default 0.6)."
+    "message": "How sure Jev must be of where to do it. Default 0.60"
   },
   "options_tabs_memory": {
     "message": "Memory"
@@ -1793,5 +1793,47 @@
   },
   "chat_input_placeholder_confirm": {
     "message": "Or tell me what to do instead…"
+  },
+  "options_general_group_window": {
+    "message": "Window"
+  },
+  "options_general_group_window_footer": {
+    "message": "Notifications only show while you are in another window. Click one to go back to the task."
+  },
+  "options_general_group_seeing": {
+    "message": "Seeing the page"
+  },
+  "options_general_group_seeing_footer": {
+    "message": "Vision gives better results and uses more tokens on every step."
+  },
+  "options_general_displayHighlights_locked": {
+    "message": "Always on while Vision is on"
+  },
+  "options_general_group_speed": {
+    "message": "Speed"
+  },
+  "options_general_group_fastMode_footer": {
+    "message": "When Jev is less sure than these values, the Navigator model takes the step. Page text and element labels are sent to OpenRouter or TypeSafe."
+  },
+  "options_general_fastModeApiKey_desc": {
+    "message": "OpenRouter or TypeSafe"
+  },
+  "options_general_experimental": {
+    "message": "Experimental"
+  },
+  "options_general_advanced": {
+    "message": "Advanced"
+  },
+  "options_general_advanced_desc": {
+    "message": "Task limits and experimental features"
+  },
+  "options_general_group_limits": {
+    "message": "Task limits"
+  },
+  "options_general_group_limits_footer": {
+    "message": "Higher limits let long tasks finish, and cost more tokens when a task goes wrong."
+  },
+  "options_general_unit_steps": {
+    "message": "steps"
   }
 }

@@ -94,3 +94,26 @@ textarea::placeholder {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--nb-muted);
 }
+
+/* grouped settings rows: a hairline between rows, inset from the left as in iOS Settings */
+.nb-row {
+  position: relative;
+}
+.nb-row + .nb-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 1rem;
+  right: 0;
+  height: 1px;
+  background: var(--nb-line);
+}
+
+.nb-number::-webkit-outer-spin-button,
+.nb-number::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.nb-number {
+  -moz-appearance: textfield;
+}
