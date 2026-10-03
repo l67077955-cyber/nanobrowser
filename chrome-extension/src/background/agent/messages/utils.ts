@@ -127,8 +127,15 @@ export function extractJsonFromModelOutput(content: string): Record<string, unkn
       }
     }
 
-    // Parse the cleaned content
-    return JSON.parse(processedContent);
+    // Parse the cleaned content; if prose or wrapper tags (e.g. <planner_output>) surround it, take the outermost object
+    try {
+      return JSON.parse(processedContent);
+    } catch (parseError) {
+      const start = processedContent.indexOf('{');
+      const end = processedContent.lastIndexOf('}');
+      if (start === -1 || end <= start) throw parseError;
+      return JSON.parse(processedContent.slice(start, end + 1));
+    }
   } catch (e) {
     throw new ResponseParseError(`Could not manually extract JSON from model output`);
   }
