@@ -432,6 +432,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     let modelOutputString: string | null = null;
     let browserStateHistory: BrowserStateHistory | null = null;
     let actionResults: ActionResult[] = [];
+    let decisionSignal: AbortSignal | null = null;
 
     try {
       this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_START, 'Navigating...');
@@ -466,7 +467,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       // logger.info('Navigator input message', inputMessages[inputMessages.length - 1]);
 
       const decisionStarted = performance.now();
-      const { engineResult, modelOutput } = await this.decide(currentState, inputMessages);
+      decisionSignal = this.context.interruptibleSignal();
+      const { engineResult, modelOutput } = await this.decide(currentState, inputMessages, decisionSignal);
       const decisionMs = Math.round(performance.now() - decisionStarted);
 
       // check if the task is paused or stopped
@@ -538,6 +540,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     } catch (error) {
       this.removeLastStateMessageFromMemory();
       const errorMessage = error instanceof Error ? error.message : String(error);
+      if (decisionSignal?.aborted && !this.context.controller.signal.aborted && !this.context.stopped) {
+        // the user sent a message while the model decided: the step is dropped and the plan redone with it
+        logger.info('Decision dropped for a message from the user');
+        return agentOutput;
+      }
       // Check if this is an authentication error
       if (error instanceof ModelTimeoutError) {
         throw error;
@@ -599,13 +606,14 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   private async decide(
     state: BrowserState,
     inputMessages: BaseMessage[],
+    signal: AbortSignal,
   ): Promise<{ engineResult: EngineResult; modelOutput: NavigatorAgent['ModelOutput'] }> {
     if (!this.decisionEngine) {
-      return { engineResult: { decision: null }, modelOutput: await this.invoke(inputMessages) };
+      return { engineResult: { decision: null }, modelOutput: await this.invoke(inputMessages, signal) };
     }
     const started = performance.now();
     const decided = await decideWithEngineOrLLM<NavigatorAgent['ModelOutput']>(
-      this.context.controller.signal,
+      signal,
       signal => this.decideWithEngine(state, signal),
       signal => this.invoke(inputMessages, signal),
     );

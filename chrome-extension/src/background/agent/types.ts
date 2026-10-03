@@ -58,6 +58,7 @@ export class AgentContext {
   observedSelectorMap: Map<number, DOMElementNode> | null;
   private pendingConfirmation: ((approved: boolean) => void) | null;
   private pendingQuestion: ((answer: string | null) => void) | null = null;
+  private stepInterrupt = new AbortController();
 
   constructor(
     taskId: string,
@@ -110,6 +111,17 @@ export class AgentContext {
     this.resolveConfirmation(false);
     this.answerQuestion(null);
     setTimeout(() => this.controller.abort(), 300);
+  }
+
+  /** The signal for a navigator decision: it ends when the task stops or when the user sends a message meanwhile */
+  interruptibleSignal(): AbortSignal {
+    this.stepInterrupt = new AbortController();
+    return AbortSignal.any([this.controller.signal, this.stepInterrupt.signal]);
+  }
+
+  /** The user said something: a decision still being made would not know it, so it is dropped */
+  interruptStep(): void {
+    this.stepInterrupt.abort();
   }
 
   /** Ask the side panel to approve an action; resolves false if declined or the task stops */

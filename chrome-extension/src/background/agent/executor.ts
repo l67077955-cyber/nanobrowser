@@ -231,6 +231,8 @@ export class Executor {
     // a message instead of a click on Approve or Decline: the action waits no longer, the message says why
     if (this.context.awaitingConfirmation) this.context.resolveConfirmation(false);
     this.steers.push(text);
+    // the model may take minutes on a step the message changes: it is not waited for
+    this.context.interruptStep();
     return true;
   }
 

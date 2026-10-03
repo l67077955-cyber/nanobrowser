@@ -220,12 +220,31 @@ export async function withModelTimeout<T>(
   call: (signal: AbortSignal) => Promise<T>,
   timeoutMs = MODEL_TIMEOUT_MS,
 ): Promise<T> {
-  const timeout = AbortSignal.timeout(timeoutMs);
+  const timeout = new AbortController();
+  const signal = AbortSignal.any([taskSignal, timeout.signal]);
+  // a client that does not honour the signal (a stalled stream, a retry backoff) is not waited on either
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stalled = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timeout.abort();
+      reject(new ModelTimeoutError(modelName, timeoutMs));
+    }, timeoutMs);
+  });
+  let onAbort = () => {};
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(taskSignal.reason ?? new DOMException('Aborted', 'AbortError'));
+    if (taskSignal.aborted) onAbort();
+    else taskSignal.addEventListener('abort', onAbort, { once: true });
+  });
+  aborted.catch(() => {});
   try {
-    return await call(AbortSignal.any([taskSignal, timeout]));
+    return await Promise.race([call(signal), stalled, aborted]);
   } catch (error) {
-    if (timeout.aborted && !taskSignal.aborted) throw new ModelTimeoutError(modelName, timeoutMs);
+    if (timeout.signal.aborted && !taskSignal.aborted) throw new ModelTimeoutError(modelName, timeoutMs);
     throw error;
+  } finally {
+    clearTimeout(timer);
+    taskSignal.removeEventListener('abort', onAbort);
   }
 }
 

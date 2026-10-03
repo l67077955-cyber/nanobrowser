@@ -22,6 +22,20 @@ describe('withModelTimeout', () => {
     expect(isAuthenticationError(error)).toBe(false);
   });
 
+  it('times out a call that ignores its signal', async () => {
+    const deaf = () => new Promise<string>(() => {});
+    const error = await withModelTimeout('test-model', new AbortController().signal, deaf, 20).catch(e => e);
+    expect(error).toBeInstanceOf(ModelTimeoutError);
+  });
+
+  it('ends a call that ignores its signal when the task is cancelled', async () => {
+    const task = new AbortController();
+    const call = withModelTimeout('test-model', task.signal, () => new Promise<string>(() => {}), 1000);
+    task.abort();
+    const error = await call.catch(e => e);
+    expect(isAbortedError(error)).toBe(true);
+  });
+
   it('keeps the abort error when the task itself is cancelled', async () => {
     const task = new AbortController();
     const call = withModelTimeout('test-model', task.signal, hangingCall, 1000);
