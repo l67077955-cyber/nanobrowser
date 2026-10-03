@@ -4,10 +4,18 @@ import { wrapUntrustedContent } from '../messages/utils';
 import { createLogger } from '@src/background/log';
 
 /** A page no taller than the viewport cannot scroll; dividing by that ~0 distance gave 631884% and -157588% */
-export function viewportShareOfScroll(viewportHeight: number, scrollHeight: number): string {
+/**
+ * Where the visible part of the page is, as progress. The share of the page the viewport covers was given
+ * as a percentage before, and models read it as how far down they were.
+ */
+export function scrollPosition(scrollY: number, viewportHeight: number, scrollHeight: number): string {
   const scrollable = scrollHeight - viewportHeight;
-  if (scrollable < 1) return 'n/a (page does not scroll)';
-  return `${Math.round((viewportHeight / scrollable) * 100)}%`;
+  if (scrollable < 1) return 'the whole page fits on screen, there is nothing to scroll';
+  const above = Math.max(0, Math.round(scrollY));
+  const below = Math.max(0, Math.round(scrollHeight - viewportHeight - scrollY));
+  const progress = Math.min(100, Math.round((above / scrollable) * 100));
+  const where = below === 0 ? 'at the bottom' : above === 0 ? 'at the top' : `${progress}% of the way down`;
+  return `${where}: ${above}px above and ${below}px below the visible part (screen height ${Math.round(viewportHeight)}px, page height ${Math.round(scrollHeight)}px)`;
 }
 
 /** YYYY-MM-DD HH:mm (Weekday) in the browser's time zone: "at 9" from the user means their 9 */
@@ -46,7 +54,7 @@ abstract class BasePrompt {
 
     let formattedElementsText = '';
     if (rawElementsText !== '') {
-      const scrollInfo = `[Scroll info of current page] window.scrollY: ${browserState.scrollY}, document.body.scrollHeight: ${browserState.scrollHeight}, window.visualViewport.height: ${browserState.visualViewportHeight}, visual viewport height as percentage of scrollable distance: ${viewportShareOfScroll(browserState.visualViewportHeight, browserState.scrollHeight)}\n`;
+      const scrollInfo = `[Scroll info of current page] ${scrollPosition(browserState.scrollY, browserState.visualViewportHeight, browserState.scrollHeight)}\n`;
       logger.info(scrollInfo);
       const elementsText = wrapUntrustedContent(rawElementsText);
       formattedElementsText = `${scrollInfo}[Start of page]\n${elementsText}\n[End of page]\n`;

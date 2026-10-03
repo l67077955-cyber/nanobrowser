@@ -39,7 +39,12 @@ let currentExecutor: Executor | null = null;
 let memoryLLM: BaseChatModel | null = null;
 let currentPort: chrome.runtime.Port | null = null;
 /** The task being worked on now and who asked for it: the side panel, or an agent through the bridge */
-let activeTask: { taskId: string; source: 'panel' | 'remote' | 'scheduled' } | null = null;
+let activeTask: {
+  taskId: string;
+  source: 'panel' | 'remote' | 'scheduled';
+  /** the side panel that started it: only that one closing ends the task */
+  port?: chrome.runtime.Port;
+} | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
@@ -96,7 +101,7 @@ generalSettingsStore.subscribe(async () => {
 function actionModeInstructions(mode: ActionMode): string {
   switch (mode) {
     case 'readonly':
-      return 'Action mode: read-only. The user lets you read pages and nothing more: open URLs, search, switch tabs, scroll and read. Never click, type, choose options, press keys or submit anything; those actions are not available in this mode. If the task needs one of them, gather what can be read and finish with done, telling the user what is left for them to do by hand.';
+      return 'Action mode: read-only. The user lets you read pages and nothing more: open URLs, search, switch tabs, scroll and read. Never click, type, choose options, press keys or submit anything; those actions are not available in this mode. To follow a link, open the href shown on it in the element list with go_to_url; do not make up URLs or query parameters. If an address you opened shows the same page as before, the site ignores it: do not try variations of it. When what the task needs is not on the site, search the web for it. If the task needs a click or typing, gather what can be read and finish with done, telling the user what is left for them to do by hand.';
     case 'manual':
       return 'Action mode: manual. The user approves every click, keystroke and text entry before it runs, so do not also ask in the chat before routine steps. An action they decline did not happen.';
     default:
@@ -167,7 +172,7 @@ chrome.runtime.onConnect.addListener(port => {
             currentExecutor = await setupExecutor(message.taskId, message.task, browserContext);
             subscribeToExecutorEvents(currentExecutor);
 
-            const result = await executeForPanel(currentExecutor, message.taskId);
+            const result = await executeForPanel(currentExecutor, message.taskId, port);
             logger.info('new_task execution result', message.tabId, result);
             void updateMemories(currentExecutor);
             break;
@@ -211,7 +216,7 @@ chrome.runtime.onConnect.addListener(port => {
             }
             // Re-subscribe to events in case the previous subscription was cleaned up
             subscribeToExecutorEvents(currentExecutor);
-            const result = await executeForPanel(currentExecutor, message.taskId);
+            const result = await executeForPanel(currentExecutor, message.taskId, port);
             logger.info('follow_up_task execution result', message.tabId, result);
             void updateMemories(currentExecutor);
             break;
@@ -219,6 +224,11 @@ chrome.runtime.onConnect.addListener(port => {
 
           case 'cancel_task': {
             if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
+            // a stop meant for a task that has already given way to another one must not end that one
+            if (message.taskId && activeTask?.source === 'panel' && activeTask.taskId !== message.taskId) {
+              logger.info('cancel_task for a task no longer running, ignored', message.taskId);
+              break;
+            }
             await currentExecutor.cancel();
             break;
           }
@@ -356,7 +366,8 @@ chrome.runtime.onConnect.addListener(port => {
       console.log('Side panel disconnected');
       currentPort = null;
       // a task run for a remote agent or on a schedule does not need the side panel
-      if (!activeTask || activeTask.source === 'panel') currentExecutor?.cancel();
+      // nor does one started from another side panel (another window) or by a panel that has since reconnected
+      if (!activeTask || (activeTask.source === 'panel' && activeTask.port === port)) currentExecutor?.cancel();
     });
   }
 });
@@ -365,8 +376,8 @@ chrome.runtime.onConnect.addListener(port => {
 let panelRun: Promise<void> | null = null;
 
 /** Run a task the side panel asked for. It takes over from whatever task was running. */
-async function executeForPanel(executor: Executor, taskId: string): Promise<void> {
-  const claim = { taskId, source: 'panel' as const };
+async function executeForPanel(executor: Executor, taskId: string, port: chrome.runtime.Port): Promise<void> {
+  const claim = { taskId, source: 'panel' as const, port };
   activeTask = claim;
   const run = executor.execute().finally(() => {
     if (activeTask === claim) activeTask = null;

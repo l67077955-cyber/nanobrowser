@@ -41,19 +41,40 @@ declare global {
 }
 
 /**
+ * By default a script waits for its frame to finish loading, and an ad or embed that never does held the
+ * page read up for minutes. Scripts run at once instead, and one that does not answer in time fails.
+ */
+const SCRIPT_TIMEOUT_MS = 10000;
+
+function inTime<T>(work: Promise<T>, timeoutMs = SCRIPT_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`The page did not answer within ${timeoutMs / 1000} seconds`)),
+      timeoutMs,
+    );
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
+/**
  * Get the markdown content for the current page.
  * @param tabId - The ID of the tab to get the markdown content for.
  * @param selector - The selector to get the markdown content for. If not provided, the body of the entire page will be converted to markdown.
  * @returns The markdown content for the selected element on the current page.
  */
 export async function getMarkdownContent(tabId: number, selector?: string): Promise<string> {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: tabId },
-    func: sel => {
-      return window.turn2Markdown(sel);
-    },
-    args: [selector || ''], // Pass the selector as an argument
-  });
+  const results = await inTime(
+    chrome.scripting.executeScript({
+      injectImmediately: true,
+      target: { tabId: tabId },
+      func: sel => {
+        return window.turn2Markdown(sel);
+      },
+      args: [selector || ''], // Pass the selector as an argument
+    }),
+    30000,
+  );
 
   const result = results[0]?.result;
   if (!result) {
@@ -68,12 +89,16 @@ export async function getMarkdownContent(tabId: number, selector?: string): Prom
  * @returns The readability content for the current page.
  */
 export async function getReadabilityContent(tabId: number): Promise<ReadabilityResult> {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      return window.parserReadability();
-    },
-  });
+  const results = await inTime(
+    chrome.scripting.executeScript({
+      injectImmediately: true,
+      target: { tabId },
+      func: () => {
+        return window.parserReadability();
+      },
+    }),
+    30000,
+  );
   const result = results[0]?.result;
   if (!result) {
     throw new Error('Failed to get readability content');
@@ -135,23 +160,28 @@ async function _buildDomTree(
 
   await injectBuildDomTreeScripts(tabId);
 
-  const mainFrameResult = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: args => {
-      // Access buildDomTree from the window context of the target page
-      return window.buildDomTree(args);
-    },
-    args: [
-      {
-        showHighlightElements,
-        focusHighlightIndex: focusElement,
-        viewportExpansion,
-        startId: 0,
-        startHighlightIndex: 0,
-        debugMode,
+  const mainFrameResult = await inTime(
+    chrome.scripting.executeScript({
+      injectImmediately: true,
+      target: { tabId },
+      func: args => {
+        // Access buildDomTree from the window context of the target page
+        return window.buildDomTree(args);
       },
-    ],
-  });
+      args: [
+        {
+          showHighlightElements,
+          focusHighlightIndex: focusElement,
+          viewportExpansion,
+          startId: 0,
+          startHighlightIndex: 0,
+          debugMode,
+        },
+      ],
+    }),
+    // building the tree of a very long page takes a while
+    30000,
+  );
 
   // First cast to unknown, then to BuildDomTreeResult
   let mainFramePage = mainFrameResult[0]?.result as unknown as BuildDomTreeResult;
@@ -175,19 +205,23 @@ async function _buildDomTree(
     // to avoid double parsing & highlighting on the frames that succeeded.
     const frameInfoResultsRaw = await Promise.all(
       subFrames.map(async frame => {
-        const result = await chrome.scripting.executeScript({
-          target: { tabId, frameIds: [frame.frameId] },
-          func: frameId => ({
-            frameId,
-            computedHeight: window.innerHeight,
-            computedWidth: window.innerWidth,
-            href: window.location.href,
-            name: window.name,
-            title: document.title,
+        const result = await inTime(
+          chrome.scripting.executeScript({
+            injectImmediately: true,
+            target: { tabId, frameIds: [frame.frameId] },
+            func: frameId => ({
+              frameId,
+              computedHeight: window.innerHeight,
+              computedWidth: window.innerWidth,
+              href: window.location.href,
+              name: window.name,
+              title: document.title,
+            }),
+            args: [frame.frameId],
           }),
-          args: [frame.frameId],
-        });
-        return result[0].result;
+        ).catch(() => null);
+        // a frame that does not answer is left out of the page
+        return result?.[0]?.result ?? null;
       }),
     );
     const frameInfoResults = frameInfoResultsRaw.filter(isNotNull);
@@ -239,23 +273,30 @@ async function constructFrameTree(
 
   for (const subFrame of failedLoadingFrames) {
     // Processing one frame at a time, to start from the proper highlightIndex and element id.
-    const subFrameResult = await chrome.scripting.executeScript({
-      target: { tabId, frameIds: [subFrame.frameId] },
-      func: args => {
-        // Access buildDomTree from the window context of the target page
-        return window.buildDomTree({ ...args });
-      },
-      args: [
-        {
-          showHighlightElements,
-          focusHighlightIndex: focusElement,
-          viewportExpansion,
-          startId: maxNodeId + 1,
-          startHighlightIndex: maxHighlightIndex + 1,
-          debugMode,
+    const subFrameResult = await inTime(
+      chrome.scripting.executeScript({
+        injectImmediately: true,
+        target: { tabId, frameIds: [subFrame.frameId] },
+        func: args => {
+          // Access buildDomTree from the window context of the target page
+          return window.buildDomTree({ ...args });
         },
-      ],
+        args: [
+          {
+            showHighlightElements,
+            focusHighlightIndex: focusElement,
+            viewportExpansion,
+            startId: maxNodeId + 1,
+            startHighlightIndex: maxHighlightIndex + 1,
+            debugMode,
+          },
+        ],
+      }),
+    ).catch(error => {
+      logger.warning(`Frame ${subFrame.frameId} left out of the page:`, error);
+      return null;
     });
+    if (!subFrameResult) continue;
 
     const subFramePage = subFrameResult[0]?.result as unknown as BuildDomTreeResult;
     if (!subFramePage || !subFramePage.map || !subFramePage.rootId) {
@@ -509,22 +550,25 @@ export function _parse_node(nodeData: RawDomTreeNode): [DOMBaseNode | null, stri
 
 export async function removeHighlights(tabId: number): Promise<void> {
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId, allFrames: true },
-      func: () => {
-        // Remove the highlight container and all its contents
-        const container = document.getElementById('playwright-highlight-container');
-        if (container) {
-          container.remove();
-        }
+    await inTime(
+      chrome.scripting.executeScript({
+        injectImmediately: true,
+        target: { tabId, allFrames: true },
+        func: () => {
+          // Remove the highlight container and all its contents
+          const container = document.getElementById('playwright-highlight-container');
+          if (container) {
+            container.remove();
+          }
 
-        // Remove highlight attributes from elements
-        const highlightedElements = document.querySelectorAll('[browser-user-highlight-id^="playwright-highlight-"]');
-        for (const el of Array.from(highlightedElements)) {
-          el.removeAttribute('browser-user-highlight-id');
-        }
-      },
-    });
+          // Remove highlight attributes from elements
+          const highlightedElements = document.querySelectorAll('[browser-user-highlight-id^="playwright-highlight-"]');
+          for (const el of Array.from(highlightedElements)) {
+            el.removeAttribute('browser-user-highlight-id');
+          }
+        },
+      }),
+    );
   } catch (error) {
     logger.error('Failed to remove highlights:', error);
   }
@@ -557,19 +601,22 @@ export async function removeHighlights(tabId: number): Promise<void> {
 // }
 
 export async function getScrollInfo(tabId: number): Promise<[number, number, number]> {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: tabId },
-    func: () => {
-      const scrollY = window.scrollY;
-      const visualViewportHeight = window.visualViewport?.height || window.innerHeight;
-      const scrollHeight = document.body.scrollHeight;
-      return {
-        scrollY: scrollY,
-        visualViewportHeight: visualViewportHeight,
-        scrollHeight: scrollHeight,
-      };
-    },
-  });
+  const results = await inTime(
+    chrome.scripting.executeScript({
+      injectImmediately: true,
+      target: { tabId: tabId },
+      func: () => {
+        const scrollY = window.scrollY;
+        const visualViewportHeight = window.visualViewport?.height || window.innerHeight;
+        const scrollHeight = document.body.scrollHeight;
+        return {
+          scrollY: scrollY,
+          visualViewportHeight: visualViewportHeight,
+          scrollHeight: scrollHeight,
+        };
+      },
+    }),
+  );
 
   const result = results[0]?.result;
   if (!result) {
@@ -581,10 +628,13 @@ export async function getScrollInfo(tabId: number): Promise<[number, number, num
 // Function to check if script is already injected
 async function scriptInjectedFrames(tabId: number): Promise<Map<number, boolean>> {
   try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId, allFrames: true },
-      func: () => Object.prototype.hasOwnProperty.call(window, 'buildDomTree'),
-    });
+    const results = await inTime(
+      chrome.scripting.executeScript({
+        injectImmediately: true,
+        target: { tabId, allFrames: true },
+        func: () => Object.prototype.hasOwnProperty.call(window, 'buildDomTree'),
+      }),
+    );
     return new Map(results.map(result => [result.frameId, result.result || false]));
   } catch (err) {
     console.error('Failed to check script injection status:', err);
@@ -602,10 +652,13 @@ export async function injectBuildDomTreeScripts(tabId: number) {
     if (injectedFrames.size === 0) {
       // Couldn't check frames, so just try to inject in the main frame
       try {
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          files: ['buildDomTree.js'],
-        });
+        await inTime(
+          chrome.scripting.executeScript({
+            injectImmediately: true,
+            target: { tabId },
+            files: ['buildDomTree.js'],
+          }),
+        );
       } catch (injectionErr) {
         // Silently ignore - script might already be injected or frame might be inaccessible
       }
@@ -620,13 +673,16 @@ export async function injectBuildDomTreeScripts(tabId: number) {
     // Inject only in frames that don't have the script
     const frameIdsToInject = Array.from(injectedFrames.keys()).filter(id => !injectedFrames.get(id));
     if (frameIdsToInject.length > 0) {
-      await chrome.scripting.executeScript({
-        target: {
-          tabId,
-          frameIds: frameIdsToInject,
-        },
-        files: ['buildDomTree.js'],
-      });
+      await inTime(
+        chrome.scripting.executeScript({
+          injectImmediately: true,
+          target: {
+            tabId,
+            frameIds: frameIdsToInject,
+          },
+          files: ['buildDomTree.js'],
+        }),
+      );
     }
   } catch (err) {
     console.error('Failed to inject scripts:', err);
