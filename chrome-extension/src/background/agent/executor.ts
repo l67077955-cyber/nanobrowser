@@ -634,7 +634,7 @@ export class Executor {
         // the navigator keeps choosing what it has been told changes nothing: a fresh plan, and the task
         // ends if that does not help either
         this.planBeforeNextStep = true;
-        throw new Error('The navigator kept repeating an action that changes nothing on the page');
+        throw new Error('The navigator kept choosing an action that changes nothing or already went wrong');
       }
       context.consecutiveFailures = 0;
       if (navOutput.result?.done) {

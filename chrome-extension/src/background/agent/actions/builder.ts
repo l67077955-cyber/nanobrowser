@@ -407,7 +407,10 @@ export class ActionBuilder {
             // find the tab id that is not in the initial tab ids
             const newTabId = Array.from(currentTabIds).find(id => !initialTabIds.has(id));
             if (newTabId) {
-              await this.context.browserContext.switchTab(newTabId);
+              const newPage = await this.context.browserContext.switchTab(newTabId);
+              // which page it is: often the very page the agent was on, opened again by a link
+              const newUrl = (await chrome.tabs.get(newTabId).catch(() => null))?.url || newPage.url();
+              if (newUrl) msg += ` (${newUrl})`;
             }
           }
           this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);

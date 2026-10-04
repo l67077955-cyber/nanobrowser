@@ -17,6 +17,8 @@ export const DEFAULT_INCLUDE_ATTRIBUTES = [
   'aria-label',
   'aria-expanded',
   'href',
+  // what an icon-only element shows, worked out when the page was read (buildDomTree iconHint)
+  'icon',
 ];
 
 export abstract class DOMBaseNode {
@@ -189,6 +191,7 @@ export class DOMElementNode extends DOMBaseNode {
         this.getAllTextTillNextClickableElement(2),
         this.attributes.placeholder,
         this.attributes.name,
+        this.attributes.icon,
       ].find(c => c && c.trim()) ?? '';
     const flat = label.replace(/\s+/g, ' ').trim();
     return [
@@ -308,7 +311,7 @@ export class DOMElementNode extends DOMBaseNode {
             if (Object.keys(attributesToInclude).length > 0) {
               // Format as key1='value1' key2='value2'
               attributesHtmlStr = Object.entries(attributesToInclude)
-                .map(([key, value]) => `${key}=${capTextLength(value, 15)}`)
+                .map(([key, value]) => `${key}=${capTextLength(value, key === 'icon' ? 60 : 15)}`)
                 .join(' ');
             }
           }

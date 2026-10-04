@@ -36,6 +36,7 @@ Interactive Elements
 - Only elements with numeric indexes in [] are interactive
 - (stacked) indentation (with \\t) is important and means that the element is a (html) child of the element above (with a lower index)
 - Elements with * are new elements that were added after the previous step (if url has not changed)
+- icon='...' on an element without text names what the icon-only element shows (from its class names), e.g. icon='like-btn thumb' is a like button
 
 # Response Rules
 

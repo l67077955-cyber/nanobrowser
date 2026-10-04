@@ -256,13 +256,42 @@ export default class BrowserContext {
     clearTimeout(timer);
   }
 
+  /** Waits, at most timeoutMs, until the tab has a web address */
+  private async waitForTabUrl(tabId: number, timeoutMs = 5000): Promise<void> {
+    await new Promise<void>(resolve => {
+      const finish = () => {
+        clearTimeout(timer);
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      };
+      const onUpdated = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+        if (updatedTabId === tabId && /^https?:/i.test(changeInfo.url ?? '')) finish();
+      };
+      const timer = setTimeout(() => {
+        logger.warning(`Tab ${tabId} has no address after ${timeoutMs} ms, going on`);
+        finish();
+      }, timeoutMs);
+      chrome.tabs.onUpdated.addListener(onUpdated);
+      chrome.tabs.get(tabId).then(
+        tab => /^https?:/i.test(tab.url ?? '') && finish(),
+        () => finish(),
+      );
+    });
+  }
+
   public async switchTab(tabId: number): Promise<Page> {
     logger.info('switchTab', tabId);
 
     await chrome.tabs.update(tabId, { active: true });
     await this.waitForTabEvents(tabId, { waitForUpdate: false });
+    // a tab a click just opened has no address yet: as a blank page it cannot be attached and reads as empty
+    let tab = await chrome.tabs.get(tabId);
+    if (!/^https?:/i.test(tab.url ?? '') && (tab.pendingUrl || tab.status === 'loading')) {
+      await this.waitForTabUrl(tabId);
+      tab = await chrome.tabs.get(tabId);
+    }
 
-    const page = await this._getOrCreatePage(await chrome.tabs.get(tabId));
+    const page = await this._getOrCreatePage(tab);
     await this.attachPage(page);
     this._currentTabId = tabId;
     return page;

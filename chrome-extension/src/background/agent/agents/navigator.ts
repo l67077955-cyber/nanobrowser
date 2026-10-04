@@ -369,6 +369,84 @@ export class RepeatedActionTracker {
   }
 }
 
+/** After this many steps the model itself judged Failed, clicking the same element again is refused */
+export const FAILED_CLICK_LIMIT = 2;
+
+/** An element the model clicked, known by where it is and by what it reads (its index changes every step) */
+export interface ClickTarget {
+  /** how it reads in a message, e.g. `[124] <div> "关注"` */
+  label: string;
+  keys: string[];
+}
+
+export function clickTargets(
+  actions: Record<string, unknown>[],
+  selectorMap: Map<number, DOMElementNode>,
+  url: string,
+): ClickTarget[] {
+  let page = url;
+  try {
+    const parsed = new URL(url);
+    page = parsed.origin + parsed.pathname;
+  } catch {
+    // not a full address: as it is
+  }
+  const targets: ClickTarget[] = [];
+  for (const action of actions) {
+    const index = (action.click_element as { index?: number } | undefined)?.index;
+    const node = index === undefined ? undefined : selectorMap.get(index);
+    if (!node) continue;
+    const label = String(node);
+    const reads = label.replace(/^\[\d+\]\s*/, '');
+    const keys = [`${page}|x|${node.xpath}`];
+    // an element with nothing to read is known by its place alone
+    if (reads !== `<${node.tagName}>`) keys.push(`${page}|l|${reads}|${node.attributes.href ?? ''}`);
+    targets.push({ label, keys });
+  }
+  return targets;
+}
+
+/**
+ * Remembers which elements the model clicked in steps it went on to judge Failed. A model on a wrong path
+ * (clicking 关注 for the like button, a link to "close" a panel) varies the index and the page from round
+ * to round, so identical-action counting never notices; the element and its own verdicts do.
+ */
+export class FailedClickTracker {
+  private failures = new Map<string, number>();
+  private pending: ClickTarget[] = [];
+
+  /** The model's evaluation of the step before: a failure counts against the elements that step clicked */
+  judge(evaluation: string | undefined): void {
+    if (evaluation && /^\W*fail/i.test(evaluation.trim())) {
+      for (const target of this.pending) {
+        for (const key of target.keys) this.failures.set(key, (this.failures.get(key) ?? 0) + 1);
+      }
+    }
+    this.pending = [];
+  }
+
+  count(target: ClickTarget): number {
+    return Math.max(0, ...target.keys.map(key => this.failures.get(key) ?? 0));
+  }
+
+  /** @returns why these clicks are not taken, when one of them already went wrong too often, else null */
+  refusal(targets: ClickTarget[]): string | null {
+    const bad = targets.find(target => this.count(target) >= FAILED_CLICK_LIMIT);
+    if (!bad) return null;
+    return `Not done: clicking ${bad.label} already went wrong ${this.count(bad)} times in this task (you judged those steps Failed), so it was refused. It is not the element you are looking for, whatever its index is now. Step back and rethink: read the element list for one whose text, aria-label or icon matches what you want, hover or look at the screenshot to identify icon-only buttons, close a popup with send_keys Escape instead of clicking links, or call done and explain what blocks you.`;
+  }
+
+  /** The clicks this step takes, to be judged by the next evaluation */
+  remember(targets: ClickTarget[]): void {
+    this.pending = targets;
+  }
+
+  reset(): void {
+    this.failures.clear();
+    this.pending = [];
+  }
+}
+
 export interface NavigatorResult {
   done: boolean;
   /** the model chose actions it had already repeated too often; they were not taken */
@@ -381,6 +459,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   private _stateHistory: BrowserStateHistory | null = null;
   private decisionEngine: NavigatorDecisionEngine | null = null;
   private readonly repeats = new RepeatedActionTracker();
+  private readonly failedClicks = new FailedClickTracker();
   /** Set when a step left its remaining actions out because the page changed under them */
   private cutShort: ActionResult | null = null;
 
@@ -546,8 +625,14 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       const actStarted = performance.now();
       const pageKey = `${currentState.url}\n${currentState.scrollY}\n${withoutTicking(pageText)}`;
       const ranBefore = this.repeats.count(actions, pageKey);
-      const stuck = ranBefore >= STUCK_LIMIT;
-      if (stuck) {
+      this.failedClicks.judge(modelOutput.current_state?.evaluation_previous_goal);
+      const targets = clickTargets(actions, currentState.selectorMap, currentState.url);
+      const refusal = this.failedClicks.refusal(targets);
+      const stuck = ranBefore >= STUCK_LIMIT || refusal !== null;
+      if (refusal) {
+        logger.warning('Refused a click that already went wrong', actionsForLog(actions, currentState.selectorMap));
+        actionResults = [new ActionResult({ error: refusal, includeInMemory: true })];
+      } else if (stuck) {
         logger.warning(
           `Refused actions already taken ${ranBefore} times on this page`,
           actionsForLog(actions, currentState.selectorMap),
@@ -559,6 +644,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           }),
         ];
       } else {
+        this.failedClicks.remember(targets);
         actionResults = await this.doMultiAction(actions, currentState);
       }
       const actMs = Math.round(performance.now() - actStarted);
@@ -667,6 +753,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   /** A new task may well repeat what an earlier one did */
   resetRepeats(): void {
     this.repeats.reset();
+    this.failedClicks.reset();
   }
 
   setDecisionEngine(engine: NavigatorDecisionEngine | null): void {

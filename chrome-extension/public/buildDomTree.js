@@ -964,6 +964,36 @@ window.buildDomTree = (
    * @param {HTMLElement} element - The element to check.
    * @returns {boolean} Whether the element is an interactive candidate.
    */
+  /**
+   * Words naming an element that shows no text and has no label: class names of it and of what it holds,
+   * the symbol an svg <use> draws, an image's alt. Generated class names (css-1x2y3z, _a8F3k) are left out.
+   */
+  function iconHint(element) {
+    const tag = element.tagName.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'iframe' || tag === 'body') return '';
+    if ((element.textContent || '').trim()) return '';
+    if (element.getAttribute('aria-label') || element.getAttribute('title') || element.getAttribute('alt')) return '';
+    const words = [];
+    const add = value => {
+      for (const word of String(value || '').split(/\s+/)) {
+        if (words.length >= 6 || word.length < 3 || word.length > 40 || words.includes(word)) continue;
+        if (!/[a-z]{3}/i.test(word) || /\d{3}|^(css|sc|jsx|svelte)-|^_/i.test(word)) continue;
+        words.push(word);
+      }
+    };
+    add(element.getAttribute('class'));
+    const inside = element.getElementsByTagName('*');
+    for (let i = 0; i < inside.length && i < 30 && words.length < 6; i++) {
+      const child = inside[i];
+      add(child.getAttribute('class'));
+      add(child.getAttribute('aria-label') || child.getAttribute('title') || child.getAttribute('alt'));
+      if (child.tagName.toLowerCase() === 'use') {
+        add((child.getAttribute('href') || child.getAttribute('xlink:href') || '').replace(/^.*#/, ''));
+      }
+    }
+    return words.join(' ');
+  }
+
   function isInteractiveCandidate(element) {
     if (!element || element.nodeType !== Node.ELEMENT_NODE) return false;
 
@@ -1382,6 +1412,9 @@ window.buildDomTree = (
       if (fieldTag === 'input' && (node.type === 'checkbox' || node.type === 'radio')) {
         nodeData.attributes['checked'] = node.checked ? 'true' : 'false';
       }
+      // An icon-only button reads as a bare <div />: its class names and icon say what it is (like, share, close)
+      const hint = iconHint(node);
+      if (hint && !('icon' in nodeData.attributes)) nodeData.attributes['icon'] = hint;
     }
 
     let nodeWasHighlighted = false;
