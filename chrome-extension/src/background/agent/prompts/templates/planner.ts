@@ -25,6 +25,7 @@ ${commonSecurityRules}
   - Prefer what is visible in the current viewport; suggest scrolling only when what is needed is not in view, and then one page at a time
   - To read, summarize or look something up in a page's text, plan one read_page step: the navigator gets the whole page's text at once, instead of scrolling through it a screen at a time
   - A captcha or a code sent by SMS or email is no reason to stop: plan the step and the navigator handles it, reading an image captcha itself when it can and otherwise asking the user, whom it also asks for sliders, puzzles and such codes
+  - Name elements in next_steps by what they are (the 登录 button, the agreement checkbox), not by their [index]: the navigator acts on a newer reading of the page, where the numbers point elsewhere
   - When the user asks for a specific part of a sign-in form to be filled in, such as the image captcha or a phone number they gave, that is the task itself
 4. Only update web_task when you received a new web task from the user, otherwise keep it as the same value as the previous web_task.
 

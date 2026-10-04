@@ -43,6 +43,11 @@ function maxFailuresMessage(lastError: unknown): string {
   return `${t('exec_errors_maxFailuresReached')}: ${reason}`;
 }
 
+/** "[92]" in an older plan now points at some other element; keep the words, drop the numbers */
+export function withoutIndexes(text: string): string {
+  return text.replace(/\s*\((?:index\s*)?\[\d+\]\)|\s*(?:at\s+)?(?:index\s*)?\[\d+\]/gi, '');
+}
+
 /** A planner run going on alongside navigation */
 interface BackgroundPlan {
   promise: Promise<AgentOutput<PlannerOutput> | null>;
@@ -306,11 +311,8 @@ export class Executor {
     const [task, ...added] = this.tasks.slice(this.goalStart);
     const goal = added.length > 0 ? `${task}\nThe user added: ${added.join(' / ')}` : task;
     if (!this.latestNextSteps) return goal;
-    // "[92]" in an older plan now points at some other element; keep the words, drop the numbers
     const plan =
-      this.context.nSteps > this.latestPlanStep
-        ? this.latestNextSteps.replace(/\s*\((?:index\s*)?\[\d+\]\)|\s*(?:at\s+)?(?:index\s*)?\[\d+\]/gi, '')
-        : this.latestNextSteps;
+      this.context.nSteps > this.latestPlanStep ? withoutIndexes(this.latestNextSteps) : this.latestNextSteps;
     return `${goal}\nCurrent plan: ${plan}`;
   }
 
@@ -569,7 +571,12 @@ export class Executor {
         .then(planOutput => {
           logger.info(`⏱ planner: observe ${observeMs}ms, plan ${Math.round(performance.now() - started)}ms`);
           if (planOutput.result) {
-            this.context.messageManager.addPlan(JSON.stringify(planOutput.result), positionForPlan);
+            // the navigator went on while this plan was made: the indexes in it may point elsewhere by now
+            const planText = JSON.stringify(planOutput.result);
+            this.context.messageManager.addPlan(
+              this.context.nSteps > planStep ? withoutIndexes(planText) : planText,
+              positionForPlan,
+            );
             this.latestNextSteps = planOutput.result.next_steps || null;
             this.latestPlanStep = planStep;
           }
