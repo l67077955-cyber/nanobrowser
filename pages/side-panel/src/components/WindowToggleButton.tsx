@@ -42,9 +42,9 @@ export function useHandedOffSession(show: (sessionId: string) => void): void {
 
 /**
  * Header button that moves Nanobrowser between the side panel and a window of its own, taking the open chat
- * along. Closing the panel ends a running task, so it waits until none runs.
+ * along. A running task goes on through the move and shows up where Nanobrowser opens.
  */
-export default function WindowToggleButton({ sessionId, busy }: { sessionId: string | null; busy: boolean }) {
+export default function WindowToggleButton({ sessionId }: { sessionId: string | null }) {
   // null until known; a side panel is not a tab
   const [inWindow, setInWindow] = useState<boolean | null>(null);
   // the browser window the side panel goes back to, looked up ahead: opening it must happen in the click itself
@@ -72,7 +72,7 @@ export default function WindowToggleButton({ sessionId, busy }: { sessionId: str
   if (inWindow === null) return null;
 
   const label = inWindow ? t('nav_dockToSidePanel_a11y') : t('nav_openInWindow_a11y');
-  const disabled = busy || (inWindow && dockWindowId === null);
+  const disabled = inWindow && dockWindowId === null;
 
   const handleClick = () => {
     if (inWindow) {
@@ -97,7 +97,7 @@ export default function WindowToggleButton({ sessionId, busy }: { sessionId: str
       disabled={disabled}
       className="header-icon disabled:cursor-not-allowed disabled:opacity-40"
       aria-label={label}
-      title={busy ? `${label}: ${t('nav_windowMove_busy')}` : label}>
+      title={label}>
       {inWindow ? <FiSidebar size={16} /> : <FiExternalLink size={16} />}
     </button>
   );

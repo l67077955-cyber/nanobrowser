@@ -30,6 +30,7 @@ import { analytics } from './services/analytics';
 import { formatMemoryContext, memoryInstructions, rememberFromMessages, rememberFromText } from './services/memory';
 import { RemoteControl, type RemoteTaskEnd } from './services/remote';
 import { Scheduler, type ScheduledRunEnd } from './services/scheduler';
+import { saveUnattended, unattendedSaved } from './services/unattended';
 
 const logger = createLogger('background');
 
@@ -42,9 +43,14 @@ let currentPort: chrome.runtime.Port | null = null;
 let activeTask: {
   taskId: string;
   source: 'panel' | 'remote' | 'scheduled';
-  /** the side panel that started it: only that one closing ends the task */
-  port?: chrome.runtime.Port;
 } | null = null;
+/**
+ * The side panel that shows the task the panel asked for and saves its steps to the chat. The task goes on
+ * when that panel is closed: until another one opens, the steps are saved here instead.
+ */
+let viewer: chrome.runtime.Port | null = null;
+/** what that task waits for from the user, for a side panel opened meanwhile to ask again */
+let waitingFor: { state: ExecutionState; details: string } | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
@@ -76,6 +82,12 @@ chrome.tabs.onRemoved.addListener(tabId => {
 });
 
 logger.info('background loaded');
+
+// A task can run with no side panel open, and then nothing else may wake the service worker for a while
+// (a model taking long to answer): an extension call now and then keeps it from being stopped as idle
+setInterval(() => {
+  if (activeTask) void chrome.runtime.getPlatformInfo();
+}, 20_000);
 
 // Initialize analytics
 analytics.init().catch(error => {
@@ -151,8 +163,9 @@ chrome.runtime.onConnect.addListener(port => {
     }
 
     currentPort = port;
-    // the dot on the toolbar icon says a scheduled task has finished since the panel was last open
+    // the dot on the toolbar icon says a task has finished since the panel was last open
     void chrome.action.setBadgeText({ text: '' });
+    void attachPanel(port).catch(error => logger.error('Failed to show the running task:', error));
 
     port.onMessage.addListener(async message => {
       try {
@@ -363,23 +376,38 @@ chrome.runtime.onConnect.addListener(port => {
     });
 
     port.onDisconnect.addListener(() => {
-      // this event is also triggered when the side panel is closed, so we need to cancel the task
+      // also when the side panel or its window is closed: a task goes on without it
       logger.info('Side panel disconnected', activeTask ? `(task from ${activeTask.source})` : '(no task)');
-      currentPort = null;
-      // a task run for a remote agent or on a schedule does not need the side panel
-      // nor does one started from another side panel (another window) or by a panel that has since reconnected
-      if (!activeTask || (activeTask.source === 'panel' && activeTask.port === port)) currentExecutor?.cancel();
+      if (currentPort === port) currentPort = null;
+      if (viewer === port) viewer = null;
     });
   }
 });
+
+/**
+ * A side panel that opens while a task the panel asked for runs shows that task: its chat as saved so far,
+ * then the steps as they come, and the question or approval the task waits for
+ */
+async function attachPanel(port: chrome.runtime.Port): Promise<void> {
+  const task = activeTask;
+  if (task?.source !== 'panel' || viewer === port) return;
+  await unattendedSaved();
+  // the panel closed again, another one opened, or the task ended while the steps were saved
+  if (activeTask !== task || currentPort !== port) return;
+  viewer = port;
+  logger.info('Side panel shows the running task', task.taskId);
+  port.postMessage({ type: 'task_attached', taskId: task.taskId, waitingFor });
+}
 
 /** The run of the latest task the side panel asked for, until it has ended */
 let panelRun: Promise<void> | null = null;
 
 /** Run a task the side panel asked for. It takes over from whatever task was running. */
 async function executeForPanel(executor: Executor, taskId: string, port: chrome.runtime.Port): Promise<void> {
-  const claim = { taskId, source: 'panel' as const, port };
+  const claim = { taskId, source: 'panel' as const };
   activeTask = claim;
+  viewer = port;
+  waitingFor = null;
   const run = executor.execute().finally(() => {
     if (activeTask === claim) activeTask = null;
   });
@@ -769,9 +797,21 @@ async function subscribeToExecutorEvents(executor: Executor) {
 
   // Subscribe to new events
   executor.subscribeExecutionEvents(async event => {
+    const panelTask = activeTask?.source === 'panel' ? activeTask : null;
+    if (panelTask) {
+      waitingFor =
+        event.state === ExecutionState.ACT_CONFIRM || event.state === ExecutionState.ACT_ASK
+          ? { state: event.state, details: event.data.details }
+          : null;
+    }
     try {
-      if (currentPort) {
-        currentPort.postMessage(event);
+      if (panelTask && !viewer) {
+        saveUnattended(panelTask.taskId, event);
+        if (event.state === ExecutionState.TASK_OK || event.state === ExecutionState.TASK_FAIL) {
+          void chrome.action.setBadgeText({ text: '•' });
+        }
+      } else {
+        (panelTask ? viewer : currentPort)?.postMessage(event);
       }
     } catch (error) {
       logger.error('Failed to send message to side panel:', error);

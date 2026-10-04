@@ -1,14 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { FiSettings, FiPlus, FiClock, FiChevronLeft, FiMoreHorizontal, FiCheck, FiArrowDown } from 'react-icons/fi';
-import {
-  type Message,
-  Actors,
-  chatHistoryStore,
-  agentModelStore,
-  generalSettingsStore,
-  remoteControlStore,
-} from '@extension/storage';
+import { type Message, Actors, chatHistoryStore, agentModelStore, generalSettingsStore } from '@extension/storage';
 import favoritesStorage, { type FavoritePrompt } from '@extension/storage/lib/prompt/favorites';
 import { t } from '@extension/i18n';
 import MessageList, { type Activity } from './components/MessageList';
@@ -324,6 +317,50 @@ const SidePanel = () => {
     [appendMessage],
   );
 
+  /** Steps of a running task this panel takes over, held until the chat saved so far is shown */
+  const attachQueueRef = useRef<AgentEvent[] | null>(null);
+
+  /**
+   * A task asked for in a side panel runs on when the panel is closed. The panel opened next takes it over:
+   * the chat as saved so far, then the steps as they come, and what the task waits for from the user.
+   */
+  const attachToTask = useCallback(
+    async (taskId: string, waitingFor: { state: ExecutionState; details: string } | null) => {
+      attachQueueRef.current = [];
+      sessionIdRef.current = taskId;
+      setCurrentSessionId(taskId);
+      setIsHistoricalSession(false);
+      setIsFollowUpMode(true);
+      setInputEnabled(true);
+      setShowStopButton(true);
+      followRef.current = true;
+      setAwayFromEnd(false);
+      try {
+        const session = await chatHistoryStore.getSession(taskId);
+        if (session) {
+          setSessionTitle(session.title);
+          setMessages(session.messages);
+        }
+        const view = session ? latestView(session.messages) : undefined;
+        if (waitingFor?.state === ExecutionState.ACT_CONFIRM) {
+          setPendingConfirmation(waitingFor.details || '');
+          setActivity({ phase: 'waiting', view });
+        } else if (waitingFor?.state === ExecutionState.ACT_ASK) {
+          setAwaitingReply(true);
+          setActivity({ phase: 'asking', view });
+        } else {
+          setActivity({ phase: 'reading', view });
+        }
+      } catch (err) {
+        console.error('Failed to load the chat of the running task:', err);
+      }
+      const queued = attachQueueRef.current ?? [];
+      attachQueueRef.current = null;
+      for (const event of queued) handleTaskState(event);
+    },
+    [handleTaskState],
+  );
+
   /** A task an agent started through the bridge: it gets a chat of its own, and the stop button ends it */
   const showRemoteTask = useCallback(
     async (task: string) => {
@@ -377,7 +414,10 @@ const SidePanel = () => {
       portRef.current.onMessage.addListener((message: any) => {
         // Add type checking for message
         if (message && message.type === EventType.EXECUTION) {
-          handleTaskState(message);
+          if (attachQueueRef.current) attachQueueRef.current.push(message);
+          else handleTaskState(message);
+        } else if (message && message.type === 'task_attached') {
+          void attachToTask(String(message.taskId), message.waitingFor ?? null);
         } else if (message && message.type === 'error') {
           // Handle error messages from service worker
           appendMessage({
@@ -450,7 +490,7 @@ const SidePanel = () => {
       // Clear any references since connection failed
       portRef.current = null;
     }
-  }, [handleTaskState, appendMessage, stopConnection, showRemoteTask]);
+  }, [handleTaskState, appendMessage, stopConnection, showRemoteTask, attachToTask]);
 
   // Add safety check for message sending
   const sendMessage = useCallback(
@@ -927,15 +967,10 @@ const SidePanel = () => {
     loadFavorites();
   }, []);
 
-  // With remote control on, an open side panel listens from the start: a task an agent starts shows up here,
-  // and its sensitive actions can be approved
+  // An open side panel listens from the start: a task still running from before it was closed shows up here,
+  // and so does one an agent starts, whose sensitive actions can be approved
   useEffect(() => {
-    remoteControlStore
-      .getConfig()
-      .then(config => {
-        if (config.enabled) setupConnection();
-      })
-      .catch(err => console.error('Failed to read the remote control settings:', err));
+    setupConnection();
   }, [setupConnection]);
 
   // Cleanup on unmount
@@ -1270,7 +1305,7 @@ const SidePanel = () => {
               </button>
             </>
           )}
-          <WindowToggleButton sessionId={currentSessionId} busy={showStopButton} />
+          <WindowToggleButton sessionId={currentSessionId} />
           <div className="relative" ref={menuRef}>
             <button
               type="button"
