@@ -391,8 +391,14 @@ export class ActionBuilder {
         }
 
         try {
-          const image = await page.captureCaptchaImage(fieldNode, imageNode, input.refresh === true);
-          const code = await readCaptcha(this.captchaLLM, image, this.context.controller.signal).catch(error => {
+          const { image, textAround } = await page.captureCaptchaImage(fieldNode, imageNode, input.refresh === true);
+          const maxLength = Number.parseInt(fieldNode.attributes?.maxlength ?? '', 10);
+          const hints = {
+            maxLength: maxLength > 0 ? maxLength : undefined,
+            placeholder: fieldNode.attributes?.placeholder || undefined,
+            textAround: textAround || undefined,
+          };
+          const code = await readCaptcha(this.captchaLLM, image, this.context.controller.signal, hints).catch(error => {
             if (isAbortedError(error) || error instanceof CaptchaUnreadableError) throw error;
             // the provider turned the request down: a wrong model name, or a model that takes no images
             throw new CaptchaModelError(error instanceof Error ? error.message : String(error));

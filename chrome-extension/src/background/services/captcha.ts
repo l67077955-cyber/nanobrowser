@@ -1,5 +1,5 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { HumanMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, type BaseMessage } from '@langchain/core/messages';
 import { withModelTimeout } from '../agent/agents/errors';
 import { createLogger } from '../log';
 
@@ -43,11 +43,43 @@ export function captchaAnswer(reply: string): string | null {
   return answer;
 }
 
+/** What the page says about the captcha besides the picture */
+export interface CaptchaHints {
+  /** the field's maxlength: a longer reading has characters in it that do not count */
+  maxLength?: number;
+  placeholder?: string;
+  /** text near the picture, which may say which characters to enter */
+  textAround?: string;
+}
+
+function hintText(hints: CaptchaHints): string {
+  const lines: string[] = [];
+  if (hints.maxLength) {
+    lines.push(`The field takes at most ${hints.maxLength} characters, so the code most likely has exactly that many.`);
+  }
+  if (hints.placeholder) lines.push(`The field's placeholder reads: "${hints.placeholder}".`);
+  if (hints.textAround) lines.push(`Text next to the picture on the page: "${hints.textAround}".`);
+  return lines.length > 0 ? `\n\nFrom the page:\n${lines.join('\n')}` : '';
+}
+
+const textOf = (content: unknown) =>
+  typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content.map(part => (part?.type === 'text' ? String(part.text) : '')).join('')
+      : '';
+
 /**
- * Read the code in a captcha image with a model that accepts images.
+ * Read the code in a captcha image with a model that accepts images. A reading longer than the field allows is
+ * sent back once: typing it would cut it short to a wrong code.
  * @param image base64 PNG
  */
-export async function readCaptcha(llm: BaseChatModel, image: string, signal: AbortSignal): Promise<string> {
+export async function readCaptcha(
+  llm: BaseChatModel,
+  image: string,
+  signal: AbortSignal,
+  hints: CaptchaHints = {},
+): Promise<string> {
   const dataUrl = `data:image/png;base64,${image}`;
   // the picture the model gets, drawn in the console; the data URL can also be opened in a tab
   console.info(
@@ -57,35 +89,47 @@ export async function readCaptcha(llm: BaseChatModel, image: string, signal: Abo
     `font-size:1px;padding:30px 120px;background:url(${dataUrl}) left center/contain no-repeat`,
   );
   logger.info('image data URL (paste into a tab to view):', dataUrl);
-  const started = Date.now();
-  const reply = await withModelTimeout(
-    'The captcha model',
-    signal,
-    callSignal =>
-      llm.invoke(
-        [
-          new HumanMessage({
-            content: [
-              { type: 'text', text: PROMPT },
-              { type: 'image_url', image_url: { url: `data:image/png;base64,${image}` } },
-            ],
-          }),
-        ],
-        { signal: callSignal, tags: ['captcha'] },
+  logger.info('hints', hints);
+
+  const messages: BaseMessage[] = [
+    new HumanMessage({
+      content: [
+        { type: 'text', text: PROMPT + hintText(hints) },
+        { type: 'image_url', image_url: { url: dataUrl } },
+      ],
+    }),
+  ];
+  for (let attempt = 1; ; attempt++) {
+    const started = Date.now();
+    const reply = await withModelTimeout(
+      'The captcha model',
+      signal,
+      callSignal => llm.invoke(messages, { signal: callSignal, tags: ['captcha'] }),
+      TIMEOUT_MS,
+    );
+    const text = textOf(reply.content);
+    const answer = captchaAnswer(text);
+    logger.info('model reply', {
+      model: modelName(llm),
+      attempt,
+      ms: Date.now() - started,
+      raw: text.slice(0, 300),
+      answer,
+    });
+    if (answer === null) throw new CaptchaUnreadableError(text);
+    if (!hints.maxLength || answer.length <= hints.maxLength) return answer;
+    if (attempt >= 2) {
+      throw new CaptchaUnreadableError(
+        `${answer}, ${answer.length} characters where the field takes ${hints.maxLength}`,
+      );
+    }
+    messages.push(
+      new AIMessage(text),
+      new HumanMessage(
+        `"${answer}" has ${answer.length} characters, but the field takes only ${hints.maxLength}. Some of what you ` +
+          'read does not belong to the code, most likely characters drawn in another colour than the one asked ' +
+          'for. Look again and reply with the code only.',
       ),
-    TIMEOUT_MS,
-  );
-  const text =
-    typeof reply.content === 'string'
-      ? reply.content
-      : reply.content.map(part => (part.type === 'text' ? String(part.text) : '')).join('');
-  const answer = captchaAnswer(text);
-  logger.info('model reply', {
-    model: modelName(llm),
-    ms: Date.now() - started,
-    raw: text.slice(0, 300),
-    answer,
-  });
-  if (answer === null) throw new CaptchaUnreadableError(text);
-  return answer;
+    );
+  }
 }

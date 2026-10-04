@@ -1152,12 +1152,16 @@ export default class Page {
   }
 
   /**
-   * A picture of the captcha that belongs to a field, as the user sees it (base64 PNG). It is taken from the
+   * A picture of the captcha that belongs to a field, as the user sees it (base64 PNG), with the text next to it. It is taken from the
    * screen, not from the image's address: fetching that again would make the site issue a different captcha.
    * @param imageNode the captcha image when the model saw it as an element; else it is looked for beside the field
    * @param refresh click the picture first, which makes most sites draw a new captcha
    */
-  async captureCaptchaImage(fieldNode: DOMElementNode, imageNode?: DOMElementNode, refresh = false): Promise<string> {
+  async captureCaptchaImage(
+    fieldNode: DOMElementNode,
+    imageNode?: DOMElementNode,
+    refresh = false,
+  ): Promise<{ image: string; textAround: string }> {
     if (!this._puppeteerPage) {
       throw new Error('Puppeteer is not connected');
     }
@@ -1270,12 +1274,19 @@ export default class Page {
     const described = await image
       .evaluate(el => {
         const src = el.getAttribute('src') ?? '';
-        const around = (el.closest('div, form, li, td') ?? el.parentElement)?.textContent ?? '';
+        // the nearest group around the picture that has any text, a few levels up at most
+        let around = '';
+        for (let scope = el.parentElement, depth = 0; scope && depth < 4 && !around; depth++) {
+          const text = (scope.textContent ?? '').replace(/\s+/g, ' ').trim();
+          if (text.length > 300) break;
+          around = text;
+          scope = scope.parentElement;
+        }
         return {
           element: `<${el.tagName.toLowerCase()} id="${el.id}" class="${el.getAttribute('class') ?? ''}">`,
           src: src.length > 120 ? `${src.slice(0, 120)}…` : src,
           natural: el instanceof HTMLImageElement ? `${el.naturalWidth}x${el.naturalHeight}` : '',
-          textAround: around.replace(/\s+/g, ' ').trim().slice(0, 200),
+          textAround: around.slice(0, 200),
         };
       })
       .catch(() => null);
@@ -1324,7 +1335,7 @@ export default class Page {
       .catch(error => ({ error: String(error) }));
     if ('png' in copied && copied.png && !copied.blank) {
       logger.info(`[captcha] picture copied from the page, ${copied.size}`);
-      return copied.png;
+      return { image: copied.png, textAround: described?.textAround ?? '' };
     }
     const notCopied = 'png' in copied ? 'the copied picture is one colour' : copied.error;
     logger.warning(`[captcha] picture not copied (${notCopied}), taking it from the screen`);
@@ -1339,7 +1350,7 @@ export default class Page {
         `the captcha came out blank (one colour) on screen, so there is nothing to read: the tab may be hidden behind another window or not painted (${notCopied})`,
       );
     }
-    return screenshot;
+    return { image: screenshot, textAround: described?.textAround ?? '' };
   }
 
   /** @returns what the field contains after typing, or null when it is gone from the page */
@@ -1558,16 +1569,19 @@ export default class Page {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       // Check if element is in viewport
-      const isVisible = await element.evaluate(el => {
+      const where = await element.evaluate(el => {
         const rect = el.getBoundingClientRect();
-
-        // Check if element has size
-        if (rect.width === 0 || rect.height === 0) return false;
-
-        // Check if element is hidden
         const style = window.getComputedStyle(el);
-        if (style.visibility === 'hidden' || style.display === 'none' || style.opacity === '0') {
-          return false;
+        // No scrolling shows an element without size or one hidden by its style, like the real checkbox under a
+        // styled one: waiting for it would only delay the click
+        if (
+          rect.width === 0 ||
+          rect.height === 0 ||
+          style.visibility === 'hidden' ||
+          style.display === 'none' ||
+          style.opacity === '0'
+        ) {
+          return 'hidden';
         }
 
         // Check if element is in viewport
@@ -1584,13 +1598,17 @@ export default class Page {
             block: 'center',
             inline: 'center',
           });
-          return false;
+          return 'scrolled';
         }
 
-        return true;
+        return 'visible';
       });
 
-      if (isVisible) break;
+      if (where === 'visible') break;
+      if (where === 'hidden') {
+        logger.info('Element is hidden or has no size, not waiting for it to scroll into view');
+        break;
+      }
 
       // Check timeout - log warning and return instead of throwing
       if (Date.now() - startTime > timeout) {

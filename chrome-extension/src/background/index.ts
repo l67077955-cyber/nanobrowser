@@ -61,7 +61,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 // Listen for debugger detached event
 // if canceled_by_user, remove the tab from the browser context
 chrome.debugger.onDetach.addListener(async (source, reason) => {
-  console.log('Debugger detached:', source, reason);
+  logger.info('Debugger detached:', source, reason);
   if (reason === 'canceled_by_user') {
     if (source.tabId) {
       currentExecutor?.cancel();
@@ -229,6 +229,7 @@ chrome.runtime.onConnect.addListener(port => {
               logger.info('cancel_task for a task no longer running, ignored', message.taskId);
               break;
             }
+            logger.info('cancel_task: the user stopped the task in the side panel', message.taskId);
             await currentExecutor.cancel();
             break;
           }
@@ -363,7 +364,7 @@ chrome.runtime.onConnect.addListener(port => {
 
     port.onDisconnect.addListener(() => {
       // this event is also triggered when the side panel is closed, so we need to cancel the task
-      console.log('Side panel disconnected');
+      logger.info('Side panel disconnected', activeTask ? `(task from ${activeTask.source})` : '(no task)');
       currentPort = null;
       // a task run for a remote agent or on a schedule does not need the side panel
       // nor does one started from another side panel (another window) or by a panel that has since reconnected

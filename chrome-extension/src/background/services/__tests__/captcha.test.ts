@@ -45,4 +45,25 @@ describe('readCaptcha', () => {
     const { llm } = modelReplying('I cannot view images, please describe it to me.');
     await expect(readCaptcha(llm, 'QUJD', new AbortController().signal)).rejects.toBeInstanceOf(CaptchaUnreadableError);
   });
+
+  it('sends back a reading longer than the field takes, with the page hints', async () => {
+    const invoke = vi.fn().mockResolvedValueOnce({ content: 'T4VSy' }).mockResolvedValueOnce({ content: 'T4VS' });
+    const llm = { invoke } as unknown as BaseChatModel;
+    const code = await readCaptcha(llm, 'QUJD', new AbortController().signal, {
+      maxLength: 4,
+      textAround: '请输入红色的字符',
+    });
+    expect(code).toBe('T4VS');
+    const firstPrompt = JSON.stringify(invoke.mock.calls[0][0]);
+    expect(firstPrompt).toContain('at most 4 characters');
+    expect(firstPrompt).toContain('请输入红色的字符');
+    expect(JSON.stringify(invoke.mock.calls[1][0])).toContain('takes only 4');
+  });
+
+  it('gives up when the second reading is still too long', async () => {
+    const llm = { invoke: vi.fn(async () => ({ content: 'T4VSy' })) } as unknown as BaseChatModel;
+    await expect(readCaptcha(llm, 'QUJD', new AbortController().signal, { maxLength: 4 })).rejects.toBeInstanceOf(
+      CaptchaUnreadableError,
+    );
+  });
 });

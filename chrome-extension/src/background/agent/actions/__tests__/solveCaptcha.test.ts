@@ -10,7 +10,7 @@ const picture = { tagName: 'img' };
 
 function setup(captchaLLM: BaseChatModel | null) {
   const page = {
-    captureCaptchaImage: vi.fn(async () => 'QUJD'),
+    captureCaptchaImage: vi.fn(async () => ({ image: 'QUJD', textAround: '' })),
     inputTextElementNode: vi.fn(async (_useVision: boolean, _node: unknown, text: string) => text),
   };
   const context = {
