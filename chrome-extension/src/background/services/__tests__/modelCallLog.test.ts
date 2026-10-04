@@ -3,14 +3,14 @@ import { FakeListChatModel } from '@langchain/core/utils/testing';
 
 const logged = vi.hoisted(() => ({ info: [] as string[], error: [] as string[] }));
 vi.mock('@src/background/log', async importOriginal => ({
-  ...(await importOriginal<typeof import('@src/background/log')>()),
+  ...(await importOriginal<Record<string, unknown>>()),
   createLogger: () => ({
     info: (line: string) => logged.info.push(line),
     error: (line: string) => logged.error.push(line),
   }),
 }));
 
-const { ModelCallLogger } = await import('../modelCallLog');
+import { ModelCallLogger } from '../modelCallLog';
 
 describe('ModelCallLogger', () => {
   beforeEach(() => {

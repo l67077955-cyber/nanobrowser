@@ -11,24 +11,37 @@ interface Logger {
   groupEnd: () => void;
 }
 
+const MAX_LOGGED_OBJECT = 3000;
+
+/**
+ * Objects as JSON text: Chrome shows an object as a collapsed "Object", and a log copied out of the console
+ * then loses what was in it. Errors and strings stay as they are.
+ */
+const flatten = (arg: unknown): unknown => {
+  if (arg === null || typeof arg !== 'object' || arg instanceof Error) return arg;
+  try {
+    const text = JSON.stringify(arg);
+    if (text === undefined) return arg;
+    return text.length > MAX_LOGGED_OBJECT ? `${text.slice(0, MAX_LOGGED_OBJECT)}…` : text;
+  } catch {
+    return arg;
+  }
+};
+
 const createLogger = (namespace: string): Logger => {
   const prefix = `[${namespace}]`;
-
-  // Bind console methods directly to preserve call stack and show correct line numbers
-  const boundDebug = console.debug.bind(console, prefix);
-  const boundInfo = console.info.bind(console, prefix);
-  const boundWarn = console.warn.bind(console, prefix);
-  const boundError = console.error.bind(console, prefix);
-  const boundGroup = console.group.bind(console);
-  const boundGroupEnd = console.groupEnd.bind(console);
+  const write =
+    (method: (...args: unknown[]) => void) =>
+    (...args: unknown[]) =>
+      method(prefix, ...args.map(flatten));
 
   return {
-    debug: import.meta.env.DEV ? boundDebug : () => {},
-    info: boundInfo,
-    warning: boundWarn,
-    error: boundError,
-    group: (label: string) => boundGroup(`${prefix} ${label}`),
-    groupEnd: boundGroupEnd,
+    debug: import.meta.env.DEV ? write(console.debug) : () => {},
+    info: write(console.info),
+    warning: write(console.warn),
+    error: write(console.error),
+    group: (label: string) => console.group(`${prefix} ${label}`),
+    groupEnd: () => console.groupEnd(),
   };
 };
 

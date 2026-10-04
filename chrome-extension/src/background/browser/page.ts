@@ -44,6 +44,26 @@ const CAPTCHA_HINT = 'captcha|kaptcha|verif|valid|v_?code|check_?code|auth_?code
 // enlarged to about this height: small coloured or thin characters are misread at their own size
 const CAPTCHA_TARGET_HEIGHT = 160;
 
+/** @returns true when a base64 PNG is a single colour; false when that cannot be told here */
+async function isBlankPng(base64: string): Promise<boolean> {
+  if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return false;
+  try {
+    const bytes = Uint8Array.from(atob(base64), char => char.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext('2d');
+    if (!context) return false;
+    context.drawImage(bitmap, 0, 0);
+    const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    for (let i = 4; i < pixels.length; i += 4) {
+      if (pixels[i] !== pixels[0] || pixels[i + 1] !== pixels[1] || pixels[i + 2] !== pixels[2]) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const IDENTITY_ATTRIBUTES = ['role', 'type', 'name', 'aria-label', 'data-testid', 'placeholder', 'href'];
 
 const collapseLabel = (text: string) => {
@@ -1266,12 +1286,60 @@ export default class Page {
       refresh,
       byImageIndex: imageNode !== undefined,
     });
-    const screenshot = await this._puppeteerPage.screenshot({
+
+    // The picture's own pixels, copied in the page: a screenshot comes out blank when the tab is not being painted,
+    // as in a window that is hidden or covered. A picture from another site cannot be copied and is taken from
+    // the screen instead.
+    const copied = await image
+      .evaluate((el, targetHeight) => {
+        try {
+          const source =
+            el instanceof HTMLImageElement && el.naturalWidth > 0
+              ? { picture: el, width: el.naturalWidth, height: el.naturalHeight }
+              : el instanceof HTMLCanvasElement
+                ? { picture: el, width: el.width, height: el.height }
+                : null;
+          if (!source) return { error: `a <${el.tagName.toLowerCase()}> that is not a loaded picture` };
+          const zoom = Math.min(4, Math.max(1, Math.round(targetHeight / source.height)));
+          const canvas = document.createElement('canvas');
+          canvas.width = source.width * zoom;
+          canvas.height = source.height * zoom;
+          const context = canvas.getContext('2d');
+          if (!context) return { error: 'no 2d canvas' };
+          // a transparent background would reach the model as black
+          context.fillStyle = '#fff';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(source.picture, 0, 0, canvas.width, canvas.height);
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          let blank = true;
+          for (let i = 4; i < pixels.length && blank; i += 4) {
+            blank = pixels[i] === pixels[0] && pixels[i + 1] === pixels[1] && pixels[i + 2] === pixels[2];
+          }
+          return { png: canvas.toDataURL('image/png').split(',')[1], blank, size: `${canvas.width}x${canvas.height}` };
+        } catch (error) {
+          // a picture from another site taints the canvas
+          return { error: String(error) };
+        }
+      }, CAPTCHA_TARGET_HEIGHT)
+      .catch(error => ({ error: String(error) }));
+    if ('png' in copied && copied.png && !copied.blank) {
+      logger.info(`[captcha] picture copied from the page, ${copied.size}`);
+      return copied.png;
+    }
+    const notCopied = 'png' in copied ? 'the copied picture is one colour' : copied.error;
+    logger.warning(`[captcha] picture not copied (${notCopied}), taking it from the screen`);
+
+    const screenshot = (await this._puppeteerPage.screenshot({
       encoding: 'base64',
       type: 'png',
       clip: { x: box.x + pageLeft, y: box.y + pageTop, width: box.width, height: box.height, scale },
-    });
-    return screenshot as string;
+    })) as string;
+    if (await isBlankPng(screenshot)) {
+      throw new Error(
+        `the captcha came out blank (one colour) on screen, so there is nothing to read: the tab may be hidden behind another window or not painted (${notCopied})`,
+      );
+    }
+    return screenshot;
   }
 
   /** @returns what the field contains after typing, or null when it is gone from the page */
