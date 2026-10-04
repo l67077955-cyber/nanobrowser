@@ -28,12 +28,22 @@ const flatten = (arg: unknown): unknown => {
   }
 };
 
+/** A mainland China mobile number on its own, not inside a longer run of digits (a timestamp, an id) */
+const PHONE_NUMBER = /(?<!\d)(1[3-9]\d)\d{4}(\d{4})(?!\d)/g;
+
+/**
+ * The user's phone number shown as 135****0144: logs get copied out and pasted into chats and issues.
+ * An image data URL is left whole, so that it still opens.
+ */
+const maskPhoneNumbers = (arg: unknown): unknown =>
+  typeof arg === 'string' && !arg.startsWith('data:') ? arg.replace(PHONE_NUMBER, '$1****$2') : arg;
+
 const createLogger = (namespace: string): Logger => {
   const prefix = `[${namespace}]`;
   const write =
     (method: (...args: unknown[]) => void) =>
     (...args: unknown[]) =>
-      method(prefix, ...args.map(flatten));
+      method(prefix, ...args.map(arg => maskPhoneNumbers(flatten(arg))));
 
   return {
     debug: import.meta.env.DEV ? write(console.debug) : () => {},
@@ -73,4 +83,4 @@ const describeError = (error: unknown): string => {
 const logger = createLogger('Agent');
 
 export type { Logger, LogLevel };
-export { createLogger, describeError, logger };
+export { createLogger, describeError, logger, maskPhoneNumbers };
