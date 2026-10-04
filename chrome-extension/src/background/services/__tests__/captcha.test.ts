@@ -80,10 +80,17 @@ describe('readCaptcha', () => {
     expect(JSON.stringify(invoke.mock.calls[1][0])).toContain('takes only 4');
   });
 
-  it('gives up when the second reading is still too long', async () => {
+  it('falls back to the first reading cut to fit when the second is still too long', async () => {
     const llm = { invoke: vi.fn(async () => ({ content: 'T4VSy' })) } as unknown as BaseChatModel;
-    await expect(readCaptcha(llm, 'QUJD', new AbortController().signal, { maxLength: 4 })).rejects.toBeInstanceOf(
-      CaptchaUnreadableError,
-    );
+    expect(await readCaptcha(llm, 'QUJD', new AbortController().signal, { maxLength: 4 })).toBe('T4VS');
+  });
+
+  it('falls back to the first reading cut to fit when the second look fails', async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({ content: '{"answer": "MTEBX"}' })
+      .mockRejectedValueOnce(new Error('timed out'));
+    const llm = { invoke } as unknown as BaseChatModel;
+    expect(await readCaptcha(llm, 'QUJD', new AbortController().signal, { maxLength: 4 })).toBe('MTEB');
   });
 });

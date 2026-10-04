@@ -6,6 +6,8 @@ import { createLogger } from '../log';
 const logger = createLogger('Captcha');
 
 const TIMEOUT_MS = 45000;
+// The second look at a reading too long for the field: on failure the first reading, cut to fit, is used
+const RETRY_TIMEOUT_MS = 20000;
 // Codes are a handful of characters; a longer reply is the model talking instead of reading
 const MAX_ANSWER_LENGTH = 12;
 const UNREADABLE = 'UNREADABLE';
@@ -105,7 +107,8 @@ const textOf = (content: unknown) =>
 
 /**
  * Read the code in a captcha image with a model that accepts images. A reading longer than the field allows is
- * sent back once: typing it would cut it short to a wrong code.
+ * sent back once: typing it would cut it short to a wrong code. When that second look fails or is still too long,
+ * the first reading cut to fit is the answer: it is what the field would keep anyway, and a guess beats asking.
  * @param image base64 PNG
  */
 export async function readCaptcha(
@@ -133,38 +136,54 @@ export async function readCaptcha(
       ],
     }),
   ];
-  for (let attempt = 1; ; attempt++) {
-    const started = Date.now();
-    const reply = await withModelTimeout(
-      'The captcha model',
-      signal,
-      callSignal => llm.invoke(messages, { signal: callSignal, tags: ['captcha'] }),
-      TIMEOUT_MS,
-    );
-    const text = textOf(reply.content);
-    const { rule, characters, answer } = captchaReading(text);
-    logger.info('model reply', {
-      model: modelName(llm),
-      attempt,
-      ms: Date.now() - started,
-      rule,
-      characters,
-      answer,
-      raw: text.slice(0, 300),
-    });
-    if (answer === null) throw new CaptchaUnreadableError(text);
-    if (!hints.maxLength || answer.length <= hints.maxLength) return answer;
-    if (attempt >= 2) {
-      throw new CaptchaUnreadableError(
-        `${answer}, ${answer.length} characters where the field takes ${hints.maxLength}`,
-      );
-    }
-    messages.push(
-      new AIMessage(text),
-      new HumanMessage(
-        `"${answer}" has ${answer.length} characters, but the field takes only ${hints.maxLength}, so the rule ` +
-          'leaves some of them out. Look at the picture again for the rule, apply it, and reply with the same JSON.',
-      ),
-    );
+  const first = await askModel(llm, messages, signal, 1, TIMEOUT_MS);
+  if (!hints.maxLength || first.answer.length <= hints.maxLength) return first.answer;
+
+  const maxLength = hints.maxLength;
+  const fallback = first.answer.slice(0, maxLength);
+  messages.push(
+    new AIMessage(first.text),
+    new HumanMessage(
+      `"${first.answer}" has ${first.answer.length} characters, but the field takes only ${maxLength}, so the rule ` +
+        'leaves some of them out. Look at the picture again for the rule, apply it, and reply with the same JSON.',
+    ),
+  );
+  try {
+    const second = await askModel(llm, messages, signal, 2, RETRY_TIMEOUT_MS);
+    if (second.answer.length <= maxLength) return second.answer;
+    logger.warning(`second reading "${second.answer}" is still too long; using "${fallback}"`);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    logger.warning(`second reading failed; using "${fallback}"`, error instanceof Error ? error.message : error);
   }
+  return fallback;
+}
+
+async function askModel(
+  llm: BaseChatModel,
+  messages: BaseMessage[],
+  signal: AbortSignal,
+  attempt: number,
+  timeoutMs: number,
+): Promise<{ text: string; answer: string }> {
+  const started = Date.now();
+  const reply = await withModelTimeout(
+    'The captcha model',
+    signal,
+    callSignal => llm.invoke(messages, { signal: callSignal, tags: ['captcha'] }),
+    timeoutMs,
+  );
+  const text = textOf(reply.content);
+  const { rule, characters, answer } = captchaReading(text);
+  logger.info('model reply', {
+    model: modelName(llm),
+    attempt,
+    ms: Date.now() - started,
+    rule,
+    characters,
+    answer,
+    raw: text.slice(0, 300),
+  });
+  if (answer === null) throw new CaptchaUnreadableError(text);
+  return { text, answer };
 }

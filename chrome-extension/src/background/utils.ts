@@ -32,7 +32,7 @@ export function getCurrentTimestampStr(): string {
 export function repairJsonString(actionString: string): string {
   try {
     // Use jsonrepair to fix malformed JSON
-    const repairedJson = jsonrepair(actionString.trim());
+    const repairedJson = jsonrepair(withActionKey(actionString.trim()));
     logger.info('Successfully repaired JSON string', { original: actionString, repaired: repairedJson });
     return repairedJson;
   } catch (error) {
@@ -41,6 +41,34 @@ export function repairJsonString(actionString: string): string {
     logger.warning('jsonrepair failed to fix JSON string', { original: actionString, error: errorMessage });
     return actionString.trim();
   }
+}
+
+/**
+ * Put back the "action" key a model left out of navigator output, which jsonrepair cannot guess:
+ * {"current_state": {...}, {"click_element": {...}}]} becomes {"current_state": {...}, "action": [{"click_element": {...}}]}
+ */
+export function withActionKey(json: string): string {
+  const start = json.match(/^\{\s*"current_state"\s*:\s*\{/);
+  if (!start) return json;
+  // find the brace that closes current_state, skipping over strings
+  let depth = 0;
+  let inString = false;
+  for (let i = start[0].length - 1; i < json.length; i++) {
+    const c = json[i];
+    if (inString) {
+      if (c === '\\') i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) {
+      const rest = json.slice(i + 1).match(/^\s*,\s*([{[])/);
+      if (!rest) return json;
+      const insert = rest[1] === '{' ? '"action": [' : '"action": ';
+      const at = i + 1 + rest[0].length - 1;
+      return `${json.slice(0, at)}${insert}${json.slice(at)}`;
+    }
+  }
+  return json;
 }
 
 // Helper function to capitalize first letter and convert to proper title case
