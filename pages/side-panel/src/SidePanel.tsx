@@ -29,6 +29,8 @@ const FAILURE_STATES = [ExecutionState.TASK_FAIL, ExecutionState.STEP_FAIL, Exec
 
 // The choice between the plain view and the one with every step's model, confidence and timing
 const DETAILED_VIEW_KEY = 'nb-detailed-view';
+// The chat the panel had open, for it to show again when it is reopened
+const LAST_SESSION_KEY = 'nb-last-session';
 
 function readDetailedView(): boolean {
   try {
@@ -903,6 +905,29 @@ const SidePanel = () => {
   const showHandedOffRef = useRef(handleSessionSelect);
   showHandedOffRef.current = showStopButton ? () => Promise.resolve() : handleSessionSelect;
   useHandedOffSession(useCallback((sessionId: string) => void showHandedOffRef.current(sessionId), []));
+
+  // Closed and opened again, the panel shows the chat it had open, unless a running task took its place meanwhile.
+  // Kept for the browser session: a new chat stays new, and a restarted browser starts with one.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    chrome.storage.session
+      .get(LAST_SESSION_KEY)
+      .then(stored => {
+        const sessionId = stored[LAST_SESSION_KEY];
+        if (typeof sessionId === 'string' && !sessionIdRef.current) void showHandedOffRef.current(sessionId);
+      })
+      .catch(err => console.error('Failed to reopen the last chat:', err))
+      .finally(() => {
+        restoredRef.current = true;
+      });
+  }, []);
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    const saved = currentSessionId
+      ? chrome.storage.session.set({ [LAST_SESSION_KEY]: currentSessionId })
+      : chrome.storage.session.remove(LAST_SESSION_KEY);
+    saved.catch(err => console.error('Failed to remember the open chat:', err));
+  }, [currentSessionId]);
 
   const handleSessionDelete = async (sessionId: string) => {
     try {
