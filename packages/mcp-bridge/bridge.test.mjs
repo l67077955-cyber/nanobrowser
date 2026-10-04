@@ -201,3 +201,28 @@ test('the browser is pinged so that its service worker stays awake', async t => 
   const [data] = await once(browser, 'message');
   assert.equal(JSON.parse(data.toString()).type, 'ping');
 });
+
+test('a browser that is not connected is started, and the task waits for it', async t => {
+  let port;
+  let browser;
+  const startBrowser = () => {
+    setTimeout(async () => {
+      browser = await connectBrowser(port, method => (method === 'run_task' ? { taskId: 't-started' } : {}));
+    }, 50);
+  };
+  const started = await startBridge({ startBrowser, browserStartMs: 2000 });
+  port = started.port;
+  t.after(() => {
+    browser?.close();
+    return started.bridge.close();
+  });
+  const task = await tool(port, 'run_task', { task: 'open example.com', wait_seconds: 0 });
+  assert.equal(task.task_id, 't-started');
+});
+
+test('a browser that does not come up in time is reported as missing', async t => {
+  const { bridge, port } = await startBridge({ startBrowser: () => {}, browserStartMs: 100 });
+  t.after(() => bridge.close());
+  const reply = await tool(port, 'run_task', { task: 'open example.com' });
+  assert.match(reply.error, /No browser is connected/);
+});

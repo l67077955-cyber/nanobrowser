@@ -19,6 +19,34 @@ node packages/mcp-bridge/cli.mjs --port 9000 --host 127.0.0.1 --token-file /path
 On first start it creates a token in `~/.config/nanobrowser/bridge-token` (or takes
 `NANOBROWSER_BRIDGE_TOKEN`). Both the extension and the agents present this token.
 
+## Run it in the background on your computer
+
+To have agents reach the browser at any time without starting anything by hand, install the bridge on the
+computer with the browser:
+
+```bash
+node packages/mcp-bridge/cli.mjs install     # runs now and from every login on; restarted if it stops
+node packages/mcp-bridge/cli.mjs status      # installed? listening?
+node packages/mcp-bridge/cli.mjs uninstall
+```
+
+| System  | How it runs                                              | Log                                         |
+| ------- | -------------------------------------------------------- | ------------------------------------------- |
+| Windows | hidden launcher in the Startup folder (no admin rights)  | `%LOCALAPPDATA%\nanobrowser\bridge.log`     |
+| macOS   | LaunchAgent `com.nanobrowser.bridge`                     | `~/Library/Logs/nanobrowser-bridge.log`     |
+| Linux   | systemd user service `nanobrowser-bridge`                | `~/.local/state/nanobrowser/bridge.log`     |
+
+`install` prints the token and the settings to enter once in the extension. The installed bridge runs with
+`--launch-browser`: when an agent calls and no browser is connected, it starts Chrome without a window
+(`--no-startup-window`) and waits up to 30 s for the extension to connect. The extension keeps Chrome
+running in the background after its windows are closed (the `background` permission; on Windows the Chrome
+setting "Continue running background apps when Google Chrome is closed" must stay on). A task that finds no
+browser window opens one without taking the focus. Set `NANOBROWSER_CHROME` to Chrome's path when it is
+installed somewhere else.
+
+Keep the repository where it is after installing: the service runs `cli.mjs` from it. Run `install` again
+after moving it.
+
 ## Connect the browser
 
 In the extension settings, open **Remote**:
@@ -45,6 +73,10 @@ The MCP endpoint is `http://127.0.0.1:8787/mcp` with the header `Authorization: 
 claude mcp add --transport http nanobrowser http://127.0.0.1:8787/mcp \
   --header "Authorization: Bearer $(cat ~/.config/nanobrowser/bridge-token)"
 ```
+
+An MCP client that only speaks stdio (such as Claude Desktop's config file) can go through
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote):
+`npx mcp-remote http://localhost:8787/mcp --header "Authorization: Bearer <token>"`.
 
 | Tool          | What it does                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------ |

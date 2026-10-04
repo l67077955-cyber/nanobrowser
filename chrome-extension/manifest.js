@@ -71,6 +71,8 @@ const manifest = withOperaSidebar(
       'webNavigation',
       'alarms',
       'notifications',
+      // keeps Chrome running with its windows closed, so the bridge can reach the extension at any time
+      'background',
     ],
     options_page: 'options/index.html',
     background: {

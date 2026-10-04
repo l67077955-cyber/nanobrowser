@@ -397,6 +397,18 @@ async function executeForPanel(executor: Executor, taskId: string, port: chrome.
  * reported to the bridge. The user comes first: a task of theirs is not interrupted, and one they start
  * from the side panel takes over.
  */
+/**
+ * A window for a task to work in: Chrome started by the bridge runs with none, and so does one whose windows
+ * were all closed while it keeps running in the background
+ */
+async function ensureBrowserWindow(): Promise<void> {
+  const windows = await chrome.windows.getAll({ windowTypes: ['normal'] });
+  if (windows.length > 0) return;
+  const window = await chrome.windows.create({ url: 'about:blank', focused: false, state: 'normal' });
+  const tabId = window?.tabs?.[0]?.id;
+  if (tabId) browserContext.updateCurrentTabId(tabId);
+}
+
 async function startRemoteTask(task: string): Promise<string> {
   if (activeTask) throw new Error('The browser is busy with another task');
   const taskId = `remote-${crypto.randomUUID()}`;
@@ -405,6 +417,7 @@ async function startRemoteTask(task: string): Promise<string> {
   let executor: Executor;
   try {
     await currentExecutor?.cancel();
+    await ensureBrowserWindow();
     executor = await setupExecutor(taskId, task, browserContext);
     if (activeTask !== claim) throw new Error('The user started a task of their own');
   } catch (error) {

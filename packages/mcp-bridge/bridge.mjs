@@ -78,9 +78,18 @@ function waitSeconds(value) {
 }
 
 /**
- * @param {{ token: string, log?: (...args: unknown[]) => void, pingIntervalMs?: number, requestTimeoutMs?: number }} options
+ * @param {{ token: string, log?: (...args: unknown[]) => void, pingIntervalMs?: number, requestTimeoutMs?: number,
+ *   startBrowser?: () => void, browserStartMs?: number }} options startBrowser is called when an agent needs the
+ *   browser and none is connected; the bridge then waits browserStartMs for it to connect
  */
-export function createBridge({ token, log = () => {}, pingIntervalMs = 20_000, requestTimeoutMs = 60_000 }) {
+export function createBridge({
+  token,
+  log = () => {},
+  pingIntervalMs = 20_000,
+  requestTimeoutMs = 60_000,
+  startBrowser,
+  browserStartMs = 30_000,
+}) {
   if (!token || token.length < 16) throw new Error('The bridge token must have at least 16 characters');
 
   /** the connected browser, once it has presented the token */
@@ -91,10 +100,33 @@ export function createBridge({ token, log = () => {}, pingIntervalMs = 20_000, r
   const pending = new Map();
   /** task id -> task, oldest first */
   const tasks = new Map();
+  /** called once a browser connects */
+  let browserWaiters = [];
 
   // ---- the browser side ----
 
-  function callExtension(method, params = {}) {
+  /** A connected browser: started when none is and the bridge may start one */
+  async function browserReady() {
+    if (extension || !startBrowser) return;
+    log('no browser connected, starting it');
+    const connected = new Promise(resolve => {
+      const timer = setTimeout(resolve, browserStartMs);
+      browserWaiters.push(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+    try {
+      startBrowser();
+    } catch (error) {
+      log('could not start the browser', error.message);
+      return;
+    }
+    await connected;
+  }
+
+  async function callExtension(method, params = {}) {
+    await browserReady();
     return new Promise((resolve, reject) => {
       if (!extension) return reject(new Error('No browser is connected to the bridge'));
       const id = nextRequestId++;
@@ -193,6 +225,7 @@ export function createBridge({ token, log = () => {}, pingIntervalMs = 20_000, r
         extensionVersion = typeof message.version === 'string' ? message.version : null;
         socket.send(JSON.stringify({ type: 'hello_ack' }));
         log('browser connected', extensionVersion ?? '');
+        for (const wake of browserWaiters.splice(0)) wake();
         return;
       }
       if (socket === extension) onExtensionMessage(message);
@@ -273,7 +306,7 @@ export function createBridge({ token, log = () => {}, pingIntervalMs = 20_000, r
         return describe(task);
       }
       case 'status': {
-        if (!extension) return { connected: false };
+        if (!extension) return startBrowser ? { connected: false, starts_on_demand: true } : { connected: false };
         const reply = await callExtension('status');
         return { connected: true, extension_version: extensionVersion, busy: reply.busy, task_id: reply.taskId };
       }
