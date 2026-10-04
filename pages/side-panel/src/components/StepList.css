@@ -1248,6 +1248,104 @@ button.nb-line:hover .nb-dot {
   padding: 3px 10px;
 }
 
+/* what the agent waits for: a few values to fill in, beside the input box rather than in the chat */
+.nb-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 6px;
+  padding: 9px 10px 9px 12px;
+  border: 1px solid var(--nb-line);
+  border-radius: 14px;
+  background: var(--nb-tile);
+  animation: nb-rise 0.2s ease-out;
+}
+.nb-ask .nb-button {
+  flex-shrink: 0;
+  padding: 3px 10px;
+}
+.nb-ask .nb-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.nb-ask-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.nb-ask-head p {
+  flex: 1;
+  min-width: 0;
+  margin: 3px 0 0;
+  color: var(--nb-ink);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.nb-ask-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nb-ask-row > span:first-child {
+  flex-shrink: 0;
+  width: 68px;
+  overflow: hidden;
+  color: var(--nb-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nb-ask-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--nb-line);
+  border-radius: 8px;
+  background: var(--nb-tile-2);
+  color: var(--nb-ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+.nb-ask-row input:focus {
+  border-color: var(--nb-muted);
+  outline: none;
+}
+.nb-ask-captcha {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+.nb-ask-captcha button {
+  display: flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.nb-ask-captcha img {
+  height: 28px;
+  max-width: 110px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+.nb-ask-captcha em {
+  color: var(--nb-muted);
+  font-size: 11.5px;
+  font-style: normal;
+}
+.nb-ask-icon {
+  padding: 4px !important;
+  color: var(--nb-muted);
+}
+.nb-ask-icon:hover {
+  color: var(--nb-ink);
+}
+.nb-ask-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* ---------- a new chat ---------- */
 .nb-welcome {
   display: flex;
@@ -1373,6 +1471,7 @@ button.nb-line:hover .nb-dot {
   .nb-welcome,
   .nb-menu,
   .nb-confirm,
+  .nb-ask,
   .nb-pulse::after,
   .nb-peek-eye.live {
     animation: none;

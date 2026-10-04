@@ -693,6 +693,16 @@ export class Executor {
     this.context.answerQuestion(answer);
   }
 
+  /** The waiting question's tab to the front, with the field the user is to fill in view */
+  revealAsked(field?: number): Promise<void> {
+    return this.context.revealAsked(field);
+  }
+
+  /** The picture of the captcha the waiting question asks for, a new one with refresh */
+  askedCaptcha(field: number, refresh: boolean): Promise<string | null> {
+    return this.context.askedCaptcha(field, refresh);
+  }
+
   /**
    * The mode the user switched to while this executor lives. Read-only and manual hold from the next action on;
    * leaving read-only does not bring back the actions it dropped until a new executor is set up.

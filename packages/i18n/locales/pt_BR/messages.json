@@ -685,7 +685,7 @@
     }
   },
   "act_solveCaptcha_askUser": {
-    "message": "The captcha was already read $COUNT$ times on this page without success. Do not try again: use ask_user to have the user type it into its field and tell you when that is done",
+    "message": "The captcha was already read $COUNT$ times on this page without success. Do not try again: use ask_user with a captcha field for it, and type what the user gives",
     "placeholders": {
       "count": {
         "content": "$1",
@@ -1193,6 +1193,27 @@
   },
   "chat_confirm_approve": {
     "message": "Allow"
+  },
+  "chat_ask_reveal": {
+    "message": "Go to page"
+  },
+  "chat_ask_reveal_title": {
+    "message": "Show the page this is about, with the field in view"
+  },
+  "chat_ask_submit": {
+    "message": "Send"
+  },
+  "chat_ask_done": {
+    "message": "Done"
+  },
+  "chat_ask_captcha_loading": {
+    "message": "Loading…"
+  },
+  "chat_ask_captcha_onPage": {
+    "message": "See the page"
+  },
+  "chat_ask_captcha_refresh": {
+    "message": "New picture"
   },
   "chat_confirm_decline": {
     "message": "Skip"

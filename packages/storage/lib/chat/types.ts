@@ -83,7 +83,19 @@ export type StepMeta =
   | {
       // the agent asked the user something and waits for the reply before it goes on
       kind: 'question';
+      /** values asked for in a small form beside the input box, so they are not typed in a reply */
+      fields?: AskField[];
+      /** the user is to do something on the page (sign in, a slider) and say when it is done */
+      onPage?: boolean;
     };
+
+/** One value the agent asks the user for */
+export interface AskField {
+  label: string; // what to enter, in the user's language
+  kind: AskFieldKind;
+}
+
+export type AskFieldKind = 'text' | 'phone' | 'email' | 'code' | 'captcha';
 
 export interface Message {
   actor: Actors;

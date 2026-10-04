@@ -12,6 +12,7 @@ import {
   remoteControlStore,
   type ScheduledTask,
   type ActionMode,
+  type StepMeta,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
@@ -49,7 +50,7 @@ let activeTask: {
  */
 let viewer: chrome.runtime.Port | null = null;
 /** what that task waits for from the user, for a side panel opened meanwhile to ask again */
-let waitingFor: { state: ExecutionState; details: string } | null = null;
+let waitingFor: { state: ExecutionState; details: string; meta?: StepMeta } | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
@@ -256,6 +257,21 @@ chrome.runtime.onConnect.addListener(port => {
             if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
             currentExecutor.confirmAction(message.approved === true);
             return port.postMessage({ type: 'success' });
+          }
+
+          case 'reveal_ask': {
+            // the user wants to see what the question is about: its tab, with the field in view
+            await currentExecutor?.revealAsked(typeof message.field === 'number' ? message.field : undefined);
+            break;
+          }
+
+          case 'ask_captcha': {
+            const field = Number(message.field);
+            const image = await currentExecutor?.askedCaptcha(field, message.refresh === true).catch(error => {
+              logger.warning('Failed to show the captcha the user is asked for:', error);
+              return null;
+            });
+            return port.postMessage({ type: 'ask_captcha', field, image: image ?? null });
           }
 
           case 'pause_task': {
@@ -760,7 +776,7 @@ async function subscribeToExecutorEvents(executor: Executor) {
     if (panelTask) {
       waitingFor =
         event.state === ExecutionState.ACT_CONFIRM || event.state === ExecutionState.ACT_ASK
-          ? { state: event.state, details: event.data.details }
+          ? { state: event.state, details: event.data.details, meta: event.data.meta }
           : null;
     }
     try {
@@ -789,7 +805,8 @@ async function subscribeToExecutorEvents(executor: Executor) {
           break;
         case ExecutionState.ACT_ASK:
         case ExecutionState.ACT_CONFIRM:
-          void noticeTask('waiting', event.data.details, tabId);
+          // with the side panel closed nothing on screen says the task waits, even in the browser's own window
+          void noticeTask('waiting', event.data.details, tabId, { evenInFront: !viewer });
           break;
       }
     }

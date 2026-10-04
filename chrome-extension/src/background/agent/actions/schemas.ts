@@ -18,10 +18,35 @@ export const doneActionSchema: ActionSchema = {
 export const askUserActionSchema: ActionSchema = {
   name: 'ask_user',
   description:
-    'Ask the user one short question in the chat and wait for the reply, then carry on with it. For what only the user can decide, know or do: a choice between options that matters to them, a detail that cannot be found, signing in, a code sent to their phone. Not for things you can reasonably decide yourself. Always the last action of a step.',
+    'Ask the user one short question and wait for the reply, then carry on with it. For what only the user can decide, know or do: a choice between options that matters to them, a detail that cannot be found, signing in, a code sent to their phone. Values to type (phone, email, a code, an image captcha) are asked for as fields, all in one go, and come back as "label: value" lines. Not for things you can reasonably decide yourself. Always the last action of a step.',
   schema: z.object({
     intent: z.string().default('').describe('purpose of this action'),
     question: z.string().describe('the question, written to the user in their language'),
+    fields: z
+      .array(
+        z.object({
+          label: z.string().describe('what to enter, a word or two in the user\'s language, e.g. "Phone", "SMS code"'),
+          kind: z
+            .enum(['text', 'phone', 'email', 'code', 'captcha'])
+            .describe('code: one sent by SMS or email; captcha: an image captcha, whose picture the user is shown'),
+          index: z
+            .number()
+            .int()
+            .nullable()
+            .optional()
+            .describe('index of the input field on the page the value goes into, when there is one'),
+        }),
+      )
+      .nullable()
+      .optional()
+      .describe(
+        'values to collect at once in a small form, at most 3: everything the next steps need from the user. Leave out what the request or the memories already say',
+      ),
+    on_page: z
+      .boolean()
+      .nullable()
+      .optional()
+      .describe('true when the user has to do something on the page themselves (sign in, a slider or puzzle captcha)'),
   }),
 };
 

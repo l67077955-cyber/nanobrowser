@@ -21,9 +21,14 @@ function plainText(text: string): string {
 /**
  * Tells the user a task finished or waits for them while they look elsewhere: a system notification (a toast
  * on Windows) and the browser's taskbar button flashing until its window comes to the front. Nothing when a
- * window the task runs in is in front already.
+ * window the task runs in is in front already, unless evenInFront: the side panel that would show it is closed.
  */
-export async function noticeTask(kind: TaskNoticeKind, details: string, tabId: number | null): Promise<void> {
+export async function noticeTask(
+  kind: TaskNoticeKind,
+  details: string,
+  tabId: number | null,
+  { evenInFront = false }: { evenInFront?: boolean } = {},
+): Promise<void> {
   try {
     const { notifyOnFinish } = await generalSettingsStore.getSettings();
     if (!notifyOnFinish) return;
@@ -31,7 +36,7 @@ export async function noticeTask(kind: TaskNoticeKind, details: string, tabId: n
     const tab = tabId ? await chrome.tabs.get(tabId).catch(() => undefined) : undefined;
     const windowIds = [tab?.windowId, await findStandaloneWindowId()].filter((id): id is number => id !== undefined);
     const focused = await chrome.windows.getLastFocused().catch(() => undefined);
-    if (focused?.focused && focused.id !== undefined && windowIds.includes(focused.id)) return;
+    if (!evenInFront && focused?.focused && focused.id !== undefined && windowIds.includes(focused.id)) return;
 
     for (const windowId of windowIds) {
       await chrome.windows.update(windowId, { drawAttention: true }).catch(() => undefined);
@@ -67,6 +72,9 @@ export function setupTaskNotices(): void {
       }
       const standaloneWindowId = await findStandaloneWindowId();
       if (standaloneWindowId !== undefined) await chrome.windows.update(standaloneWindowId, { focused: true });
+      // the click is the user's gesture the side panel needs to be opened; when it is open already this does nothing
+      else if (tab?.windowId !== undefined)
+        await chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => undefined);
     } catch (error) {
       logger.warning('Failed to bring the task to the front:', error);
     }

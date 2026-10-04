@@ -1,7 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { FiSettings, FiPlus, FiClock, FiChevronLeft, FiMoreHorizontal, FiCheck, FiArrowDown } from 'react-icons/fi';
-import { type Message, Actors, chatHistoryStore, agentModelStore, generalSettingsStore } from '@extension/storage';
+import {
+  type Message,
+  type StepMeta,
+  Actors,
+  chatHistoryStore,
+  agentModelStore,
+  generalSettingsStore,
+} from '@extension/storage';
 import favoritesStorage, { type FavoritePrompt } from '@extension/storage/lib/prompt/favorites';
 import { t } from '@extension/i18n';
 import MessageList, { type Activity } from './components/MessageList';
@@ -10,6 +17,7 @@ import Welcome from './components/Welcome';
 import { latestView, withoutPageText } from './components/steps';
 import ChatInput from './components/ChatInput';
 import AgentDock from './components/AgentDock';
+import AskCard, { type Ask } from './components/AskCard';
 import ChatHistoryList from './components/ChatHistoryList';
 import BookmarkList from './components/BookmarkList';
 import WindowToggleButton, { useHandedOffSession } from './components/WindowToggleButton';
@@ -58,6 +66,9 @@ const SidePanel = () => {
   const [pendingConfirmation, setPendingConfirmation] = useState<string | null>(null);
   // the agent asked something in the chat and waits for the reply
   const [awaitingReply, setAwaitingReply] = useState(false);
+  /** the values the agent asked for, filled in beside the input box while it waits */
+  const [ask, setAsk] = useState<Ask | null>(null);
+  const [askCaptchas, setAskCaptchas] = useState<Record<number, string | null | undefined>>({});
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [chatSessions, setChatSessions] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
@@ -162,6 +173,14 @@ const SidePanel = () => {
         .addMessage(effectiveSessionId, withoutPageText(newMessage))
         .catch(err => console.error('Failed to save message to history:', err));
     }
+  }, []);
+
+  /** A question with values to fill in, or something to do on the page, gets a card beside the input box */
+  const showAsk = useCallback((question: string, meta?: StepMeta) => {
+    const fields = meta?.kind === 'question' ? (meta.fields ?? []) : [];
+    const onPage = meta?.kind === 'question' && meta.onPage === true;
+    setAskCaptchas({});
+    setAsk(fields.length > 0 || onPage ? { question, fields, onPage } : null);
   }, []);
 
   const handleTaskState = useCallback(
@@ -280,6 +299,7 @@ const SidePanel = () => {
               // the question is part of the conversation; the next message the user sends answers it
               skip = false;
               setAwaitingReply(true);
+              showAsk(content || '', data?.meta);
               setActivity(prev => ({ phase: 'asking', view: prev?.view }));
               break;
             default:
@@ -314,12 +334,14 @@ const SidePanel = () => {
           content: content || '',
           timestamp: timestamp,
           ...(data?.meta ? { meta: data.meta } : {}),
-          ...(state === ExecutionState.ACT_ASK ? { meta: { kind: 'question' as const } } : {}),
+          ...(state === ExecutionState.ACT_ASK && data?.meta?.kind !== 'question'
+            ? { meta: { kind: 'question' as const } }
+            : {}),
           ...(FAILURE_STATES.includes(state) ? { failed: true } : {}),
         });
       }
     },
-    [appendMessage],
+    [appendMessage, showAsk],
   );
 
   /** Steps of a running task this panel takes over, held until the chat saved so far is shown */
@@ -330,7 +352,7 @@ const SidePanel = () => {
    * the chat as saved so far, then the steps as they come, and what the task waits for from the user.
    */
   const attachToTask = useCallback(
-    async (taskId: string, waitingFor: { state: ExecutionState; details: string } | null) => {
+    async (taskId: string, waitingFor: { state: ExecutionState; details: string; meta?: StepMeta } | null) => {
       attachQueueRef.current = [];
       sessionIdRef.current = taskId;
       setCurrentSessionId(taskId);
@@ -352,6 +374,7 @@ const SidePanel = () => {
           setActivity({ phase: 'waiting', view });
         } else if (waitingFor?.state === ExecutionState.ACT_ASK) {
           setAwaitingReply(true);
+          showAsk(waitingFor.details || '', waitingFor.meta);
           setActivity({ phase: 'asking', view });
         } else {
           setActivity({ phase: 'reading', view });
@@ -363,7 +386,7 @@ const SidePanel = () => {
       attachQueueRef.current = null;
       for (const event of queued) handleTaskState(event);
     },
-    [handleTaskState],
+    [handleTaskState, showAsk],
   );
 
   /** A task an agent started through the bridge: it gets a chat of its own, and the stop button ends it */
@@ -421,6 +444,8 @@ const SidePanel = () => {
         if (message && message.type === EventType.EXECUTION) {
           if (attachQueueRef.current) attachQueueRef.current.push(message);
           else handleTaskState(message);
+        } else if (message && message.type === 'ask_captcha') {
+          setAskCaptchas(prev => ({ ...prev, [Number(message.field)]: message.image ?? null }));
         } else if (message && message.type === 'task_attached') {
           void attachToTask(String(message.taskId), message.waitingFor ?? null);
         } else if (message && message.type === 'error') {
@@ -1122,6 +1147,18 @@ const SidePanel = () => {
             {t('chat_confirm_approve')}
           </button>
         </div>
+      )}
+      {awaitingReply && ask && (
+        <AskCard
+          ask={ask}
+          captchas={askCaptchas}
+          onReveal={field => portRef.current?.postMessage({ type: 'reveal_ask', field })}
+          onCaptcha={(field, refresh) => {
+            setAskCaptchas(prev => ({ ...prev, [field]: undefined }));
+            portRef.current?.postMessage({ type: 'ask_captcha', field, refresh });
+          }}
+          onReply={(text, display) => void handleSendMessage(text, display)}
+        />
       )}
       <ChatInput
         onSendMessage={handleSendMessage}

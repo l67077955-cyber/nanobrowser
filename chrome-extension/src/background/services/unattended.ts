@@ -30,7 +30,8 @@ export function chatMessageFromEvent(event: AgentEvent): Message | null {
   }
   if (!shown) return null;
 
-  let meta = state === ExecutionState.ACT_ASK ? { kind: 'question' as const } : data.meta;
+  let meta =
+    state === ExecutionState.ACT_ASK && data.meta?.kind !== 'question' ? { kind: 'question' as const } : data.meta;
   // the page text a step read stays out of storage
   if (meta?.kind === 'navigator' && meta.view?.text !== undefined) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars

@@ -35,6 +35,7 @@ import type { DOMElementNode } from '@src/background/browser/dom/views';
 import { ElementChangedError, ElementNotFoundError } from '@src/background/browser/views';
 import { CaptchaUnreadableError, readCaptcha } from '@src/background/services/captcha';
 import { isAbortedError } from '../agents/errors';
+import type { AskFieldKind } from '@extension/storage';
 
 /** How much page text one read_page hands the model; a longer page is read in parts */
 const READ_PAGE_CHARS = 15000;
@@ -46,6 +47,16 @@ export class InvalidInputError extends Error {
     super(message);
     this.name = 'InvalidInputError';
   }
+}
+
+/** Values one question asks for at most: more is a form, not a question */
+const MAX_ASK_FIELDS = 3;
+
+/** A value ask_user asks for, as the model gives it */
+interface AskedField {
+  label: string;
+  kind: AskFieldKind;
+  index?: number | null;
 }
 
 /** Readings of the captchas on one page before the user is asked to type it */
@@ -207,17 +218,33 @@ export class ActionBuilder {
     }, doneActionSchema);
     actions.push(done);
 
-    // The question shows in the chat; the reply is whatever the user sends next
+    // The question shows in the chat. Values to type are filled in a small form beside the input box and come
+    // back as "label: value" lines; any other reply is whatever the user sends next.
     const askUser = new Action(async (input: z.infer<typeof askUserActionSchema.schema>) => {
       const question = input.question.trim();
-      const answer = await this.context.askUser(Actors.NAVIGATOR, question);
+      const asked = ((input.fields ?? []) as AskedField[]).filter(field => field.label.trim()).slice(0, MAX_ASK_FIELDS);
+      const page = await this.context.browserContext.getCurrentPage();
+      const nodes = await Promise.all(
+        asked.map(field => (typeof field.index === 'number' ? this.observedElement(field.index) : undefined)),
+      );
+      const fields = asked.map(field => ({ label: field.label.trim(), kind: field.kind }));
+      const meta = {
+        kind: 'question' as const,
+        ...(fields.length > 0 ? { fields } : {}),
+        ...(input.on_page ? { onPage: true } : {}),
+      };
+      const answer = await this.context.askUser(Actors.NAVIGATOR, question, meta, { tabId: page.tabId, nodes });
       if (answer === null) {
         return new ActionResult({
           extractedContent: `You asked the user: "${question}". No reply came. Go on with the most reasonable choice and say which one you made, or finish with done and say what is left for them.`,
           includeInMemory: true,
         });
       }
-      this.context.messageManager.addUserNote(`You asked: "${question}". The user replied: """${answer}"""`);
+      const into = asked
+        .filter(field => typeof field.index === 'number')
+        .map(field => `${field.label.trim()} goes into [${field.index}]`);
+      const where = into.length > 0 ? ` (${into.join(', ')})` : '';
+      this.context.messageManager.addUserNote(`You asked: "${question}"${where}. The user replied: """${answer}"""`);
       return new ActionResult({
         extractedContent: 'The user replied to your question; the reply is in the history. Carry on with it.',
         includeInMemory: true,

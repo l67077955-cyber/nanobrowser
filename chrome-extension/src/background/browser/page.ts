@@ -1387,6 +1387,24 @@ export default class Page {
     return { image: screenshot, textAround: described?.textAround ?? '' };
   }
 
+  /** Scroll an element into view, put the cursor in it and outline it for a moment: what the user is asked to fill */
+  async revealElement(elementNode: DOMElementNode): Promise<void> {
+    const element = await this.locateElement(elementNode);
+    if (!element) return;
+    await element.evaluate(el => {
+      const html = el as HTMLElement;
+      html.scrollIntoView({ block: 'center', inline: 'nearest' });
+      html.focus?.({ preventScroll: true });
+      const { outline, outlineOffset } = html.style;
+      html.style.outline = '2px solid #e8a33d';
+      html.style.outlineOffset = '2px';
+      setTimeout(() => {
+        html.style.outline = outline;
+        html.style.outlineOffset = outlineOffset;
+      }, 2500);
+    });
+  }
+
   /** @returns what the field contains after typing, or null when it is gone from the page */
   async inputTextElementNode(useVision: boolean, elementNode: DOMElementNode, text: string): Promise<string | null> {
     if (!this._puppeteerPage) {

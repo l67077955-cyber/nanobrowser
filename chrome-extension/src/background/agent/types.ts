@@ -9,6 +9,12 @@ import { type Actors, ExecutionState, AgentEvent } from './event/types';
 import { AgentStepHistory } from './history';
 import type { ActionMode, StepMeta } from '@extension/storage';
 
+/** The page a question was asked on, and the input field each of its values goes into */
+export interface AskedFields {
+  tabId: number;
+  nodes: (DOMElementNode | undefined)[];
+}
+
 export interface AgentOptions {
   maxSteps: number;
   maxActionsPerStep: number;
@@ -58,6 +64,8 @@ export class AgentContext {
   observedSelectorMap: Map<number, DOMElementNode> | null;
   private pendingConfirmation: ((approved: boolean) => void) | null;
   private pendingQuestion: ((answer: string | null) => void) | null = null;
+  /** the input fields the waiting question asks values for, as they were on the page it was asked on */
+  private askedFields: AskedFields | null = null;
   private stepInterrupt = new AbortController();
 
   constructor(
@@ -144,11 +152,12 @@ export class AgentContext {
   }
 
   /** Ask the user a question in the chat; resolves with their reply, or null when the task stops first */
-  askUser(actor: Actors, question: string): Promise<string | null> {
+  askUser(actor: Actors, question: string, meta?: StepMeta, fields?: AskedFields): Promise<string | null> {
     this.answerQuestion(null);
     return new Promise(resolve => {
       this.pendingQuestion = resolve;
-      void this.emitEvent(actor, ExecutionState.ACT_ASK, question);
+      this.askedFields = fields ?? null;
+      void this.emitEvent(actor, ExecutionState.ACT_ASK, question, meta);
     });
   }
 
@@ -156,8 +165,32 @@ export class AgentContext {
   answerQuestion(answer: string | null): boolean {
     const resolve = this.pendingQuestion;
     this.pendingQuestion = null;
+    this.askedFields = null;
     resolve?.(answer);
     return resolve !== null;
+  }
+
+  /** Bring the tab the waiting question is about to the front, with the field it asks for in view */
+  async revealAsked(field?: number): Promise<void> {
+    const tabId = this.askedFields?.tabId ?? this.browserContext.currentTabId;
+    if (!tabId) return;
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (tab?.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
+    const nodes = this.askedFields?.nodes ?? [];
+    const node = field !== undefined ? nodes[field] : nodes.find(Boolean);
+    const page = await this.browserContext.getCurrentPage();
+    if (node && page.tabId === tabId) await page.revealElement(node);
+  }
+
+  /** The picture of the captcha a field of the waiting question is for (base64 PNG), or null without one */
+  async askedCaptcha(field: number, refresh: boolean): Promise<string | null> {
+    const asked = this.askedFields;
+    const node = asked?.nodes[field];
+    if (!asked || !node) return null;
+    const page = await this.browserContext.getCurrentPage();
+    if (page.tabId !== asked.tabId) return null;
+    const { image } = await page.captureCaptchaImage(node, undefined, refresh);
+    return image;
   }
 }
 
