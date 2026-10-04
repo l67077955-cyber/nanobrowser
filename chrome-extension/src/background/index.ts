@@ -49,7 +49,7 @@ let activeTask: {
  * when that panel is closed: until another one opens, the steps are saved here instead.
  */
 let viewer: chrome.runtime.Port | null = null;
-/** what that task waits for from the user, for a side panel opened meanwhile to ask again */
+/** the question or approval that task asked for last, for a side panel opened while it still waits to ask again */
 let waitingFor: { state: ExecutionState; details: string; meta?: StepMeta } | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
@@ -371,7 +371,9 @@ async function attachPanel(port: chrome.runtime.Port): Promise<void> {
   if (activeTask !== task || currentPort !== port) return;
   viewer = port;
   logger.info('Side panel shows the running task', task.taskId);
-  port.postMessage({ type: 'task_attached', taskId: task.taskId, waitingFor });
+  // the planner goes on reporting while a question waits, so the last step says nothing about whether it does
+  const waiting = currentExecutor?.waitingForUser ? waitingFor : null;
+  port.postMessage({ type: 'task_attached', taskId: task.taskId, waitingFor: waiting });
 }
 
 /** The run of the latest task the side panel asked for, until it has ended */
@@ -773,11 +775,8 @@ async function subscribeToExecutorEvents(executor: Executor) {
   // Subscribe to new events
   executor.subscribeExecutionEvents(async event => {
     const panelTask = activeTask?.source === 'panel' ? activeTask : null;
-    if (panelTask) {
-      waitingFor =
-        event.state === ExecutionState.ACT_CONFIRM || event.state === ExecutionState.ACT_ASK
-          ? { state: event.state, details: event.data.details, meta: event.data.meta }
-          : null;
+    if (panelTask && (event.state === ExecutionState.ACT_CONFIRM || event.state === ExecutionState.ACT_ASK)) {
+      waitingFor = { state: event.state, details: event.data.details, meta: event.data.meta };
     }
     try {
       if (panelTask && !viewer) {

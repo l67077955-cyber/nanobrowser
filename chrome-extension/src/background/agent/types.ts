@@ -151,6 +151,10 @@ export class AgentContext {
     return this.pendingConfirmation !== null;
   }
 
+  get awaitingAnswer(): boolean {
+    return this.pendingQuestion !== null;
+  }
+
   /** Ask the user a question in the chat; resolves with their reply, or null when the task stops first */
   askUser(actor: Actors, question: string, meta?: StepMeta, fields?: AskedFields): Promise<string | null> {
     this.answerQuestion(null);

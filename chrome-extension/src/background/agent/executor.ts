@@ -688,6 +688,11 @@ export class Executor {
     this.context.pause();
   }
 
+  /** A question or an approval waits for the user */
+  get waitingForUser(): boolean {
+    return this.context.awaitingAnswer || this.context.awaitingConfirmation;
+  }
+
   /** null tells the agent nobody will answer, and it decides for itself */
   answerQuestion(answer: string | null): void {
     this.context.answerQuestion(answer);
