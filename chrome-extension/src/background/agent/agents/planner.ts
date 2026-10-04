@@ -1,5 +1,5 @@
 import { BaseAgent, type BaseAgentOptions, type ExtraAgentOptions } from './base';
-import { createLogger } from '@src/background/log';
+import { createLogger, describeError } from '@src/background/log';
 import { z } from 'zod';
 import type { AgentOutput } from '../types';
 import { HumanMessage } from '@langchain/core/messages';
@@ -136,7 +136,7 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
         throw new ChatModelForbiddenError(LLM_FORBIDDEN_ERROR_MESSAGE, error);
       }
 
-      logger.error(`Planning failed: ${errorMessage}`);
+      logger.error(`Planning failed: ${describeError(error)}`);
       this.context.emitEvent(Actors.PLANNER, ExecutionState.STEP_FAIL, `Planning failed: ${errorMessage}`);
       return {
         id: this.id,

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { BaseAgent, type BaseAgentOptions, type ExtraAgentOptions } from './base';
-import { createLogger } from '@src/background/log';
+import { createLogger, describeError } from '@src/background/log';
 import { ActionResult, type AgentOutput } from '../types';
 import type { Action } from '../actions/builder';
 import { buildDynamicActionSchema } from '../actions/builder';
@@ -49,11 +49,7 @@ export const PAGE_INPUT_ACTIONS = new Set([
 ]);
 
 /** What a page action would do, in words the user approves it by */
-export function describePageInput(
-  actionName: string,
-  args: unknown,
-  selectorMap: Map<number, DOMElementNode>,
-): string {
+export function describePageInput(actionName: string, args: unknown, selectorMap: Map<number, DOMElementNode>): string {
   const input = (args ?? {}) as { index?: number; text?: string; keys?: string };
   const node = typeof input.index === 'number' ? selectorMap.get(input.index) : undefined;
   const label = (node && elementLabel(node)) || t('act_confirm_desc_element', [String(input.index ?? '?')]);
@@ -103,6 +99,32 @@ export function targetLabel(node: DOMElementNode): string | undefined {
   const flat = (candidates.find(c => c && c.trim()) ?? '').replace(/\s+/g, ' ').trim();
   if (!flat) return undefined;
   return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
+}
+
+/** An element as a log reads it: <input id="phone" name="mobile" type="text"> "手机号" */
+function describeTarget(node: DOMElementNode | undefined): string {
+  if (!node) return '';
+  const attributes = ['id', 'name', 'type', 'placeholder', 'aria-label', 'href']
+    .filter(key => node.attributes[key])
+    .map(key => `${key}="${node.attributes[key].slice(0, 60)}"`);
+  const text = node.getAllTextTillNextClickableElement(2).replace(/\s+/g, ' ').trim().slice(0, 60);
+  return `<${node.tagName ?? '?'}${attributes.length ? ` ${attributes.join(' ')}` : ''}>${text ? ` "${text}"` : ''}`;
+}
+
+/** Actions as JSON for the log, with what is typed into a password field left out */
+function actionsForLog(actions: Record<string, unknown>[], selectorMap: Map<number, DOMElementNode>): string {
+  return JSON.stringify(
+    actions.map(action =>
+      Object.fromEntries(
+        Object.entries(action).map(([name, args]) => {
+          const fields = args as Record<string, unknown> | null;
+          const node = typeof fields?.index === 'number' ? selectorMap.get(fields.index) : undefined;
+          const secret = node?.attributes.type === 'password' && typeof fields?.text === 'string';
+          return [name, secret ? { ...fields, text: '***' } : args];
+        }),
+      ),
+    ),
+  );
 }
 
 const KEY_NAME =
@@ -373,6 +395,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         response = await withModelTimeout(this.modelName, signal, callSignal =>
           structuredLlm.invoke(messages, {
             signal: callSignal,
+            tags: [this.id],
             ...this.callOptions,
           }),
         );
@@ -485,6 +508,14 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       this.removeLastStateMessageFromMemory();
       this.addModelOutputToMemory(modelOutput);
 
+      const decidedBy = engineResult.decision ? this.decisionEngine?.name : this.modelName;
+      logger.info(`🧠 step ${this.context.nSteps + 1} decided by ${decidedBy} in ${decisionMs}ms`, {
+        evaluation: modelOutput.current_state?.evaluation_previous_goal,
+        memory: modelOutput.current_state?.memory,
+        nextGoal: modelOutput.current_state?.next_goal,
+        actions: actionsForLog(actions, currentState.selectorMap),
+      });
+
       const goal = modelOutput.current_state?.next_goal?.trim();
       if (goal) this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_DECIDED, goal);
 
@@ -563,7 +594,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       }
 
       const errorString = `Navigation failed: ${errorMessage}`;
-      logger.error(errorString);
+      logger.error(`Navigation failed: ${describeError(error)}`);
       this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_FAIL, errorString);
       agentOutput.error = errorMessage;
       return agentOutput;
@@ -763,7 +794,6 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     const results: ActionResult[] = [];
     let errCount = 0;
     this.cutShort = null;
-    logger.info('Actions', actions);
 
     const browserContext = this.context.browserContext;
     this.context.observedSelectorMap = browserState.selectorMap;
@@ -823,9 +853,21 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           }
         }
 
+        const target = indexArg !== null ? describeTarget(browserState.selectorMap.get(indexArg)) : '';
+        logger.info(`▶ ${actionsForLog([action], browserState.selectorMap)}${target ? ` on ${target}` : ''}`);
+        const actionStarted = performance.now();
         const result = await actionInstance.call(actionArgs);
         if (result === undefined) {
           throw new Error(`Action ${actionName} returned undefined`);
+        }
+        const actionMs = Math.round(performance.now() - actionStarted);
+        if (result.error) {
+          logger.warning(`✗ ${actionName} failed in ${actionMs}ms: ${result.error}`);
+        } else {
+          const outcome = result.extractedContent?.replace(/\s+/g, ' ').slice(0, 300);
+          logger.info(
+            `✓ ${actionName} in ${actionMs}ms${result.isDone ? ' (done)' : ''}${outcome ? `: ${outcome}` : ''}`,
+          );
         }
 
         // if the action has an index argument, record the interacted element to the result
@@ -834,8 +876,6 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           if (domElement) {
             const interactedElement = HistoryTreeProcessor.convertDomElementToHistoryElement(domElement);
             result.interactedElement = interactedElement;
-            logger.info('Interacted element', interactedElement);
-            logger.info('Result', result);
           }
         }
         results.push(result);
@@ -856,12 +896,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           throw error;
         }
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error(
-          'doAction error',
-          actionName,
-          JSON.stringify(actionArgs, null, 2),
-          JSON.stringify(errorMessage, null, 2),
-        );
+        logger.error(`✗ ${actionsForLog([action], browserState.selectorMap)} threw: ${describeError(error)}`);
         // unexpected error, emit event
         this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, errorMessage);
         errCount++;

@@ -679,14 +679,25 @@ async function setupExecutor(
       reasoningEffort: 'minimal',
     });
   }
-  logger.info(
-    '[captcha] model:',
-    captchaModel && captchaProviderConfig
-      ? `${captchaModel.modelName} (captcha setting)`
-      : captchaLLM
-        ? `${navigatorModel.modelName} (Navigator, vision on)`
-        : 'none',
-  );
+  logger.info('task setup', {
+    navigator: `${navigatorModel.modelName} @ ${navigatorProviderConfig.name || navigatorModel.provider}`,
+    planner: plannerModel
+      ? `${plannerModel.modelName} @ ${providers[plannerModel.provider].name || plannerModel.provider}`
+      : 'navigator',
+    captcha:
+      captchaModel && captchaProviderConfig
+        ? `${captchaModel.modelName} (captcha setting)`
+        : captchaLLM
+          ? `${navigatorModel.modelName} (Navigator, vision on)`
+          : 'none',
+    vision: generalSettings.useVision,
+    actionMode: generalSettings.actionMode,
+    fastMode: generalSettings.fastMode,
+    maxSteps: generalSettings.maxSteps,
+    maxFailures: generalSettings.maxFailures,
+    planningInterval: generalSettings.planningInterval,
+    firewall: firewall.enabled,
+  });
 
   memoryLLM = plannerLLM ?? navigatorLLM;
   const memoryContext = [

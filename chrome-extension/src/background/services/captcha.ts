@@ -71,7 +71,7 @@ export async function readCaptcha(llm: BaseChatModel, image: string, signal: Abo
             ],
           }),
         ],
-        { signal: callSignal },
+        { signal: callSignal, tags: ['captcha'] },
       ),
     TIMEOUT_MS,
   );

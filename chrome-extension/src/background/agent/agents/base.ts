@@ -145,6 +145,7 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
         response = await withModelTimeout(this.modelName, signal, callSignal =>
           structuredLlm.invoke(inputMessages, {
             signal: callSignal,
+            tags: [this.id],
             ...this.callOptions,
           }),
         );
@@ -162,11 +163,13 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
 
         const recovered = this.parseRawStructuredResponse(response.raw);
         if (recovered) {
-          logger.warning(`[${this.modelName}] Recovered structured output from raw response`);
+          logger.info(`[${this.id}] [${this.modelName}] Recovered structured output from raw response`);
           return recovered;
         }
 
-        logger.error('Failed to parse response', response);
+        logger.error(
+          `[${this.id}] [${this.modelName}] Failed to parse response: ${this.getRawResponseDebugInfo(response.raw)}`,
+        );
         throw new Error(
           `Could not parse response with structured output (${this.getRawResponseDebugInfo(response.raw)})`,
         );
@@ -209,6 +212,7 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
       const response = await withModelTimeout(this.modelName, signal, callSignal =>
         this.chatLLM.invoke(convertedInputMessages, {
           signal: callSignal,
+          tags: [this.id],
           ...this.callOptions,
         }),
       );

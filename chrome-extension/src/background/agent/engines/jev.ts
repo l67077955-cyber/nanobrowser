@@ -767,7 +767,7 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     };
     const result = await this.options.textLLM.invoke(
       [new SystemMessage(TEXT_VALUE), new HumanMessage(JSON.stringify(context))],
-      { signal },
+      { signal, tags: ['jev-text'] },
     );
     const content = typeof result.content === 'string' ? result.content : '';
     const json = content.match(/\{[\s\S]*\}/)?.[0];

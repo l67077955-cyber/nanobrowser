@@ -145,7 +145,7 @@ async function extractAndStore(system: string, input: object, options: RememberO
       new SystemMessage(system),
       new HumanMessage(JSON.stringify({ stored_memories: stored.map(m => m.content), ...input })),
     ],
-    { signal },
+    { signal, tags: ['memory'] },
   );
   const content = typeof reply.content === 'string' ? reply.content : '';
   change.asked = parseReply(content).asked === true;

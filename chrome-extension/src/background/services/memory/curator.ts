@@ -102,6 +102,7 @@ export function askLLM(llm: BaseChatModel): Ask {
   return async (request, signal) => {
     const result = await llm.invoke([new SystemMessage(ANSWER_FORMAT), new HumanMessage(JSON.stringify(request))], {
       signal,
+      tags: ['memory-curator'],
     });
     const content = typeof result.content === 'string' ? result.content : '';
     const parsed = JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as Record<string, unknown>;

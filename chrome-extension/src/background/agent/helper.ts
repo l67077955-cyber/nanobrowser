@@ -6,6 +6,7 @@ import { ChatXAI } from '@langchain/xai';
 import { ChatGroq } from '@langchain/groq';
 import { ChatCerebras } from '@langchain/cerebras';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { ModelCallLogger } from '@src/background/services/modelCallLog';
 import { ChatOllama } from '@langchain/ollama';
 import { ChatDeepSeek } from '@langchain/deepseek';
 
@@ -346,11 +347,23 @@ function createAzureChatModel(providerConfig: ProviderConfig, modelConfig: Model
   return new AzureChatOpenAI(args);
 }
 
-// create a chat model based on the agent name, the model name and provider
+// create a chat model based on the agent name, the model name and provider; every call it makes is logged
 export function createChatModel(
   providerConfig: ProviderConfig,
   modelConfig: ModelConfig,
   options: ChatModelOptions = {},
+): BaseChatModel {
+  const model = buildChatModel(providerConfig, modelConfig, options);
+  const where = providerConfig.name || modelConfig.provider;
+  const callLogger = new ModelCallLogger(`${modelConfig.modelName} @ ${where}`);
+  model.callbacks = Array.isArray(model.callbacks) ? [...model.callbacks, callLogger] : [callLogger];
+  return model;
+}
+
+function buildChatModel(
+  providerConfig: ProviderConfig,
+  modelConfig: ModelConfig,
+  options: ChatModelOptions,
 ): BaseChatModel {
   const temperature = (modelConfig.parameters?.temperature ?? 0.1) as number;
   const topP = (modelConfig.parameters?.topP ?? 0.1) as number;

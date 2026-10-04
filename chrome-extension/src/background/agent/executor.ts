@@ -5,7 +5,7 @@ import { NavigatorAgent, NavigatorActionRegistry, PAGE_INPUT_ACTIONS } from './a
 import { PlannerAgent, type PlannerOutput } from './agents/planner';
 import { NavigatorPrompt } from './prompts/navigator';
 import { PlannerPrompt } from './prompts/planner';
-import { createLogger } from '@src/background/log';
+import { createLogger, describeError } from '@src/background/log';
 import MessageManager, { type StoredManagedMessage } from './messages/service';
 import { filterExternalContent, splitUserTextAndAttachments } from './messages/utils';
 import type BrowserContext from '../browser/context';
@@ -25,7 +25,13 @@ import {
 import { URLNotAllowedError } from '../browser/views';
 import { chatHistoryStore } from '@extension/storage/lib/chat';
 import type { AgentStepHistory } from './history';
-import { type ActionMode, type GeneralSettingsConfig, describeRepeat, parseRepeat, scheduleStore } from '@extension/storage';
+import {
+  type ActionMode,
+  type GeneralSettingsConfig,
+  describeRepeat,
+  parseRepeat,
+  scheduleStore,
+} from '@extension/storage';
 import { analytics } from '../services/analytics';
 import { JevDecisionEngine } from './engines/jev';
 
@@ -331,6 +337,8 @@ export class Executor {
     const allowedMaxSteps = this.context.options.maxSteps;
 
     let backgroundPlan: BackgroundPlan | null = null;
+    const taskStarted = performance.now();
+    let outcome = 'unknown';
     this.running = true;
     try {
       this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_START, this.context.taskId);
@@ -420,11 +428,13 @@ export class Executor {
         await this.applySchedule(latestPlanOutput?.result ?? null);
         // Emit final answer if available, otherwise use task ID
         const finalMessage = this.context.finalAnswer || this.context.taskId;
+        outcome = 'done';
         this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_OK, finalMessage);
 
         // Track task completion
         void analytics.trackTaskComplete(this.context.taskId);
       } else if (step >= allowedMaxSteps) {
+        outcome = 'failed: max steps reached';
         logger.error('❌ Task failed: Max steps reached');
         this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_FAIL, t('exec_errors_maxStepsReached'));
 
@@ -433,22 +443,30 @@ export class Executor {
         const errorCategory = analytics.categorizeError(maxStepsError);
         void analytics.trackTaskFailed(this.context.taskId, errorCategory);
       } else if (this.context.stopped) {
+        outcome = 'cancelled';
         this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_CANCEL, t('exec_task_cancel'));
 
         // Track task cancellation
         void analytics.trackTaskCancelled(this.context.taskId);
       } else {
+        outcome =
+          this.context.consecutiveFailures >= this.context.options.maxFailures
+            ? 'stopped: too many failures'
+            : 'paused';
         this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_PAUSE, t('exec_task_pause'));
         // Note: We don't track pause as it's not a final state
       }
     } catch (error) {
       if (error instanceof RequestCancelledError) {
+        outcome = 'cancelled';
         this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_CANCEL, t('exec_task_cancel'));
 
         // Track task cancellation
         void analytics.trackTaskCancelled(this.context.taskId);
       } else {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        outcome = `failed: ${describeError(error)}`;
+        logger.error(`❌ Task failed: ${describeError(error)}`, error);
         this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_FAIL, t('exec_task_fail', [errorMessage]));
 
         // Track task failure with detailed error categorization
@@ -457,6 +475,9 @@ export class Executor {
       }
     } finally {
       this.running = false;
+      logger.info(
+        `🏁 Task ${this.context.taskId} ${outcome} after ${context.nSteps} steps in ${Math.round((performance.now() - taskStarted) / 1000)}s`,
+      );
       // a plan still in flight would otherwise land in the history of a follow-up task
       await backgroundPlan?.promise.catch(() => null);
       if (import.meta.env.DEV) {
@@ -555,7 +576,7 @@ export class Executor {
 
   private handlePlannerError(error: unknown): AgentOutput<PlannerOutput> | null {
     const context = this.context;
-    logger.error(`Failed to execute planner: ${error}`);
+    logger.error(`Failed to execute planner: ${describeError(error)}`);
     if (
       error instanceof ChatModelAuthError ||
       error instanceof ChatModelBadRequestError ||
@@ -596,7 +617,7 @@ export class Executor {
         return true;
       }
     } catch (error) {
-      logger.error(`Failed to execute step: ${error}`);
+      logger.error(`Failed to execute step: ${describeError(error)}`);
       if (
         error instanceof ChatModelAuthError ||
         error instanceof ChatModelBadRequestError ||
@@ -609,7 +630,7 @@ export class Executor {
         throw error;
       }
       context.consecutiveFailures++;
-      logger.error(`Failed to execute step: ${error}`);
+      logger.error(`Failed to execute step: ${describeError(error)}`);
       if (context.consecutiveFailures >= context.options.maxFailures) {
         throw new MaxFailuresReachedError(maxFailuresMessage(error));
       }
