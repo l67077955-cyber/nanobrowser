@@ -1191,6 +1191,11 @@ button.nb-line:hover .nb-dot {
   position: relative;
   padding: 0 12px 8px;
 }
+.nb-composer-cards {
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .nb-input {
   box-shadow:
     var(--nb-glow),

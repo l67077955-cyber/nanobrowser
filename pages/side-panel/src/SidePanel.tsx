@@ -1125,41 +1125,44 @@ const SidePanel = () => {
           {t('chat_jumpToLatest')}
         </button>
       )}
-      {(messages.length > 0 || showStopButton) && (
-        <AgentDock
-          messages={messages}
-          running={showStopButton}
-          activity={activity}
-          queue={queue.map(goal => goal.display ?? goal.text)}
-          queueHeld={queueHeld}
-          onUnqueue={index => setQueue(prev => prev.filter((_, i) => i !== index))}
-          onResumeQueue={() => setQueueHeld(false)}
-          onPick={task => void handleSendMessage(task)}
-        />
-      )}
-      {pendingConfirmation !== null && (
-        <div role="alertdialog" aria-label={pendingConfirmation} className="nb-confirm">
-          <p title={pendingConfirmation}>{pendingConfirmation}</p>
-          <button type="button" onClick={() => handleConfirmAction(false)} className="nb-button">
-            {t('chat_confirm_decline')}
-          </button>
-          <button type="button" onClick={() => handleConfirmAction(true)} className="nb-button primary">
-            {t('chat_confirm_approve')}
-          </button>
-        </div>
-      )}
-      {awaitingReply && ask && (
-        <AskCard
-          ask={ask}
-          captchas={askCaptchas}
-          onReveal={field => portRef.current?.postMessage({ type: 'reveal_ask', field })}
-          onCaptcha={(field, refresh) => {
-            setAskCaptchas(prev => ({ ...prev, [field]: undefined }));
-            portRef.current?.postMessage({ type: 'ask_captcha', field, refresh });
-          }}
-          onReply={(text, display) => void handleSendMessage(text, display)}
-        />
-      )}
+      {/* the cards scroll on their own once they grow tall, so the input below them stays in sight */}
+      <div className="nb-composer-cards">
+        {(messages.length > 0 || showStopButton) && (
+          <AgentDock
+            messages={messages}
+            running={showStopButton}
+            activity={activity}
+            queue={queue.map(goal => goal.display ?? goal.text)}
+            queueHeld={queueHeld}
+            onUnqueue={index => setQueue(prev => prev.filter((_, i) => i !== index))}
+            onResumeQueue={() => setQueueHeld(false)}
+            onPick={task => void handleSendMessage(task)}
+          />
+        )}
+        {pendingConfirmation !== null && (
+          <div role="alertdialog" aria-label={pendingConfirmation} className="nb-confirm">
+            <p title={pendingConfirmation}>{pendingConfirmation}</p>
+            <button type="button" onClick={() => handleConfirmAction(false)} className="nb-button">
+              {t('chat_confirm_decline')}
+            </button>
+            <button type="button" onClick={() => handleConfirmAction(true)} className="nb-button primary">
+              {t('chat_confirm_approve')}
+            </button>
+          </div>
+        )}
+        {awaitingReply && ask && (
+          <AskCard
+            ask={ask}
+            captchas={askCaptchas}
+            onReveal={field => portRef.current?.postMessage({ type: 'reveal_ask', field })}
+            onCaptcha={(field, refresh) => {
+              setAskCaptchas(prev => ({ ...prev, [field]: undefined }));
+              portRef.current?.postMessage({ type: 'ask_captcha', field, refresh });
+            }}
+            onReply={(text, display) => void handleSendMessage(text, display)}
+          />
+        )}
+      </div>
       <ChatInput
         onSendMessage={handleSendMessage}
         onStopTask={handleStopTask}
