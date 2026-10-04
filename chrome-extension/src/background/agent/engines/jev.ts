@@ -255,7 +255,9 @@ export function buildActionSpace(selectorMap: Map<number, DOMElementNode>): JevA
     if (!label && !isTextEditable(node) && (node.tagName ?? '').toLowerCase() !== 'select') continue;
     const element: JevElement = { index, role, label, operations: [] };
     if (attrs.value !== undefined && attrs.value !== '') element.value = collapse(attrs.value, MAX_LABEL_LENGTH);
-    if (attrs['aria-checked'] ?? attrs.checked) element.checked = attrs['aria-checked'] ?? 'true';
+    const checked = attrs['aria-checked'] ?? attrs.checked;
+    // a native box reports checked="true"/"false"; a bare checked attribute means ticked
+    if (checked !== undefined && checked !== null) element.checked = checked === 'false' ? 'false' : checked || 'true';
     if (attrs['aria-selected']) element.selected = attrs['aria-selected'];
     if (attrs['aria-expanded']) element.expanded = attrs['aria-expanded'];
 

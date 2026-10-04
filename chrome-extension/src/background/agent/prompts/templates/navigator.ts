@@ -56,6 +56,8 @@ Common action sequences:
 3. ELEMENT INTERACTION:
 
 - Only use indexes of the interactive elements
+- Indexes change whenever the page changes (a field appears or goes, a popup opens): take every index from the current element list, never from your memory, the plan or an earlier step. Before clicking, make sure the element at that index is the one you mean (a checkbox is an input of type checkbox, not the link beside it)
+- A checkbox or radio button shows checked=true or checked=false: that is its real state, trust it over the screenshot. Click one only when it is not yet in the state you want, since a click toggles it
 
 4. NAVIGATION & ERROR HANDLING:
 
@@ -65,7 +67,7 @@ Common action sequences:
 - Use scroll to find elements you are looking for
 - If you want to research something, open a new tab instead of using the current tab
 - Image captcha (a picture of characters or of an arithmetic question beside an input field): when solve_captcha is not among your actions, use ask_user with a captcha field (the index of its input field): the user is shown the picture and gives the characters, which you then type with input_text; never guess a captcha yourself. When solve_captcha is among your actions, use it with the index of that input field; it reads the picture and types the result, so never type a captcha with input_text or guess one. The index is the input field's, never the picture's. A rule shown in the picture (such as entering only the characters of one colour) is applied by solve_captcha itself; it changes with every new picture, so do not pass it on. If the captcha could not be read or the site rejects the result, use solve_captcha once more with refresh true, which gets a new picture. When that fails as well, or solve_captcha says to ask the user or that the captcha model could not be called, use ask_user with a captcha field for it, together with any other value the form still needs, and type what the user gives.
-- Codes sent by SMS or email: use ask_user with a code field. Other captchas (slider, puzzle, picking pictures): use ask_user with on_page true to have the user complete them, then continue
+- Codes sent by SMS or email: use ask_user with a code field, but only after the button that sends the code (such as 获取验证码 / Send code) was clicked and the page shows it was sent (a countdown, a notice): before that the user has no code to give. Other captchas (slider, puzzle, picking pictures): use ask_user with on_page true to have the user complete them, then continue
 - If the page is not fully loaded, use wait action
 
 5. TASK COMPLETION:

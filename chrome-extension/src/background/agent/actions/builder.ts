@@ -377,8 +377,9 @@ export class ActionBuilder {
 
         try {
           const initialTabIds = await this.context.browserContext.getAllTabIds();
+          let checked: boolean | undefined;
           try {
-            await page.clickElementNode(this.context.options.useVision, elementNode);
+            checked = await page.clickElementNode(this.context.options.useVision, elementNode);
           } catch (error) {
             // The page re-rendered the element (e.g. a menu that animated in); retry once if it is unambiguous
             if (!(error instanceof ElementNotFoundError)) throw error;
@@ -387,12 +388,14 @@ export class ActionBuilder {
             logger.info(
               `Element ${input.index} was re-rendered, clicking it at its new index ${relocated.highlightIndex}`,
             );
-            await page.clickElementNode(this.context.options.useVision, relocated);
+            checked = await page.clickElementNode(this.context.options.useVision, relocated);
           }
           let msg = t('act_click_ok', [
             input.index.toString(),
             elementNode.getAllTextTillNextClickableElement(2) || elementNode.attributes['aria-label'] || '',
           ]);
+          // the box's real state, which a screenshot of a styled box does not reliably show
+          if (checked !== undefined) msg += checked ? ' - it is now checked' : ' - it is now unchecked';
           logger.info(msg);
 
           // TODO: could be optimized by chrome extension tab api

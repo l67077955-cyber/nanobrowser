@@ -1378,6 +1378,10 @@ window.buildDomTree = (
       if (fieldTag === 'textarea' || (fieldTag === 'input' && !valueless.includes(node.type))) {
         nodeData.attributes['value'] = String(node.value ?? '').slice(0, 200);
       }
+      // Likewise whether a box is ticked: the checked attribute is only the initial state
+      if (fieldTag === 'input' && (node.type === 'checkbox' || node.type === 'radio')) {
+        nodeData.attributes['checked'] = node.checked ? 'true' : 'false';
+      }
     }
 
     let nodeWasHighlighted = false;

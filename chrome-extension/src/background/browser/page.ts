@@ -1673,7 +1673,10 @@ export default class Page {
     }
   }
 
-  async clickElementNode(useVision: boolean, elementNode: DOMElementNode): Promise<void> {
+  /**
+   * Click an element. For a checkbox or radio button, resolves to whether it is checked afterwards.
+   */
+  async clickElementNode(useVision: boolean, elementNode: DOMElementNode): Promise<boolean | undefined> {
     if (!this._puppeteerPage) {
       throw new Error('Puppeteer is not connected');
     }
@@ -1693,6 +1696,14 @@ export default class Page {
       // Scroll element into view if needed
       await this._scrollIntoViewIfNeeded(element);
 
+      // A real checkbox hidden under a styled one: a click on the input itself can tick it while the page
+      // still reads the styled box (and refuses to submit), so click what a person would click
+      const ticked = await this.clickStyledCheckbox(element);
+      if (ticked !== null) {
+        await this._checkAndHandleNavigation();
+        return ticked;
+      }
+
       try {
         // A mouse click lands on whatever is on top at the element's center (a toast, a hover card, a
         // neighbouring button); dispatch the click on the element itself when something else is there.
@@ -1704,7 +1715,7 @@ export default class Page {
             (el as HTMLElement).click();
           });
           await this._checkAndHandleNavigation();
-          return;
+          return undefined;
         }
         // First attempt: a mouse click at the element's center. Not element.click(): it first waits on an
         // IntersectionObserver, which stalls for seconds whenever the tab is not being rendered (e.g. covered
@@ -1733,7 +1744,7 @@ export default class Page {
         // opened, or confirm a dialog twice
         if (error instanceof Error && error.message === CLICK_TIMEOUT && (await this.wasPressed(element))) {
           logger.info('Click reached the element but was acknowledged late, not clicking again');
-          return;
+          return undefined;
         }
         // Second attempt: Use evaluate to perform a direct click
         logger.info('Failed to click element, trying again', error);
@@ -1755,6 +1766,7 @@ export default class Page {
         `Failed to click element: ${elementNode}. Error: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    return undefined;
   }
 
   /**
@@ -1809,6 +1821,54 @@ export default class Page {
     } catch {
       return true;
     }
+  }
+
+  /**
+   * Click a checkbox or radio button that is hidden or covered (by its styled stand-in) the way a person
+   * would: on the stand-in at its center, else its label, else a sized sibling. Falls back to the input
+   * itself when that changed nothing. Null when the element is no such box, or is plainly clickable.
+   */
+  private async clickStyledCheckbox(handle: ElementHandle): Promise<boolean | null> {
+    return handle.evaluate(el => {
+      const input = el as HTMLInputElement;
+      if (input.tagName !== 'INPUT' || (input.type !== 'checkbox' && input.type !== 'radio')) return null;
+      const rect = input.getBoundingClientRect();
+      const style = window.getComputedStyle(input);
+      const hidden =
+        rect.width === 0 ||
+        rect.height === 0 ||
+        style.visibility === 'hidden' ||
+        style.display === 'none' ||
+        style.opacity === '0';
+      const root = input.getRootNode() as Document | ShadowRoot;
+      const hit = hidden ? null : root.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      if (!hidden && (!hit || hit === input)) return null;
+
+      const sized = (n: Element | null): n is HTMLElement => {
+        if (!(n instanceof HTMLElement)) return false;
+        const r = n.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      // never a link: the label of an agreement box usually holds one, and following it leaves the page
+      const notLink = (n: Element | null) => !!n && !n.closest('a');
+      const container = input.closest('label') ?? input.parentElement;
+      const candidates: (Element | null)[] = [
+        hit && container?.contains(hit) ? hit : null,
+        ...Array.from(input.labels ?? []),
+        input.nextElementSibling,
+        input.previousElementSibling,
+      ];
+      const standIn = candidates.find(n => n !== input && sized(n) && notLink(n)) as HTMLElement | undefined;
+
+      const before = input.checked;
+      const classBefore = standIn?.className;
+      standIn?.click();
+      if (!standIn || (input.checked === before && standIn.className === classBefore)) {
+        input.focus();
+        input.click();
+      }
+      return input.checked;
+    });
   }
 
   private async isCoveredAtCenter(handle: ElementHandle): Promise<boolean> {
