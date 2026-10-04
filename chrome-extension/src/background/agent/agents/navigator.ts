@@ -328,19 +328,31 @@ export async function decideWithEngineOrLLM<T>(
 
 /** How often the same actions may run on the same page before the model is told they change nothing */
 const REPEAT_LIMIT = 3;
+/** How often they may run at all: beyond this they are refused and the plan is made again */
+export const STUCK_LIMIT = 5;
 
 /** Counts identical actions taken on an identical page: the mark of a model going round in circles */
 export class RepeatedActionTracker {
   private counts = new Map<string, number>();
 
-  /** @returns a note for the model once the actions have been repeated too often on this page, else null */
-  record(actions: Record<string, unknown>[], page: string): string | null {
-    // the intent is free text the model rewords from step to step
+  private key(actions: Record<string, unknown>[], page: string): string {
+    // the intent is free text the model rewords from step to step,
     // and the mark on elements new since the last step says nothing about this page
-    const key =
+    return (
       JSON.stringify(actions, (name, value) => (name === 'intent' ? undefined : value)) +
       '\n' +
-      page.replace(/\*\[(\d+)\]/g, '[$1]');
+      page.replace(/\*\[(\d+)\]/g, '[$1]')
+    );
+  }
+
+  /** @returns how often these actions already ran on this page */
+  count(actions: Record<string, unknown>[], page: string): number {
+    return this.counts.get(this.key(actions, page)) ?? 0;
+  }
+
+  /** @returns a note for the model once the actions have been repeated too often on this page, else null */
+  record(actions: Record<string, unknown>[], page: string): string | null {
+    const key = this.key(actions, page);
     const count = (this.counts.get(key) ?? 0) + 1;
     this.counts.set(key, count);
     if (count < REPEAT_LIMIT) return null;
@@ -354,6 +366,8 @@ export class RepeatedActionTracker {
 
 export interface NavigatorResult {
   done: boolean;
+  /** the model chose actions it had already repeated too often; they were not taken */
+  stuck?: boolean;
 }
 
 export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
@@ -525,7 +539,23 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
       // take the actions, resolving indices against the state the decision was made on
       const actStarted = performance.now();
-      actionResults = await this.doMultiAction(actions, currentState);
+      const pageKey = `${currentState.url}\n${currentState.scrollY}\n${pageText}`;
+      const ranBefore = this.repeats.count(actions, pageKey);
+      const stuck = ranBefore >= STUCK_LIMIT;
+      if (stuck) {
+        logger.warning(
+          `Refused actions already taken ${ranBefore} times on this page`,
+          actionsForLog(actions, currentState.selectorMap),
+        );
+        actionResults = [
+          new ActionResult({
+            error: `Not done: this exact action was already taken ${ranBefore} times on this same page and changed nothing, so it was refused. Follow the new plan with a different action: another element, go_to_url to reload the page, scrolling, or done explaining what blocks you.`,
+            includeInMemory: true,
+          }),
+        ];
+      } else {
+        actionResults = await this.doMultiAction(actions, currentState);
+      }
       const actMs = Math.round(performance.now() - actStarted);
       logger.info(
         `⏱ step ${this.context.nSteps + 1}: observe ${observeMs}ms, decide ${decisionMs}ms (${engineResult.decision ? this.decisionEngine?.name : this.modelName}), act ${actMs}ms`,
@@ -534,7 +564,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       // logger.info('Action results', JSON.stringify(actionResults, null, 2));
 
       // goes into memory with the results, so the navigator and the planner both read it
-      const repeatNote = this.repeats.record(actions, `${currentState.url}\n${currentState.scrollY}\n${pageText}`);
+      const repeatNote = stuck ? null : this.repeats.record(actions, pageKey);
       if (repeatNote) logger.warning(repeatNote);
       const cutShort = this.cutShort;
       this.context.actionResults = repeatNote
@@ -570,7 +600,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       if (actionResults.length > 0 && actionResults[actionResults.length - 1].isDone) {
         done = true;
       }
-      agentOutput.result = { done };
+      agentOutput.result = { done, stuck };
       return agentOutput;
     } catch (error) {
       this.removeLastStateMessageFromMemory();

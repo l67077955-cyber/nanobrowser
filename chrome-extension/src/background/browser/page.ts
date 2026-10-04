@@ -16,6 +16,7 @@ import {
   removeHighlights as _removeHighlights,
   getScrollInfo as _getScrollInfo,
 } from './dom/service';
+import { findThroughShadowRoots } from './dom/shadowPath';
 import { DOMElementNode, type DOMState } from './dom/views';
 import {
   type BrowserContextConfig,
@@ -1077,6 +1078,24 @@ export default class Page {
     }
   }
 
+  /**
+   * Find an element below shadow hosts by following its path down from host to host: selectors do not
+   * reach into shadow roots. Each path starts at the document or at the shadow root of a host above it.
+   */
+  private async locateThroughShadowRoots(
+    frame: PuppeteerPage | Frame,
+    hosts: DOMElementNode[],
+    element: DOMElementNode,
+  ): Promise<ElementHandle | null> {
+    const found = await frame.evaluateHandle(findThroughShadowRoots, [
+      ...hosts.map(host => host.xpath ?? ''),
+      element.xpath ?? '',
+    ]);
+    const handle = found.asElement() as ElementHandle | null;
+    if (!handle) await found.dispose();
+    return handle;
+  }
+
   async locateElement(element: DOMElementNode): Promise<ElementHandle | null> {
     if (!this._puppeteerPage) {
       // throw new Error('Puppeteer page is not connected');
@@ -1114,10 +1133,16 @@ export default class Page {
     }
 
     const cssSelector = element.enhancedCssSelectorForElement(this._config.includeDynamicAttributes);
+    // shadow hosts below the last iframe: a path inside one is relative to its shadow root
+    const hosts = parents.slice(parents.lastIndexOf(iframes[iframes.length - 1]) + 1).filter(p => p.shadowRoot);
 
     try {
-      // Try CSS selector first
-      let elementHandle: ElementHandle | null = await currentFrame.$(cssSelector);
+      // Inside shadow roots a selector would match from the wrong root, so the path is followed first
+      let elementHandle: ElementHandle | null =
+        hosts.length > 0 && element.xpath ? await this.locateThroughShadowRoots(currentFrame, hosts, element) : null;
+
+      // Try CSS selector
+      if (!elementHandle) elementHandle = await currentFrame.$(cssSelector);
 
       // If CSS selector failed, try XPath
       if (!elementHandle) {

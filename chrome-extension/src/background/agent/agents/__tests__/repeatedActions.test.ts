@@ -33,6 +33,15 @@ describe('RepeatedActionTracker', () => {
     expect(notes[2]).toContain('3 times');
   });
 
+  it('counts without recording', () => {
+    const tracker = new RepeatedActionTracker();
+    tracker.record(click('a'), 'page A');
+    tracker.record(click('b'), 'page A');
+    expect(tracker.count(click('c'), 'page A')).toBe(2);
+    expect(tracker.count(click('c'), 'page A')).toBe(2);
+    expect(tracker.count(click('c'), 'page B')).toBe(0);
+  });
+
   it('starts over after a reset', () => {
     const tracker = new RepeatedActionTracker();
     tracker.record(click('a'), 'page A');

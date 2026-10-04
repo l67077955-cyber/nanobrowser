@@ -89,6 +89,8 @@ export class Executor {
   private steers: string[] = [];
   /** the step loop is going: a message sent now is taken in by this run */
   private running = false;
+  /** the navigator went round in circles: the planner looks again before its next step */
+  private planBeforeNextStep = false;
   /** how many history steps have already been read for things to remember */
   private stepsRemembered = 0;
   private latestNextSteps: string | null = null;
@@ -214,6 +216,7 @@ export class Executor {
     // the plan belonged to the previous task
     this.latestNextSteps = null;
     this.navigator.resetRepeats();
+    this.planBeforeNextStep = false;
     // the page the planner finished on is read again: the user may be on another tab or page by now
     if (this.context.stateMessageAdded) {
       this.context.messageManager.removeLastStateMessage();
@@ -256,6 +259,7 @@ export class Executor {
     }
     this.latestNextSteps = null;
     this.navigator.resetRepeats();
+    this.planBeforeNextStep = false;
   }
 
   /**
@@ -386,6 +390,13 @@ export class Executor {
             logger.info('Planner found the task done on an earlier page, checking on the current one');
             finishToConfirm = true;
           }
+        }
+
+        if (this.planBeforeNextStep) {
+          this.planBeforeNextStep = false;
+          await backgroundPlan?.promise.catch(() => null);
+          backgroundPlan = null;
+          replan = true;
         }
 
         if (navigatorDone || finishToConfirm || replan || context.nSteps === 0) {
@@ -611,6 +622,12 @@ export class Executor {
       context.nSteps++;
       if (navOutput.error) {
         throw new Error(navOutput.error);
+      }
+      if (navOutput.result?.stuck) {
+        // the navigator keeps choosing what it has been told changes nothing: a fresh plan, and the task
+        // ends if that does not help either
+        this.planBeforeNextStep = true;
+        throw new Error('The navigator kept repeating an action that changes nothing on the page');
       }
       context.consecutiveFailures = 0;
       if (navOutput.result?.done) {
