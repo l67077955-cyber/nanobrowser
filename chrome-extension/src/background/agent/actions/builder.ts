@@ -59,6 +59,26 @@ interface AskedField {
   index?: number | null;
 }
 
+/** The kinds of value ask_user types into their fields itself, and what such a value looks like */
+const TYPED_KINDS: Partial<Record<AskFieldKind, RegExp>> = {
+  captcha: /^\S{1,12}$/,
+  code: /^[A-Za-z0-9-]{3,12}$/,
+  phone: /^\+?[\d\s()-]{5,20}$/,
+  email: /^\S+@\S+\.\S+$/,
+};
+
+/** The value given for a field in a reply from the side panel's form, which sends one "label: value" line each */
+export function askedValue(reply: string, label: string): string | null {
+  for (const line of reply.split('\n')) {
+    const match = line.match(/^([^:：]*)[:：](.*)$/);
+    if (match && match[1].trim() === label) {
+      const value = match[2].trim();
+      return value && value !== '(left empty)' ? value : null;
+    }
+  }
+  return null;
+}
+
 /** Readings of the captchas on one page before the user is asked to type it */
 const MAX_CAPTCHA_TRIES = 2;
 
@@ -240,11 +260,35 @@ export class ActionBuilder {
           includeInMemory: true,
         });
       }
-      const into = asked
-        .filter(field => typeof field.index === 'number')
-        .map(field => `${field.label.trim()} goes into [${field.index}]`);
-      const where = into.length > 0 ? ` (${into.join(', ')})` : '';
+      // The values given in the form go into their fields as they are: a model that types them itself may
+      // swap in its own reading of a captcha, or refresh the picture the user just read
+      const typed: string[] = [];
+      const left: string[] = [];
+      for (const [i, field] of asked.entries()) {
+        const node = nodes[i];
+        if (!node) continue;
+        const label = field.label.trim();
+        const value = askedValue(answer, label);
+        if (!value || !TYPED_KINDS[field.kind]?.test(value)) {
+          left.push(`${label} goes into [${field.index}]`);
+          continue;
+        }
+        try {
+          const content = await page.inputTextElementNode(this.context.options.useVision, node, value);
+          typed.push(`${label} "${value}" into [${field.index}]${inputMismatchNote(value, content)}`);
+        } catch (error) {
+          logger.warning(`[ask_user] could not type ${label} into [${field.index}]`, error);
+          left.push(`${label} goes into [${field.index}]`);
+        }
+      }
+      const where = left.length > 0 ? ` (${left.join(', ')})` : '';
       this.context.messageManager.addUserNote(`You asked: "${question}"${where}. The user replied: """${answer}"""`);
+      if (typed.length > 0) {
+        return new ActionResult({
+          extractedContent: `The user's values are typed in already: ${typed.join('; ')}. They are the user's own reading: do not type them again, change them or put your own reading in their place, and do not refresh a captcha the user read. Go on with the form and submit it; an error message still on the page from an earlier attempt says nothing about these values.`,
+          includeInMemory: true,
+        });
+      }
       return new ActionResult({
         extractedContent: 'The user replied to your question; the reply is in the history. Carry on with it.',
         includeInMemory: true,

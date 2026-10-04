@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RepeatedActionTracker } from '../navigator';
+import { RepeatedActionTracker, withoutTicking } from '../navigator';
 
 const click = (intent: string) => [{ click_element: { intent, index: 1 } }];
 
@@ -48,5 +48,15 @@ describe('RepeatedActionTracker', () => {
     tracker.record(click('a'), 'page A');
     tracker.reset();
     expect(tracker.record(click('a'), 'page A')).toBeNull();
+  });
+
+  it('takes a page with a countdown ticking for the same page', () => {
+    const tracker = new RepeatedActionTracker();
+    const type = [{ input_text: { index: 8, text: 'V2xjMTEdkBXs' } }];
+    const notes = ['56s', '52s', '48s'].map(left =>
+      tracker.record(type, withoutTicking(`[8]<input>V2xj\n[10]<input value="Resend in ${left}">`)),
+    );
+    expect(notes[2]).toContain('3 times');
+    expect(withoutTicking('[10]<b>12 left')).toBe('[10]<b># left');
   });
 });

@@ -331,6 +331,11 @@ const REPEAT_LIMIT = 3;
 /** How often they may run at all: beyond this they are refused and the plan is made again */
 export const STUCK_LIMIT = 5;
 
+/** Page text without the numbers outside element indices: a countdown ticking on it does not make it another page */
+export function withoutTicking(text: string): string {
+  return text.replace(/(^|[^[\d])\d+(?![\d\]])/g, '$1#');
+}
+
 /** Counts identical actions taken on an identical page: the mark of a model going round in circles */
 export class RepeatedActionTracker {
   private counts = new Map<string, number>();
@@ -539,7 +544,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
       // take the actions, resolving indices against the state the decision was made on
       const actStarted = performance.now();
-      const pageKey = `${currentState.url}\n${currentState.scrollY}\n${pageText}`;
+      const pageKey = `${currentState.url}\n${currentState.scrollY}\n${withoutTicking(pageText)}`;
       const ranBefore = this.repeats.count(actions, pageKey);
       const stuck = ranBefore >= STUCK_LIMIT;
       if (stuck) {
