@@ -50,7 +50,8 @@ let activeTask: {
  */
 let viewer: chrome.runtime.Port | null = null;
 /** the question or approval that task asked for last, for a side panel opened while it still waits to ask again */
-let waitingFor: { state: ExecutionState; details: string; meta?: StepMeta } | null = null;
+type WaitingFor = { state: ExecutionState; details: string; meta?: StepMeta };
+let waitingFor: WaitingFor | null = null;
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
@@ -365,6 +366,11 @@ chrome.runtime.onConnect.addListener(port => {
  */
 async function attachPanel(port: chrome.runtime.Port): Promise<void> {
   const task = activeTask;
+  if (task?.source === 'remote' && remoteTask?.taskId === task.taskId) {
+    const waiting = currentExecutor?.waitingForUser ? remoteTask.waitingFor : null;
+    port.postMessage({ type: 'remote_task', taskId: task.taskId, task: remoteTask.task, waitingFor: waiting });
+    return;
+  }
   if (task?.source !== 'panel' || viewer === port) return;
   await unattendedSaved();
   // the panel closed again, another one opened, or the task ended while the steps were saved
@@ -393,11 +399,6 @@ async function executeForPanel(executor: Executor, taskId: string, port: chrome.
 }
 
 /**
- * Start a task for an agent on the bridge and return its id; the task goes on after that and its end is
- * reported to the bridge. The user comes first: a task of theirs is not interrupted, and one they start
- * from the side panel takes over.
- */
-/**
  * A window for a task to work in: Chrome started by the bridge runs with none, and so does one whose windows
  * were all closed while it keeps running in the background
  */
@@ -409,6 +410,16 @@ async function ensureBrowserWindow(): Promise<void> {
   if (tabId) browserContext.updateCurrentTabId(tabId);
 }
 
+/** How long a remote task waits for the user to answer or approve before it goes on without them */
+const REMOTE_USER_WAIT_MS = 10 * 60_000;
+/** The remote task running now, and what it waits for from the user, for a side panel opened meanwhile */
+let remoteTask: { taskId: string; task: string; waitingFor: WaitingFor | null } | null = null;
+
+/**
+ * Start a task for an agent on the bridge and return its id; the task goes on after that and its end is
+ * reported to the bridge. The user comes first: a task of theirs is not interrupted, and one they start
+ * from the side panel takes over.
+ */
 async function startRemoteTask(task: string): Promise<string> {
   if (activeTask) throw new Error('The browser is busy with another task');
   const taskId = `remote-${crypto.randomUUID()}`;
@@ -425,9 +436,27 @@ async function startRemoteTask(task: string): Promise<string> {
     throw error;
   }
   currentExecutor = executor;
+  remoteTask = { taskId, task, waitingFor: null };
   subscribeToExecutorEvents(executor);
   // an open side panel shows the task like one of its own, with its stop button
   currentPort?.postMessage({ type: 'remote_task', taskId, task });
+
+  // A question or an approval waits for the user, who is told wherever they are; nobody answering in time
+  // lets the task go on: a question is left to the navigator, an action is not taken
+  let userWait: ReturnType<typeof setTimeout> | null = null;
+  const stopWaiting = () => {
+    if (userWait) clearTimeout(userWait);
+    userWait = null;
+  };
+  const waitForUser = (giveUp: () => void) => {
+    stopWaiting();
+    userWait = setTimeout(() => {
+      userWait = null;
+      if (!executor.waitingForUser) return;
+      logger.info('remote task: the user did not answer in time', taskId);
+      giveUp();
+    }, REMOTE_USER_WAIT_MS);
+  };
 
   const end: RemoteTaskEnd = { taskId, status: 'failed', result: 'The task stopped before it was finished' };
   executor.subscribeExecutionEvents(async (event: AgentEvent) => {
@@ -455,13 +484,14 @@ async function startRemoteTask(task: string): Promise<string> {
         end.result = event.data.details;
         break;
       case ExecutionState.ACT_CONFIRM:
-        // Approval is the user's to give, in the side panel. With the panel closed nobody can, and the
-        // action is declined instead of left waiting.
-        if (!currentPort) executor.confirmAction(false);
-        break;
       case ExecutionState.ACT_ASK:
-        // the agent that sent the task wants it done without a person in the loop: the navigator decides
-        executor.answerQuestion(null);
+        if (remoteTask?.taskId === taskId) {
+          remoteTask.waitingFor = { state: event.state, details: event.data.details, meta: event.data.meta };
+        }
+        void noticeTask('waiting', event.data.details, browserContext.currentTabId, { evenInFront: !currentPort });
+        waitForUser(() =>
+          event.state === ExecutionState.ACT_ASK ? executor.answerQuestion(null) : executor.confirmAction(false),
+        );
         break;
     }
   });
@@ -474,6 +504,8 @@ async function startRemoteTask(task: string): Promise<string> {
       end.result = error instanceof Error ? error.message : String(error);
     })
     .finally(() => {
+      stopWaiting();
+      if (remoteTask?.taskId === taskId) remoteTask = null;
       if (activeTask === claim) activeTask = null;
       remoteControl.sendTaskEnd(end);
     });

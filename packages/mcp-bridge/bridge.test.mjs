@@ -226,3 +226,25 @@ test('a browser that does not come up in time is reported as missing', async t =
   const reply = await tool(port, 'run_task', { task: 'open example.com' });
   assert.match(reply.error, /No browser is connected/);
 });
+
+test('a task that asks the user is reported as waiting for them, and running again once answered', async t => {
+  const { bridge, port } = await startBridge();
+  t.after(() => bridge.close());
+  let say;
+  const browser = await connectBrowser(port, (method, params, socket) => {
+    say = message => socket.send(JSON.stringify({ taskId: 't-ask', ...message }));
+    return { taskId: 't-ask' };
+  });
+  t.after(() => browser.close());
+  await tool(port, 'run_task', { task: 'sign in', wait_seconds: 0 });
+  say({ type: 'event', actor: 'navigator', state: 'act.ask', step: 2, details: 'The SMS code?' });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  say({ type: 'event', actor: 'planner', state: 'step.ok', step: 2, details: 'Waiting for the code' });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const waiting = await tool(port, 'get_task', { task_id: 't-ask', wait_seconds: 0 });
+  assert.equal(waiting.status, 'waiting_user');
+  assert.deepEqual(waiting.recent_steps, ['navigator act.ask: The SMS code?', 'planner step.ok: Waiting for the code']);
+  say({ type: 'event', actor: 'navigator', state: 'act.ok', step: 3, details: 'Typed the code' });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal((await tool(port, 'get_task', { task_id: 't-ask', wait_seconds: 0 })).status, 'running');
+});

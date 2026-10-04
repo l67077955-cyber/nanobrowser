@@ -43,6 +43,8 @@ const TOOLS = [
     name: 'get_task',
     description:
       'The state of a task started with run_task: running, waiting_confirmation (the user has to approve an action in the browser), ' +
+      'waiting_user (the task asked the user something, such as a code sent to their phone; they are notified and answer in the browser, ' +
+      'and the task goes on by itself after 10 minutes without an answer), ' +
       'completed, failed or cancelled, with its result and latest steps. Waits up to wait_seconds for a running task to end.',
     inputSchema: {
       type: 'object',
@@ -160,10 +162,14 @@ export function createBridge({
       case 'event': {
         const task = tasks.get(message.taskId);
         if (!task || END_STATES.has(task.status)) return;
-        task.status = message.state === 'act.confirm' ? 'waiting_confirmation' : 'running';
+        if (message.state === 'act.confirm') task.status = 'waiting_confirmation';
+        else if (message.state === 'act.ask') task.status = 'waiting_user';
+        // the planner goes on reporting while the user is waited for: only the next action ends the wait
+        else if (!task.status.startsWith('waiting_') || String(message.state).startsWith('act.'))
+          task.status = 'running';
         if (typeof message.step === 'number') task.step = message.step;
         // the steps worth telling an agent about: what was planned, what was done, what went wrong
-        if (/^(step\.ok|step\.fail|act\.ok|act\.fail|act\.confirm)$/.test(message.state) && message.details) {
+        if (/^(step\.ok|step\.fail|act\.ok|act\.fail|act\.confirm|act\.ask)$/.test(message.state) && message.details) {
           task.events.push({ actor: message.actor, state: message.state, details: String(message.details) });
           if (task.events.length > MAX_EVENTS) task.events.shift();
         }

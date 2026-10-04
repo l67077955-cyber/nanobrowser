@@ -85,14 +85,15 @@ An MCP client that only speaks stdio (such as Claude Desktop's config file) can 
 | `cancel_task` | Stop a running task.                                                                       |
 | `status`      | Whether a browser is connected and whether it is busy.                                     |
 
-A task is `running`, `waiting_confirmation`, `completed`, `failed` or `cancelled`.
+A task is `running`, `waiting_user`, `waiting_confirmation`, `completed`, `failed` or `cancelled`.
 
 ## What a remote agent can and cannot do
 
 - One task at a time. While the user runs a task of their own, `run_task` is refused; a task the user
   starts in the side panel takes over from a remote one.
-- With "confirm sensitive actions" on, approval is given in the side panel only. With the side panel
-  closed, such an action is declined.
+- When a task needs the user (a code sent to their phone, a captcha, approval of a sensitive action), it
+  waits: the user gets a notification that opens the side panel, and answers there. After 10 minutes
+  without an answer the task goes on without them; an action waiting for approval is then not taken.
 - The site access rules of the extension apply to remote tasks as well.
 - Remote tasks are not read for things to remember about the user.
 - An open side panel shows a remote task as a chat of its own, and its stop button ends it.

@@ -25,6 +25,9 @@ import { getTargetTab } from './utils';
 import { EventType, type AgentEvent, ExecutionState } from './types/event';
 import './SidePanel.css';
 
+/** What a running task waits for from the user, as the background tells a panel that opens meanwhile */
+type WaitingFor = { state: ExecutionState; details: string; meta?: StepMeta };
+
 // Declare chrome API types
 declare global {
   interface Window {
@@ -68,6 +71,8 @@ const SidePanel = () => {
   const [awaitingReply, setAwaitingReply] = useState(false);
   /** the values the agent asked for, filled in beside the input box while it waits */
   const [ask, setAsk] = useState<Ask | null>(null);
+  /** the id of the remote task this panel shows, which its replies are sent to */
+  const remoteTaskIdRef = useRef<string | null>(null);
   const [askCaptchas, setAskCaptchas] = useState<Record<number, string | null | undefined>>({});
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -199,6 +204,7 @@ const SidePanel = () => {
             case ExecutionState.TASK_OK:
               setQueueHeld(false);
               setActivity(null);
+              remoteTaskIdRef.current = null;
               setPendingConfirmation(null);
               setAwaitingReply(false);
               setIsFollowUpMode(true);
@@ -208,6 +214,7 @@ const SidePanel = () => {
               break;
             case ExecutionState.TASK_FAIL:
               setQueueHeld(true);
+              remoteTaskIdRef.current = null;
               setActivity(null);
               setPendingConfirmation(null);
               setAwaitingReply(false);
@@ -219,6 +226,7 @@ const SidePanel = () => {
               break;
             case ExecutionState.TASK_CANCEL:
               setQueueHeld(true);
+              remoteTaskIdRef.current = null;
               setActivity(null);
               setPendingConfirmation(null);
               setAwaitingReply(false);
@@ -352,7 +360,7 @@ const SidePanel = () => {
    * the chat as saved so far, then the steps as they come, and what the task waits for from the user.
    */
   const attachToTask = useCallback(
-    async (taskId: string, waitingFor: { state: ExecutionState; details: string; meta?: StepMeta } | null) => {
+    async (taskId: string, waitingFor: WaitingFor | null) => {
       attachQueueRef.current = [];
       sessionIdRef.current = taskId;
       setCurrentSessionId(taskId);
@@ -391,7 +399,8 @@ const SidePanel = () => {
 
   /** A task an agent started through the bridge: it gets a chat of its own, and the stop button ends it */
   const showRemoteTask = useCallback(
-    async (task: string) => {
+    async (task: string, taskId: string | null, waitingFor: WaitingFor | null) => {
+      remoteTaskIdRef.current = taskId;
       // what the task reports before its chat exists is shown, and not saved into the chat that was open
       sessionIdRef.current = null;
       setCurrentSessionId(null);
@@ -412,8 +421,17 @@ const SidePanel = () => {
         console.error('Failed to create a chat for the remote task:', err);
       }
       appendMessage(userMessage, sessionIdRef.current);
+      // a panel opened while the task waits for the user asks again
+      if (waitingFor?.state === ExecutionState.ACT_CONFIRM) {
+        setPendingConfirmation(waitingFor.details || '');
+        setActivity({ phase: 'waiting' });
+      } else if (waitingFor?.state === ExecutionState.ACT_ASK) {
+        setAwaitingReply(true);
+        showAsk(waitingFor.details || '', waitingFor.meta);
+        setActivity({ phase: 'asking' });
+      }
     },
-    [appendMessage],
+    [appendMessage, showAsk],
   );
 
   // Stop heartbeat and close connection
@@ -460,7 +478,11 @@ const SidePanel = () => {
           setInputEnabled(true);
           setShowStopButton(false);
         } else if (message && message.type === 'remote_task') {
-          void showRemoteTask(String(message.task ?? ''));
+          void showRemoteTask(
+            String(message.task ?? ''),
+            typeof message.taskId === 'string' ? message.taskId : null,
+            message.waitingFor ?? null,
+          );
         } else if (message && message.type === 'heartbeat_ack') {
           console.log('Heartbeat acknowledged');
         }
@@ -706,7 +728,9 @@ const SidePanel = () => {
       setActivity(prev => ({ phase: 'planning', view: prev?.view }));
       try {
         const tabId = (await getTargetTab())?.id;
-        sendMessage({ type: 'steer', task: text, taskId: sessionIdRef.current, tabId, sentAt: userMessage.timestamp });
+        // a remote task is known to the background by its own id, not by the chat that shows it
+        const taskId = remoteTaskIdRef.current ?? sessionIdRef.current;
+        sendMessage({ type: 'steer', task: text, taskId, tabId, sentAt: userMessage.timestamp });
       } catch (err) {
         console.error('steer error', err);
       }
@@ -848,6 +872,7 @@ const SidePanel = () => {
     setSessionTitle(null);
     setCurrentSessionId(null);
     sessionIdRef.current = null;
+    remoteTaskIdRef.current = null;
     setInputEnabled(true);
     setShowStopButton(false);
     setIsFollowUpMode(false);
@@ -1166,7 +1191,7 @@ const SidePanel = () => {
       <ChatInput
         onSendMessage={handleSendMessage}
         onStopTask={handleStopTask}
-        disabled={!inputEnabled}
+        disabled={!inputEnabled && !awaitingReply}
         showStopButton={showStopButton}
         placeholder={placeholder}
         setContent={setter => {
