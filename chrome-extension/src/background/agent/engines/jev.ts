@@ -600,6 +600,13 @@ export async function postJev(
   }
 }
 
+/** The navigator action each element operation becomes */
+const ACTION_NAMES: Record<Operation, string> = {
+  CLICK: 'click_element',
+  TYPE_TEXT: 'input_text',
+  SELECT: 'select_dropdown_option',
+};
+
 export interface JevEngineOptions {
   apiKey: string;
   textLLM: BaseChatModel;
@@ -619,6 +626,9 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
   private history: JevHistoryEntry[] = [];
   private lastDecisionKey: string | null = null;
   private repeatCount = 0;
+  /** the element action the last step ran, whoever decided it, and how many steps in a row ran it */
+  private lastStepKey: string | null = null;
+  private stepRepeats = 0;
 
   constructor(private readonly options: JevEngineOptions) {
     ({ url: this.url, model: this.model } = jevEndpoint(options.apiKey));
@@ -707,6 +717,11 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     this.repeatCount = key === this.lastDecisionKey ? this.repeatCount + 1 : 0;
     this.lastDecisionKey = key;
     if (this.repeatCount >= 2) return 'same action repeated';
+    // The LLM may have taken it in between: two steps in a row already ran it and the page did not move on
+    if (choice.kind === 'action' && this.stepRepeats >= 2) {
+      const stepKey = `${ACTION_NAMES[choice.operation]}:${choice.target.index}`;
+      if (stepKey === this.lastStepKey) return 'same action repeated';
+    }
     return null;
   }
 
@@ -720,6 +735,11 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
   }
 
   observeStep(actions: Record<string, unknown>[], results: ActionResult[]): void {
+    const [name, args] = Object.entries(actions.length === 1 ? actions[0] : {})[0] ?? [];
+    const index = (args as Record<string, unknown> | undefined)?.index;
+    const stepKey = name && index !== undefined && index !== null ? `${name}:${index}` : null;
+    this.stepRepeats = stepKey && stepKey === this.lastStepKey ? this.stepRepeats + 1 : 1;
+    this.lastStepKey = stepKey;
     actions.forEach((action, i) => {
       const [name, args] = Object.entries(action)[0] ?? [];
       if (!name) return;

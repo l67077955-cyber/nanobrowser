@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { type DOMBaseNode, DOMElementNode, DOMTextNode } from '@src/background/browser/dom/views';
 import type { BrowserState } from '@src/background/browser/views';
+import { ActionResult } from '@src/background/agent/types';
 import {
   buildActionSpace,
   buildJevRequest,
@@ -292,6 +293,15 @@ describe('JevDecisionEngine', () => {
     const { engine } = engineWith({ operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3', 'none']) });
     expect((await engine.decide(signupPage(), signal)).decision).not.toBeNull();
     expect((await engine.decide(signupPage(), signal)).decision).not.toBeNull();
+    expect((await engine.decide(signupPage(), signal)).decision).toBeNull();
+  });
+
+  it('defers a click the last two steps already made, whoever decided them', async () => {
+    const { engine } = engineWith({ operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3', 'none']) });
+    const llmClick = [{ click_element: { intent: 'open the menu', index: 3 } }];
+    engine.observeStep(llmClick, [new ActionResult()]);
+    expect((await engine.decide(signupPage(), signal)).decision).not.toBeNull();
+    engine.observeStep(llmClick, [new ActionResult()]);
     expect((await engine.decide(signupPage(), signal)).decision).toBeNull();
   });
 

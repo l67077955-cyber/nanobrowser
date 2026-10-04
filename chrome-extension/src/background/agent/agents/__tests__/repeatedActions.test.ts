@@ -25,6 +25,14 @@ describe('RepeatedActionTracker', () => {
     for (const page of ['y=0', 'y=600', 'y=1200', 'y=1800']) expect(tracker.record(scroll, page)).toBeNull();
   });
 
+  it('does not tell an element marked new apart from the same element unmarked', () => {
+    const tracker = new RepeatedActionTracker();
+    const notes = ['*[39]<div>Display Mode', '[39]<div>Display Mode', '*[39]<div>Display Mode'].map(page =>
+      tracker.record(click('toggle'), page),
+    );
+    expect(notes[2]).toContain('3 times');
+  });
+
   it('starts over after a reset', () => {
     const tracker = new RepeatedActionTracker();
     tracker.record(click('a'), 'page A');

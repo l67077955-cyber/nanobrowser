@@ -336,7 +336,11 @@ export class RepeatedActionTracker {
   /** @returns a note for the model once the actions have been repeated too often on this page, else null */
   record(actions: Record<string, unknown>[], page: string): string | null {
     // the intent is free text the model rewords from step to step
-    const key = JSON.stringify(actions, (name, value) => (name === 'intent' ? undefined : value)) + '\n' + page;
+    // and the mark on elements new since the last step says nothing about this page
+    const key =
+      JSON.stringify(actions, (name, value) => (name === 'intent' ? undefined : value)) +
+      '\n' +
+      page.replace(/\*\[(\d+)\]/g, '[$1]');
     const count = (this.counts.get(key) ?? 0) + 1;
     this.counts.set(key, count);
     if (count < REPEAT_LIMIT) return null;
