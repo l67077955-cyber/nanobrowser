@@ -600,6 +600,42 @@ export async function removeHighlights(tabId: number): Promise<void> {
 //   return [result.pixels_above, result.pixels_below];
 // }
 
+/**
+ * The readable text of the whole page, scrolled or not: the main article when the page marks one, else the body.
+ * Line breaks are kept, runs of blank lines and spaces are not.
+ */
+export async function getPageText(tabId: number): Promise<{ title: string; url: string; text: string }> {
+  const results = await inTime(
+    chrome.scripting.executeScript({
+      injectImmediately: true,
+      target: { tabId },
+      func: () => {
+        const textOf = (el: Element | null) => (el instanceof HTMLElement ? el.innerText : '') || '';
+        const body = textOf(document.body);
+        // the longest marked main region, when it holds most of what the page says
+        let best = '';
+        for (const el of Array.from(document.querySelectorAll('article, main, [role="main"]'))) {
+          const text = textOf(el);
+          if (text.length > best.length) best = text;
+        }
+        const raw = best.length >= 1500 && best.length >= body.length * 0.3 ? best : body;
+        const text = raw
+          .split('\n')
+          .map(line => line.replace(/[ \t\u00a0]+/g, ' ').trim())
+          .join('\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        return { title: document.title, url: location.href, text };
+      },
+    }),
+  );
+  const result = results[0]?.result;
+  if (!result) {
+    throw new Error('Failed to read the page text');
+  }
+  return result;
+}
+
 export async function getScrollInfo(tabId: number): Promise<[number, number, number]> {
   const results = await inTime(
     chrome.scripting.executeScript({

@@ -58,6 +58,8 @@ function actionPhrase(action: StepAction, label: string | undefined): Phrase {
       return ['Closed', 'close', 'a tab'];
     case 'cache_content':
       return ['Made a note', 'make a note', 'of what it found'];
+    case 'read_page':
+      return ['Read', 'read', 'the whole page'];
     case 'scroll_to_percent':
       return ['Scrolled', 'scroll', value ? `to ${value}% of the page` : undefined];
     case 'scroll_to_top':

@@ -94,13 +94,12 @@ Common action sequences:
 - Prefer the previous_page, next_page, scroll_to_top and scroll_to_bottom actions.
 - Use scroll_to_percent only when the user asks for an exact position.
 
-10. Extraction (research tasks and looking up information):
+10. Reading and extraction (reading, summarizing, research and looking up information):
 
-  1. Take what is relevant from the part of the page in view
-  2. Together with what you have cached, is it enough to answer?
-     - Yes: finish with all findings
-     - No: first cache_content the new findings (anything not cached is lost when you scroll), then scroll exactly one page with next_page, and look again. Stop after at most 10 page scrolls
-  3. Finish by combining the cached findings with what is in view, and present them complete in done
+  - To read a page's text (an article, post, thread, docs, a long list), use read_page: it gives the whole page's text in one step, also what is scrolled out of view. Do not scroll through text to read it.
+  - When read_page says more text follows, call it again with the offset it gives, until you have what the task needs
+  - Finish with done once you have enough, presenting the findings complete
+  - Scroll and look instead only for what read_page cannot give: things to click or fill in further down, pictures and charts, and content that loads as you scroll (feeds). Then take what is relevant from the part in view, cache_content new findings before you scroll (anything not cached is lost when you scroll), scroll one page with next_page, and stop after at most 10 page scrolls
   - Avoid caching the same thing twice, and keep a count of what you have cached in memory
 
 11. Sign-in pages:

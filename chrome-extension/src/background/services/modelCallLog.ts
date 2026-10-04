@@ -3,6 +3,7 @@ import type { Serialized } from '@langchain/core/load/serializable';
 import type { BaseMessage } from '@langchain/core/messages';
 import type { LLMResult } from '@langchain/core/outputs';
 import { createLogger, describeError } from '@src/background/log';
+import { isAbortedError } from '../agent/agents/errors';
 
 const logger = createLogger('LLM');
 
@@ -92,6 +93,11 @@ export class ModelCallLogger extends BaseCallbackHandler {
 
   handleLLMError(error: unknown, runId: string) {
     const call = this.take(runId);
+    // a call called off on purpose: the task stopped, or the fast engine decided the step first
+    if (isAbortedError(error)) {
+      logger.info(`⊘ ${call.who} · ${this.model} · ${call.ms}ms · called off`);
+      return;
+    }
     logger.error(`✗ ${call.who} · ${this.model} · ${call.ms}ms · ${describeError(error)}`);
   }
 

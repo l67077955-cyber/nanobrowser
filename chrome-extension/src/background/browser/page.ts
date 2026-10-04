@@ -15,6 +15,7 @@ import {
   getClickableElements as _getClickableElements,
   removeHighlights as _removeHighlights,
   getScrollInfo as _getScrollInfo,
+  getPageText as _getPageText,
 } from './dom/service';
 import { findThroughShadowRoots } from './dom/shadowPath';
 import { DOMElementNode, type DOMState } from './dom/views';
@@ -245,6 +246,14 @@ export default class Page {
       return [0, 0, 0];
     }
     return _getScrollInfo(this._tabId);
+  }
+
+  /** The readable text of the whole page, not only the part in view */
+  async getPageText(): Promise<{ title: string; url: string; text: string }> {
+    if (!this._validWebPage) {
+      return { title: '', url: '', text: '' };
+    }
+    return _getPageText(this._tabId);
   }
 
   // Get scroll position information for a specific element.

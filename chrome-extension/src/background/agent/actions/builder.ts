@@ -14,6 +14,7 @@ import {
   type ActionSchema,
   sendKeysActionSchema,
   scrollToTextActionSchema,
+  readPageActionSchema,
   cacheContentActionSchema,
   selectDropdownOptionActionSchema,
   getDropdownOptionsActionSchema,
@@ -34,6 +35,9 @@ import type { DOMElementNode } from '@src/background/browser/dom/views';
 import { ElementChangedError, ElementNotFoundError } from '@src/background/browser/views';
 import { CaptchaUnreadableError, readCaptcha } from '@src/background/services/captcha';
 import { isAbortedError } from '../agents/errors';
+
+/** How much page text one read_page hands the model; a longer page is read in parts */
+const READ_PAGE_CHARS = 15000;
 
 const logger = createLogger('Action');
 
@@ -513,6 +517,34 @@ export class ActionBuilder {
       return new ActionResult({ extractedContent: msg, includeInMemory: true });
     }, cacheContentActionSchema);
     actions.push(cacheContent);
+
+    // the whole page's text in one step, instead of scrolling through it a screen at a time
+    const readPage = new Action(async (input: z.infer<typeof readPageActionSchema.schema>) => {
+      const intent = input.intent || t('act_readPage_start');
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_START, intent);
+      const page = await this.context.browserContext.getCurrentPage();
+      const { title, url, text } = await page.getPageText();
+      const start = Math.min(input.offset ?? 0, text.length);
+      const end = Math.min(start + READ_PAGE_CHARS, text.length);
+      if (end <= start) {
+        const msg = t('act_readPage_empty');
+        this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
+        return new ActionResult({ extractedContent: msg, includeInMemory: true });
+      }
+      const msg = t('act_readPage_ok', [String(end - start), String(text.length)]);
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
+      const more =
+        end < text.length
+          ? `More text follows: read_page with offset ${end} to read on.`
+          : 'This is the end of the page text.';
+      // the page's words are untrusted content, never instructions
+      const content = wrapUntrustedContent(text.slice(start, end));
+      return new ActionResult({
+        extractedContent: `Text of "${title}" (${url}), characters ${start}-${end} of ${text.length}:\n${content}\n${more}`,
+        includeInMemory: true,
+      });
+    }, readPageActionSchema);
+    actions.push(readPage);
 
     // Scroll to percent
     const scrollToPercent = new Action(async (input: z.infer<typeof scrollToPercentActionSchema.schema>) => {

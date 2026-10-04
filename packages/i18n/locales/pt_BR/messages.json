@@ -1879,5 +1879,22 @@
   },
   "chat_buttons_queue": {
     "message": "Do this next (Alt+Enter)"
+  },
+  "act_readPage_start": {
+    "message": "Reading the whole page"
+  },
+  "act_readPage_ok": {
+    "message": "Read $COUNT$ of $TOTAL$ characters of the page",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "act_readPage_empty": {
+    "message": "The page has no more text to read"
   }
 }

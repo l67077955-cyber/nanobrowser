@@ -144,6 +144,16 @@ export const cacheContentActionSchema: ActionSchema = {
   }),
 };
 
+export const readPageActionSchema: ActionSchema = {
+  name: 'read_page',
+  description:
+    'Read the text of the whole current page in one go, including what is scrolled out of view: for reading, summarizing or looking things up in articles, posts, docs and long lists. Long pages come in parts: call again with the offset it gives to read on',
+  schema: z.object({
+    intent: z.string().default('').describe('purpose of this action'),
+    offset: z.number().int().min(0).default(0).describe('character to start from, 0 for the beginning'),
+  }),
+};
+
 export const scrollToPercentActionSchema: ActionSchema = {
   name: 'scroll_to_percent',
   description:
