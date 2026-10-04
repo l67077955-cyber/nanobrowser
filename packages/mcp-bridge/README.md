@@ -98,6 +98,19 @@ A task is `running`, `waiting_user`, `waiting_confirmation`, `completed`, `faile
 - Remote tasks are not read for things to remember about the user.
 - An open side panel shows a remote task as a chat of its own, and its stop button ends it.
 
+## See what the tasks did
+
+Start the bridge with `--run-log ~/.config/nanobrowser/runs.jsonl` and every remote task's start, steps and end are
+appended to that file. `viewer.mjs` shows it as a web page that updates itself:
+
+```bash
+node viewer.mjs --cdp http://127.0.0.1:9222   # --cdp: also show the browser's screen, if it has a DevTools port
+```
+
+Open the address it prints once (`http://127.0.0.1:8788/?key=…`); a cookie keeps you in. The key is its own
+(`~/.config/nanobrowser/viewer-token`), not the bridge token, and the page only reads: it can be put behind a tunnel,
+for example `cloudflared tunnel --url http://127.0.0.1:8788`.
+
 ## Tests
 
 ```bash

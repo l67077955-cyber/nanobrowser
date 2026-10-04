@@ -126,6 +126,40 @@ test('a task runs to its end and the agent gets the answer', async t => {
   assert.deepEqual(done.recent_steps, ['navigator act.ok: Navigated to example.com']);
 });
 
+test('every start, step and end of a task is recorded for the run log', async t => {
+  const records = [];
+  const { bridge, port } = await startBridge({ record: entry => records.push(entry) });
+  t.after(() => bridge.close());
+  const browser = await connectBrowser(port, (method, params, socket) => {
+    const say = message => socket.send(JSON.stringify({ taskId: 't1', ...message }));
+    setTimeout(() => {
+      say({ type: 'event', actor: 'planner', state: 'step.start', step: 1, details: '' });
+      say({ type: 'event', actor: 'navigator', state: 'act.ok', step: 1, details: 'Navigated to example.com' });
+      say({ type: 'task_end', status: 'completed', result: 'Example Domain' });
+    }, 30);
+    return { taskId: 't1' };
+  });
+  t.after(() => browser.close());
+
+  await tool(port, 'run_task', { task: 'what is the title of example.com', wait_seconds: 5 });
+  assert.deepEqual(
+    records.map(({ t: time, ...entry }) => (assert.equal(typeof time, 'number'), entry)),
+    [
+      { kind: 'start', taskId: 't1', text: 'what is the title of example.com' },
+      { kind: 'event', taskId: 't1', actor: 'planner', state: 'step.start', step: 1, details: '' },
+      {
+        kind: 'event',
+        taskId: 't1',
+        actor: 'navigator',
+        state: 'act.ok',
+        step: 1,
+        details: 'Navigated to example.com',
+      },
+      { kind: 'end', taskId: 't1', status: 'completed', result: 'Example Domain' },
+    ],
+  );
+});
+
 test('a long task is returned as running and followed with get_task', async t => {
   const { bridge, port } = await startBridge();
   t.after(() => bridge.close());

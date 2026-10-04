@@ -2,14 +2,15 @@
 /**
  * Start the Nanobrowser MCP bridge, or have it run in the background from login on.
  *
- *   node cli.mjs [--port 8787] [--host 127.0.0.1] [--token-file <path>] [--launch-browser]
+ *   node cli.mjs [--port 8787] [--host 127.0.0.1] [--token-file <path>] [--launch-browser] [--run-log <path>]
  *   node cli.mjs install [same options]     run it in the background from login on, and now
  *   node cli.mjs uninstall                  stop that and remove it
  *   node cli.mjs status                     whether it is installed and running
  *
  * The token comes from NANOBROWSER_BRIDGE_TOKEN or from the token file, which is created on first start.
  * With --launch-browser, Chrome is started without a window when an agent needs the browser and none is
- * connected; `install` turns it on.
+ * connected; `install` turns it on. With --run-log, every task's start, steps and end are appended to that
+ * file as JSON lines, which viewer.mjs shows as a web page.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -27,6 +28,7 @@ const { values, positionals } = parseArgs({
     host: { type: 'string', default: process.env.NANOBROWSER_BRIDGE_HOST ?? '127.0.0.1' },
     'token-file': { type: 'string', default: path.join(os.homedir(), '.config', 'nanobrowser', 'bridge-token') },
     'launch-browser': { type: 'boolean', default: false },
+    'run-log': { type: 'string' },
   },
 });
 
@@ -97,7 +99,19 @@ if (command === 'install') {
   const chrome = values['launch-browser'] ? findChrome() : null;
   if (values['launch-browser'] && !chrome)
     log('Chrome not found: set NANOBROWSER_CHROME; it will not be started on demand');
-  const bridge = createBridge({ token, log, startBrowser: chrome ? () => launchChrome(chrome) : undefined });
+  const runLog = values['run-log'];
+  if (runLog) fs.mkdirSync(path.dirname(runLog), { recursive: true });
+  // written in order, one line at a time: a failed write is logged and the task goes on
+  const record = runLog
+    ? entry => {
+        try {
+          fs.appendFileSync(runLog, `${JSON.stringify(entry)}\n`);
+        } catch (error) {
+          log('cannot write the run log', error.message);
+        }
+      }
+    : undefined;
+  const bridge = createBridge({ token, log, record, startBrowser: chrome ? () => launchChrome(chrome) : undefined });
 
   bridge.server.on('error', error => {
     log(`cannot listen on ${values.host}:${values.port}: ${error.message}`);
@@ -110,6 +124,7 @@ if (command === 'install') {
     log(`  agents:    http://${values.host}:${values.port}/mcp  (Authorization: Bearer <token>)`);
     log(`  token:     ${source}`);
     if (chrome) log(`  browser:   started on demand (${chrome})`);
+    if (runLog) log(`  run log:   ${runLog}`);
     if (!local) {
       log(
         '  WARNING: not bound to this machine only. Put TLS in front of it: the token travels with every connection.',

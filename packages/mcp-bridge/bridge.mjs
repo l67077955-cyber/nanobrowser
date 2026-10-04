@@ -81,8 +81,9 @@ function waitSeconds(value) {
 
 /**
  * @param {{ token: string, log?: (...args: unknown[]) => void, pingIntervalMs?: number, requestTimeoutMs?: number,
- *   startBrowser?: () => void, browserStartMs?: number }} options startBrowser is called when an agent needs the
- *   browser and none is connected; the bridge then waits browserStartMs for it to connect
+ *   startBrowser?: () => void, browserStartMs?: number, record?: (entry: object) => void }} options startBrowser is
+ *   called when an agent needs the browser and none is connected; the bridge then waits browserStartMs for it to
+ *   connect. record receives every start, event and end of a task, for a run log
  */
 export function createBridge({
   token,
@@ -91,6 +92,7 @@ export function createBridge({
   requestTimeoutMs = 60_000,
   startBrowser,
   browserStartMs = 30_000,
+  record = () => {},
 }) {
   if (!token || token.length < 16) throw new Error('The bridge token must have at least 16 characters');
 
@@ -145,6 +147,7 @@ export function createBridge({
     task.status = status;
     task.result = result;
     task.endedAt = Date.now();
+    record({ t: task.endedAt, kind: 'end', taskId: task.id, status, result });
     for (const wake of task.waiters.splice(0)) wake();
   }
 
@@ -162,6 +165,15 @@ export function createBridge({
       case 'event': {
         const task = tasks.get(message.taskId);
         if (!task || END_STATES.has(task.status)) return;
+        record({
+          t: Date.now(),
+          kind: 'event',
+          taskId: task.id,
+          actor: message.actor,
+          state: message.state,
+          step: message.step,
+          details: message.details === undefined ? '' : String(message.details),
+        });
         if (message.state === 'act.confirm') task.status = 'waiting_confirmation';
         else if (message.state === 'act.ask') task.status = 'waiting_user';
         // the planner goes on reporting while the user is waited for: only the next action ends the wait
@@ -291,6 +303,7 @@ export function createBridge({
           endedAt: null,
         };
         tasks.set(task.id, task);
+        record({ t: task.startedAt, kind: 'start', taskId: task.id, text: task.text });
         if (tasks.size > MAX_TASKS) tasks.delete(tasks.keys().next().value);
         log('task started', task.id);
         await waitForEnd(task, waitSeconds(args.wait_seconds), signal);
