@@ -373,11 +373,7 @@ export class ActionBuilder {
         const intent = input.intent || t('act_solveCaptcha_start', [input.index.toString()]);
         this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_START, intent);
 
-        if (!this.captchaLLM) {
-          const msg = t('act_solveCaptcha_noModel');
-          this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, msg);
-          return new ActionResult({ error: msg, includeInMemory: true });
-        }
+        if (!this.captchaLLM) throw new Error('solve_captcha is offered only with a captcha model');
 
         const page = await this.context.browserContext.getCurrentPage();
         const fieldNode = await this.observedElement(input.index);
@@ -424,7 +420,8 @@ export class ActionBuilder {
       solveCaptchaActionSchema,
       true,
     );
-    actions.push(solveCaptcha);
+    // without a captcha model the navigator has no such action and asks the user to type the captcha
+    if (this.captchaLLM) actions.push(solveCaptcha);
 
     // Tab Management Actions
     const switchTab = new Action(async (input: z.infer<typeof switchTabActionSchema.schema>) => {

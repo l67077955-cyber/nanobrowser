@@ -23,7 +23,7 @@ ${commonSecurityRules}
   - Plan the steps even when the site needs the user signed in: the user is usually already signed in in this browser, and when they are not, the navigator asks them to sign in and carries on
   - Your role is planning and judging progress; the navigator handles execution and talks to the user when it must
   - Prefer what is visible in the current viewport; suggest scrolling only when what is needed is not in view, and then one page at a time
-  - An image captcha made of characters or an arithmetic question is no reason to stop: the navigator reads it with its solve_captcha action, so plan that step. Sliders, puzzles and codes sent by SMS or email need the user, which the navigator asks for
+  - A captcha or a code sent by SMS or email is no reason to stop: plan the step and the navigator handles it, reading an image captcha itself when it can and otherwise asking the user, whom it also asks for sliders, puzzles and such codes
   - When the user asks for a specific part of a sign-in form to be filled in, such as the image captcha or a phone number they gave, that is the task itself
 4. Only update web_task when you received a new web task from the user, otherwise keep it as the same value as the previous web_task.
 

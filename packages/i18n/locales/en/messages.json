@@ -362,7 +362,7 @@
     "message": "Captcha Model"
   },
   "options_models_captcha_desc": {
-    "message": "Reads image captchas (distorted characters, arithmetic questions) so the agent can fill them in. Any model that accepts images works, from any provider you have saved; it does not have to be in the provider's model list. If none is chosen, the Navigator model is used when vision is enabled."
+    "message": "Reads image captchas (distorted characters, arithmetic questions) so the agent can fill them in. Any model that accepts images works, from any provider you have saved; it does not have to be in the provider's model list. If none is chosen, the agent asks you to type the captcha."
   },
   "options_models_captcha_provider": {
     "message": "Provider"
@@ -779,9 +779,6 @@
         "example": "404 No endpoints found"
       }
     }
-  },
-  "act_solveCaptcha_noModel": {
-    "message": "No model is set for reading captchas. Choose one that accepts images in Settings > Models > Captcha Model, or type the captcha yourself"
   },
   "act_inputText_ok": {
     "message": "Input $TEXT$ into index $INDEX$",

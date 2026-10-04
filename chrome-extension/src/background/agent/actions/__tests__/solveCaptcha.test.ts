@@ -76,10 +76,10 @@ describe('solve_captcha', () => {
     expect(unreadable.error).toContain('act_solveCaptcha_failed');
   });
 
-  it('says that a model is missing instead of looking at the page', async () => {
-    const { action, page } = setup(null);
-    const result = await action.call({ index: 3 });
-    expect(page.captureCaptchaImage).not.toHaveBeenCalled();
-    expect(result.error).toBeTruthy();
+  it('is not offered without a captcha model: the navigator asks the user instead', () => {
+    const context = { observedSelectorMap: new Map() } as unknown as AgentContext;
+    const names = new ActionBuilder(context, {} as BaseChatModel, null).buildDefaultActions().map(a => a.name());
+    expect(names).not.toContain('solve_captcha');
+    expect(names).toContain('ask_user');
   });
 });

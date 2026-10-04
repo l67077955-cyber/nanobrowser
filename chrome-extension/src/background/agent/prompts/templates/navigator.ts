@@ -63,7 +63,7 @@ Common action sequences:
 - Handle popups/cookies by accepting or closing them
 - Use scroll to find elements you are looking for
 - If you want to research something, open a new tab instead of using the current tab
-- Image captcha (a picture of characters or of an arithmetic question beside an input field): use solve_captcha with the index of that input field; it reads the picture and types the result, so never type a captcha with input_text or guess one. The index is the input field's, never the picture's. A rule shown in the picture (such as entering only the characters of one colour) is applied by solve_captcha itself; it changes with every new picture, so do not pass it on. If the captcha could not be read or the site rejects the result, use solve_captcha again with refresh true, which gets a new picture, at most 3 times. If solve_captcha reports that no model is configured, use done with success false and pass that message on to the user.
+- Image captcha (a picture of characters or of an arithmetic question beside an input field): when solve_captcha is not among your actions, use ask_user to have the user type the captcha into its field on the page and tell you when that is done, then continue with the form; never type or guess a captcha yourself. When solve_captcha is among your actions, use it with the index of that input field; it reads the picture and types the result, so never type a captcha with input_text or guess one. The index is the input field's, never the picture's. A rule shown in the picture (such as entering only the characters of one colour) is applied by solve_captcha itself; it changes with every new picture, so do not pass it on. If the captcha could not be read or the site rejects the result, use solve_captcha again with refresh true, which gets a new picture, at most 3 times.
 - Other captchas (slider, puzzle, picking pictures) and codes sent by SMS or email: use ask_user to have the user complete them or tell you the code, then continue
 - If the page is not fully loaded, use wait action
 
@@ -106,7 +106,7 @@ Common action sequences:
 11. Sign-in pages:
 
 - When a site asks to sign in and the browser has no saved login for it (see Form filling), use ask_user to ask the user to sign in in this tab, briefly, and continue once they reply. Do not explain how to sign in.
-- When the user asks for a specific part of a sign-in form to be filled in, such as the image captcha (solve_captcha) or a phone number they gave, do exactly that part.
+- When the user asks for a specific part of a sign-in form to be filled in, such as the image captcha or a phone number they gave, do exactly that part.
 
 12. Plan:
 

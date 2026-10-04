@@ -667,11 +667,11 @@ async function setupExecutor(
     displayHighlights: generalSettings.displayHighlights,
   });
 
-  // Image captchas are read by a model of their own, as the agent models often take text only. With vision
-  // on, the Navigator model is known to accept images and reads them when none is chosen.
+  // Image captchas are read by a model of their own when one is chosen in Settings; without one the navigator
+  // asks the user to type them
   const captchaModel = await captchaModelStore.getCaptchaModel();
   const captchaProviderConfig = captchaModel ? providers[captchaModel.provider] : undefined;
-  let captchaLLM: BaseChatModel | null = generalSettings.useVision ? navigatorLLM : null;
+  let captchaLLM: BaseChatModel | null = null;
   if (captchaModel && captchaProviderConfig) {
     captchaLLM = createChatModel(captchaProviderConfig, {
       ...captchaModel,
@@ -685,12 +685,7 @@ async function setupExecutor(
     planner: plannerModel
       ? `${plannerModel.modelName} @ ${providers[plannerModel.provider].name || plannerModel.provider}`
       : 'navigator',
-    captcha:
-      captchaModel && captchaProviderConfig
-        ? `${captchaModel.modelName} (captcha setting)`
-        : captchaLLM
-          ? `${navigatorModel.modelName} (Navigator, vision on)`
-          : 'none',
+    captcha: captchaModel && captchaProviderConfig ? captchaModel.modelName : 'none: the user types it',
     vision: generalSettings.useVision,
     actionMode: generalSettings.actionMode,
     fastMode: generalSettings.fastMode,
