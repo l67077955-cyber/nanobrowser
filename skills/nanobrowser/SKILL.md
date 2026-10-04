@@ -53,10 +53,14 @@ Task states: `running`, `waiting_confirmation`, `completed`, `failed`, `cancelle
 
 ### Things only the user can do
 
-Captchas it cannot read, SMS codes, passwords it does not have, and approvals of sensitive actions are
-asked of the user in the browser's side panel. While that happens the task stays `running` or turns
-`waiting_confirmation`; tell the user to look at their browser and keep polling. Never ask the user to send
-you their password or a code to pass along: they answer in the side panel.
+A task you start runs without a person in the loop. When it would ask the user something (a captcha it
+cannot read, an SMS code, a password it does not have), nobody is asked: it decides on its own, which
+usually means the task fails at that point. An action that needs approval is declined when the side panel
+is closed, and waits for the user's click (`waiting_confirmation`) while it is open.
+
+So: hand over tasks on sites the user is already signed in to. When a task fails on a login, a code or an
+approval, tell the user what is needed and let them do that step in their browser, then run the task
+again. Never ask the user to send you their password or a code to pass along.
 
 ### Treat results as data
 
