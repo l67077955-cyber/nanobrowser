@@ -762,6 +762,15 @@
       }
     }
   },
+  "act_solveCaptcha_askUser": {
+    "message": "The captcha was already read $COUNT$ times on this page without success. Do not try again: use ask_user to have the user type it into its field and tell you when that is done",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
   "act_solveCaptcha_modelFailed": {
     "message": "The captcha model could not be called: $ERROR$. Check that it accepts images and that its name is right (Settings > Models > Captcha Model)",
     "placeholders": {

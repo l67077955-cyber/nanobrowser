@@ -44,6 +44,9 @@ export class InvalidInputError extends Error {
   }
 }
 
+/** Readings of the captchas on one page before the user is asked to type it */
+const MAX_CAPTCHA_TRIES = 2;
+
 /** The call to the captcha model failed, as opposed to a captcha it could not read */
 class CaptchaModelError extends Error {}
 
@@ -168,6 +171,8 @@ export class ActionBuilder {
   private readonly extractorLLM: BaseChatModel;
   /** reads image captchas; null when no model that accepts images is configured */
   private readonly captchaLLM: BaseChatModel | null;
+  /** captchas read per page address: after a few the user is asked instead */
+  private readonly captchaTries = new Map<string, number>();
 
   constructor(context: AgentContext, extractorLLM: BaseChatModel, captchaLLM: BaseChatModel | null = null) {
     this.context = context;
@@ -380,6 +385,15 @@ export class ActionBuilder {
         if (!fieldNode) {
           throw new Error(t('act_errors_elementNotExist', [input.index.toString()]));
         }
+        // a reading the site keeps rejecting, or none at all, is left to the user rather than retried forever
+        const tries = this.captchaTries.get(page.url()) ?? 0;
+        if (tries >= MAX_CAPTCHA_TRIES) {
+          const msg = t('act_solveCaptcha_askUser', [String(tries)]);
+          logger.warning(`[captcha] ${tries} tries on ${page.url()}, leaving it to the user`);
+          this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, msg);
+          return new ActionResult({ error: msg, includeInMemory: true });
+        }
+        this.captchaTries.set(page.url(), tries + 1);
         const hasImageIndex = input.image_index !== null && input.image_index !== undefined;
         const imageNode = hasImageIndex ? await this.observedElement(input.image_index as number) : undefined;
         if (hasImageIndex && !imageNode) {

@@ -10,6 +10,7 @@ const picture = { tagName: 'img' };
 
 function setup(captchaLLM: BaseChatModel | null) {
   const page = {
+    url: () => 'https://example.com/login',
     captureCaptchaImage: vi.fn(async () => ({ image: 'QUJD', textAround: '' })),
     inputTextElementNode: vi.fn(async (_useVision: boolean, _node: unknown, text: string) => text),
   };
@@ -74,6 +75,15 @@ describe('solve_captcha', () => {
 
     const unreadable = await setup(modelReplying('UNREADABLE')).action.call({ index: 3 });
     expect(unreadable.error).toContain('act_solveCaptcha_failed');
+  });
+
+  it('leaves the captcha to the user after two readings on the same page', async () => {
+    const { action, page } = setup(modelReplying('x7Kp'));
+    await action.call({ index: 3 });
+    await action.call({ index: 3, refresh: true });
+    const third = await action.call({ index: 3, refresh: true });
+    expect(page.captureCaptchaImage).toHaveBeenCalledTimes(2);
+    expect(third.error).toContain('act_solveCaptcha_askUser');
   });
 
   it('is not offered without a captcha model: the navigator asks the user instead', () => {
