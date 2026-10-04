@@ -292,7 +292,13 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
   const steps =
     stats.steps === 0 ? '' : stats.steps === 1 ? t('chat_work_steps_one') : t('chat_work_steps', [String(stats.steps)]);
 
-  const folded = showAll ? 0 : Math.max(0, entries.length - VISIBLE_STEPS);
+  // the planner's thinking is kept for the detailed view; the trail says what was done, not what was weighed
+  const trail = useMemo(
+    () =>
+      detailed || stats.steps === 0 ? entries : entries.filter(entry => entry.message.meta?.kind !== 'planner'),
+    [entries, detailed, stats.steps],
+  );
+  const folded = showAll ? 0 : Math.max(0, trail.length - VISIBLE_STEPS);
 
   return (
     <div className={`nb-work${open ? ' open' : ''}${running ? ' running' : ''}`}>
@@ -315,7 +321,7 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
             </button>
           )}
           <ol className="nb-trail">
-            {entries.slice(folded).map(entry => (
+            {trail.slice(folded).map(entry => (
               <TrailEntry
                 key={`${entry.message.actor}-${entry.message.timestamp}-${entry.index}`}
                 entry={entry}
@@ -424,7 +430,12 @@ function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: nu
 
   return (
     <li className={`nb-item${open ? ' open' : ''}${failed.length > 0 ? ' bad' : ''}`}>
-      <button type="button" className="nb-line" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button
+        type="button"
+        className="nb-line"
+        aria-expanded={open}
+        title={!detailed && !open ? reason : undefined}
+        onClick={() => setOpen(!open)}>
         <span className="nb-dot">
           <Icon />
         </span>
@@ -433,7 +444,8 @@ function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: nu
             {describeStep(meta)}
             {more > 0 && <small> {t('chat_work_more', [String(more)])}</small>}
           </span>
-          {reason && <span className="nb-why">{reason}</span>}
+          {/* the model's reasoning is one click away, so a run reads as one line per step */}
+          {reason && (detailed || open) && <span className="nb-why">{reason}</span>}
         </span>
         {detailed && (
           <span className="nb-metrics">
