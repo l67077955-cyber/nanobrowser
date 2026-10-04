@@ -22,8 +22,8 @@ has to be typed into that field.
 Keep upper and lower case as shown and ignore noise lines and dots. Give your best reading even when the image
 is hard to read.
 Reply with JSON only, no other text:
-{"rule": "the rule as shown, or "" when there is none",
- "characters": "every character of the code with its colour, e.g. "T red, 4 red, y black"",
+{"rule": "the rule as shown, empty when there is none",
+ "characters": "every character of the code with its colour, like: T red, 4 red, y black",
  "answer": "exactly what to type"}
 When the image shows no characters at all, reply {"answer": "${UNREADABLE}"}.`;
 
