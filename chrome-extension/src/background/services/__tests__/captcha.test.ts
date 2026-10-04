@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { captchaAnswer, CaptchaUnreadableError, readCaptcha } from '../captcha';
+import { captchaAnswer, captchaReading, CaptchaUnreadableError, readCaptcha } from '../captcha';
 
 function modelReplying(content: unknown) {
   const invoke = vi.fn(async () => ({ content }));
@@ -23,6 +23,26 @@ describe('captchaAnswer', () => {
     expect(captchaAnswer('UNREADABLE')).toBeNull();
     expect(captchaAnswer('Unreadable.')).toBeNull();
     expect(captchaAnswer("I'm sorry, but I can't help with reading captchas.")).toBeNull();
+  });
+});
+
+describe('captchaReading', () => {
+  it('takes the answer, the rule and the characters out of the JSON reply', () => {
+    const reply =
+      '```json\n{"rule": "请输入红色的字符", "characters": "T red, 4 red, V red, S red, y black", "answer": "T4VS"}\n```';
+    expect(captchaReading(reply)).toEqual({
+      rule: '请输入红色的字符',
+      characters: 'T red, 4 red, V red, S red, y black',
+      answer: 'T4VS',
+    });
+  });
+
+  it('reads a bare code from a model that ignores the format', () => {
+    expect(captchaReading('x7Kp').answer).toBe('x7Kp');
+  });
+
+  it('has no answer when the model says the picture is unreadable', () => {
+    expect(captchaReading('{"answer": "UNREADABLE"}').answer).toBeNull();
   });
 });
 

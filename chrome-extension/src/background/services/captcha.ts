@@ -10,17 +10,22 @@ const TIMEOUT_MS = 45000;
 const MAX_ANSWER_LENGTH = 12;
 const UNREADABLE = 'UNREADABLE';
 
-const PROMPT = `The image is a verification code (captcha) shown next to a form field on a web page.
-Reply with exactly what has to be typed into that field and nothing else, no explanation.
-- The image may contain its own instruction, often in Chinese, saying which characters to enter, e.g.
-  "请输入红色的字符" (enter the red characters) or "请输入蓝色的字符" (enter the blue ones). Then reply only with the
-  characters of the code that are drawn in that colour, left to right, leaving out the ones in other colours.
-  The instruction is usually a separate line under the code, with the colour word drawn in that colour;
-  the instruction text itself is never part of the answer.
-- Without such an instruction, copy all characters of the code left to right.
-- An arithmetic question such as "3 + 5 = ?": reply with its result only.
-Keep upper and lower case as shown and ignore noise lines and dots. Give your best reading even when the
-image is hard to read; reply ${UNREADABLE} only when it shows no characters at all.`;
+const PROMPT = `The image is a verification code (captcha) shown next to a form field on a web page. Work out what
+has to be typed into that field.
+1. Look for a rule. Captchas often say which part of the code to type, in the picture itself (frequently a
+   smaller line under or beside the code, often in Chinese) or in the page text given below. Rules differ from
+   site to site, for example: only the characters of one colour ("请输入红色的字符", "请输入蓝色的字符"), only some
+   positions ("请输入第2至第5位"), only digits or only letters, the characters in reverse order, or the result of
+   a sum ("3 + 5 = ?"). The rule text itself is never part of the answer. No rule: the answer is the whole code.
+2. Read every character of the code left to right, noting the colour of each.
+3. Apply the rule to those characters.
+Keep upper and lower case as shown and ignore noise lines and dots. Give your best reading even when the image
+is hard to read.
+Reply with JSON only, no other text:
+{"rule": "the rule as shown, or "" when there is none",
+ "characters": "every character of the code with its colour, e.g. "T red, 4 red, y black"",
+ "answer": "exactly what to type"}
+When the image shows no characters at all, reply {"answer": "${UNREADABLE}"}.`;
 
 const modelName = (llm: BaseChatModel) =>
   'modelName' in llm ? String(llm.modelName) : 'model' in llm ? String(llm.model) : 'unknown';
@@ -55,11 +60,40 @@ export interface CaptchaHints {
 function hintText(hints: CaptchaHints): string {
   const lines: string[] = [];
   if (hints.maxLength) {
-    lines.push(`The field takes at most ${hints.maxLength} characters, so the code most likely has exactly that many.`);
+    lines.push(
+      `The field takes at most ${hints.maxLength} characters: the answer is no longer, most likely exactly that long.`,
+    );
   }
   if (hints.placeholder) lines.push(`The field's placeholder reads: "${hints.placeholder}".`);
   if (hints.textAround) lines.push(`Text next to the picture on the page: "${hints.textAround}".`);
   return lines.length > 0 ? `\n\nFrom the page:\n${lines.join('\n')}` : '';
+}
+
+interface CaptchaReading {
+  rule?: string;
+  characters?: string;
+  answer: string | null;
+}
+
+/** The answer in a reply that should be JSON; a model that sends the bare code is read as before */
+export function captchaReading(reply: string): CaptchaReading {
+  const cleaned = reply.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  const json = cleaned.match(/\{[\s\S]*\}/)?.[0];
+  if (json) {
+    try {
+      const parsed = JSON.parse(json) as Record<string, unknown>;
+      if (typeof parsed.answer === 'string' || typeof parsed.answer === 'number') {
+        return {
+          rule: typeof parsed.rule === 'string' ? parsed.rule : undefined,
+          characters: typeof parsed.characters === 'string' ? parsed.characters : undefined,
+          answer: captchaAnswer(String(parsed.answer)),
+        };
+      }
+    } catch {
+      // not JSON after all: read as a bare code below
+    }
+  }
+  return { answer: captchaAnswer(cleaned) };
 }
 
 const textOf = (content: unknown) =>
@@ -108,13 +142,15 @@ export async function readCaptcha(
       TIMEOUT_MS,
     );
     const text = textOf(reply.content);
-    const answer = captchaAnswer(text);
+    const { rule, characters, answer } = captchaReading(text);
     logger.info('model reply', {
       model: modelName(llm),
       attempt,
       ms: Date.now() - started,
-      raw: text.slice(0, 300),
+      rule,
+      characters,
       answer,
+      raw: text.slice(0, 300),
     });
     if (answer === null) throw new CaptchaUnreadableError(text);
     if (!hints.maxLength || answer.length <= hints.maxLength) return answer;
@@ -126,9 +162,8 @@ export async function readCaptcha(
     messages.push(
       new AIMessage(text),
       new HumanMessage(
-        `"${answer}" has ${answer.length} characters, but the field takes only ${hints.maxLength}. Some of what you ` +
-          'read does not belong to the code, most likely characters drawn in another colour than the one asked ' +
-          'for. Look again and reply with the code only.',
+        `"${answer}" has ${answer.length} characters, but the field takes only ${hints.maxLength}, so the rule ` +
+          'leaves some of them out. Look at the picture again for the rule, apply it, and reply with the same JSON.',
       ),
     );
   }
