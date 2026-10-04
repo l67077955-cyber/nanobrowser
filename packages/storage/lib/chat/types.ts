@@ -59,6 +59,8 @@ export type StepMeta =
       model: string;
       latencyMs: number;
       done: boolean;
+      /** once done: what the user would likely ask for next, each a task of its own */
+      followUps?: string[];
     }
   | {
       kind: 'navigator';

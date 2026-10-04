@@ -22,6 +22,7 @@ const plan = (done: boolean, final_answer = ''): AgentOutput<PlannerOutput> => (
     web_task: true,
     schedule: '',
     schedule_task: '',
+    follow_ups: '',
   },
 });
 

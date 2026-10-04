@@ -37,6 +37,8 @@ export const plannerOutputSchema = z.object({
   /** when to run a task the user asked to have done later or repeatedly, e.g. "daily 09:00" */
   schedule: z.string(),
   schedule_task: z.string(),
+  /** once done: up to three tasks the user would likely ask for next, one per line */
+  follow_ups: z.string(),
   web_task: z.union([
     z.boolean(),
     z.string().transform(val => {
@@ -49,9 +51,18 @@ export const plannerOutputSchema = z.object({
 
 export type PlannerOutput = z.infer<typeof plannerOutputSchema>;
 
+/** The planner's follow-ups as tasks: one per line, numbering and bullets dropped, three at most */
+export function cleanedPlanFollowUps(text: string): string[] {
+  return text
+    .split(/\\n|\n/)
+    .map(line => line.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerOutput> {
   // A plan that does not say the task is done leaves it going: the next plan decides again
-  protected override readonly fieldDefaults = { done: false, schedule: '', schedule_task: '' };
+  protected override readonly fieldDefaults = { done: false, schedule: '', schedule_task: '', follow_ups: '' };
 
   constructor(options: BaseAgentOptions, extraOptions?: Partial<ExtraAgentOptions>) {
     super(plannerOutputSchema, options, { ...extraOptions, id: 'planner' });
@@ -97,6 +108,7 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
       const next_steps = stripBoundaryTags(modelOutput.next_steps);
       const challenges = stripBoundaryTags(modelOutput.challenges);
       const reasoning = stripBoundaryTags(modelOutput.reasoning);
+      const followUps = cleanedPlanFollowUps(stripBoundaryTags(modelOutput.follow_ups ?? ''));
 
       const cleanedPlan: PlannerOutput = {
         ...modelOutput,
@@ -114,6 +126,7 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
         model: this.modelName,
         latencyMs,
         done: Boolean(cleanedPlan.done),
+        ...(cleanedPlan.done && followUps.length > 0 ? { followUps } : {}),
       });
       logger.info('Planner output', JSON.stringify(cleanedPlan, null, 2));
 

@@ -335,6 +335,84 @@ button.nb-line:hover .nb-dot {
   font-weight: 600;
 }
 
+/* who did each row: the planner thinks, the navigator's LLM or Jev decides; one hue each, as in the dock */
+.nb-item.by-plan .nb-dot {
+  background: color-mix(in srgb, var(--nb-plan) 13%, var(--nb-page));
+  color: var(--nb-plan);
+}
+.nb-item.by-llm:not(.bad) .nb-dot {
+  background: color-mix(in srgb, var(--nb-llm) 13%, var(--nb-page));
+  color: var(--nb-llm);
+}
+.nb-item.by-jev:not(.bad) .nb-dot {
+  background: color-mix(in srgb, var(--nb-jev) 13%, var(--nb-page));
+  color: var(--nb-jev);
+}
+.nb-item.by-plan:not(.open) .nb-what {
+  overflow: hidden;
+  color: var(--nb-ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nb-who {
+  padding: 4px 2px 0 0;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.nb-who.plan {
+  color: var(--nb-plan);
+}
+.nb-who.llm {
+  color: var(--nb-llm);
+}
+.nb-who.jev {
+  color: var(--nb-jev);
+}
+/* the team on the run's line, like faces on a shared doc */
+.nb-roster {
+  display: inline-flex;
+  margin-left: 2px;
+}
+.nb-roster i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: -4px;
+  border: 1.5px solid var(--nb-page);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 8.5px;
+  font-style: normal;
+  font-weight: 700;
+}
+.nb-roster i:first-child {
+  margin-left: 0;
+}
+.nb-roster i.plan {
+  background: var(--nb-plan);
+}
+.nb-roster i.llm {
+  background: var(--nb-llm);
+}
+.nb-roster i.jev {
+  background: var(--nb-jev);
+}
+/* the live row takes the hue of the agent at work */
+.nb-item.live.phase-planning .nb-pulse,
+.nb-item.live.phase-planning .nb-pulse::after {
+  background: var(--nb-plan);
+}
+.nb-item.live.phase-reading .nb-pulse,
+.nb-item.live.phase-reading .nb-pulse::after,
+.nb-item.live.phase-deciding .nb-pulse,
+.nb-item.live.phase-deciding .nb-pulse::after {
+  background: var(--nb-llm);
+}
+
 /* detailed view: who decided, how sure, how fast, on a line of its own under the sentence */
 .nb-metrics {
   grid-column: 2;
@@ -1319,4 +1397,284 @@ button.nb-line:hover .nb-dot {
 .nb-question {
   border-left: 2px solid var(--nb-llm);
   padding-left: 12px;
+}
+
+/* ---------- the agent, docked above the composer ---------- */
+.nb-dock {
+  --orb: var(--nb-muted);
+  margin-bottom: 6px;
+  border: 1px solid var(--nb-line);
+  border-radius: 14px;
+  background: var(--nb-tile);
+  box-shadow: var(--nb-glow);
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+.nb-dock.phase-planning {
+  --orb: var(--nb-plan);
+}
+.nb-dock.phase-reading,
+.nb-dock.phase-deciding {
+  --orb: var(--nb-llm);
+}
+.nb-dock.phase-acting {
+  --orb: var(--nb-jev);
+}
+.nb-dock.phase-waiting,
+.nb-dock.phase-asking {
+  --orb: var(--nb-warning);
+  border-color: color-mix(in srgb, var(--nb-warning) 45%, var(--nb-line));
+}
+.nb-dock-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 10px;
+}
+.nb-orb {
+  position: relative;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 25%, var(--orb) 60%, transparent 100%);
+  animation: nb-orb-spin 1.4s linear infinite;
+  transition: background 0.3s;
+}
+.nb-orb i {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--orb) 35%, var(--nb-tile)), var(--orb));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--orb) 55%, transparent);
+  animation: nb-orb-core 2.4s ease-in-out infinite;
+}
+.nb-dock.phase-idle .nb-orb {
+  background: color-mix(in srgb, var(--orb) 25%, transparent);
+  animation: none;
+}
+.nb-dock.phase-idle .nb-orb i {
+  box-shadow: none;
+  animation: nb-breathe 3.2s ease-in-out infinite;
+}
+.nb-dock.phase-waiting .nb-orb,
+.nb-dock.phase-asking .nb-orb {
+  animation-duration: 3s;
+}
+@keyframes nb-orb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes nb-orb-core {
+  50% {
+    transform: scale(0.82);
+  }
+}
+.nb-dock-now {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.nb-dock-headline {
+  overflow: hidden;
+  color: var(--nb-ink);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nb-dock-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--nb-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nb-dock-meta svg {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+}
+.nb-dock-resume {
+  flex-shrink: 0;
+  padding: 3px 10px;
+}
+.nb-dock-toggle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--nb-muted);
+  cursor: pointer;
+}
+.nb-dock-toggle:hover {
+  background: var(--nb-tile-2);
+  color: var(--nb-ink);
+}
+.nb-dock-toggle svg {
+  width: 15px;
+  height: 15px;
+  transform: rotate(180deg);
+  transition: transform 0.2s;
+}
+.nb-dock.open .nb-dock-toggle svg {
+  transform: none;
+}
+.nb-dock-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 38vh;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--nb-hair);
+  overflow-y: auto;
+  animation: nb-rise 0.2s ease-out;
+}
+.nb-dock-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nb-dock-plan,
+.nb-dock-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nb-dock-plan li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px;
+  color: var(--nb-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  animation: nb-rise 0.25s ease-out both;
+}
+.nb-dock-plan li:nth-child(2) {
+  animation-delay: 0.05s;
+}
+.nb-dock-plan li:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.nb-dock-plan li.now {
+  color: var(--nb-ink);
+}
+.nb-dock-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--nb-line);
+  border-radius: 50%;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.nb-dock-plan li.now .nb-dock-n {
+  border-color: var(--orb);
+  background: var(--orb);
+  color: var(--nb-tile);
+}
+.nb-dock-queue li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--nb-ink-2);
+  font-size: 12.5px;
+}
+.nb-dock-queue li > svg {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--nb-muted);
+}
+.nb-dock-queue li > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nb-dock-queue button {
+  display: flex;
+  padding: 3px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--nb-muted);
+  cursor: pointer;
+}
+.nb-dock-queue button:hover {
+  background: var(--nb-tile-2);
+  color: var(--nb-critical);
+}
+.nb-dock-queue button svg {
+  width: 12px;
+  height: 12px;
+}
+.nb-dock-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.nb-dock-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid var(--nb-line);
+  border-radius: 999px;
+  background: var(--nb-tile-2);
+  color: var(--nb-ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.nb-dock-chip span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nb-dock-chip svg {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--nb-muted);
+}
+.nb-dock-chip:hover {
+  border-color: var(--nb-plan);
+  background: var(--nb-tile);
+}
+.nb-dock-chip:hover svg {
+  color: var(--nb-plan);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-orb,
+  .nb-orb i,
+  .nb-dock-body,
+  .nb-dock-plan li {
+    animation: none;
+  }
 }

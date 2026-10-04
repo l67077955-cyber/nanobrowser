@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { FiPause, FiPlay, FiTrash2 } from 'react-icons/fi';
 
 /** "Today 09:00", "Tomorrow 09:00", "Fri 09:00", or a date further out */
-function formatWhen(time: number): string {
+export function formatWhen(time: number): string {
   const date = new Date(time);
   const clock = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const days = Math.round((new Date(time).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86_400_000);

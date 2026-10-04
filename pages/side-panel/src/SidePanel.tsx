@@ -9,6 +9,7 @@ import ContextPeek from './components/ModelView';
 import Welcome from './components/Welcome';
 import { latestView, withoutPageText } from './components/steps';
 import ChatInput from './components/ChatInput';
+import AgentDock from './components/AgentDock';
 import ChatHistoryList from './components/ChatHistoryList';
 import BookmarkList from './components/BookmarkList';
 import WindowToggleButton, { useHandedOffSession } from './components/WindowToggleButton';
@@ -65,6 +66,10 @@ const SidePanel = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [isReplaying, setIsReplaying] = useState(false);
+  /** goals the user lined up while a task ran: each starts on its own once the one before is done */
+  const [queue, setQueue] = useState<{ text: string; display?: string }[]>([]);
+  /** the queue waits for the user: the goal before it failed or was stopped */
+  const [queueHeld, setQueueHeld] = useState(false);
   const [replayEnabled, setReplayEnabled] = useState(false);
   const sessionIdRef = useRef<string | null>(null);
   const isReplayingRef = useRef<boolean>(false);
@@ -176,6 +181,7 @@ const SidePanel = () => {
               setIsHistoricalSession(false);
               break;
             case ExecutionState.TASK_OK:
+              setQueueHeld(false);
               setActivity(null);
               setPendingConfirmation(null);
               setAwaitingReply(false);
@@ -185,6 +191,7 @@ const SidePanel = () => {
               setIsReplaying(false);
               break;
             case ExecutionState.TASK_FAIL:
+              setQueueHeld(true);
               setActivity(null);
               setPendingConfirmation(null);
               setAwaitingReply(false);
@@ -195,6 +202,7 @@ const SidePanel = () => {
               skip = false;
               break;
             case ExecutionState.TASK_CANCEL:
+              setQueueHeld(true);
               setActivity(null);
               setPendingConfirmation(null);
               setAwaitingReply(false);
@@ -775,12 +783,36 @@ const SidePanel = () => {
     }
   };
 
+  // The loop: once a goal is done the next one in the queue starts, after a moment to show the answer
+  const sendRef = useRef(handleSendMessage);
+  sendRef.current = handleSendMessage;
+  const advancingRef = useRef(false);
+  useEffect(() => {
+    if (showStopButton || queueHeld || !inputEnabled || queue.length === 0 || advancingRef.current) return;
+    const timer = window.setTimeout(() => {
+      const [next, ...rest] = queue;
+      setQueue(rest);
+      advancingRef.current = true;
+      void sendRef.current(next.text, next.display).finally(() => {
+        advancingRef.current = false;
+      });
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [showStopButton, queueHeld, inputEnabled, queue]);
+
+  const handleQueue = (text: string, display?: string) => {
+    if (!text.trim()) return;
+    setQueue(prev => [...prev, { text, display }]);
+  };
+
   const handleConfirmAction = (approved: boolean) => {
     portRef.current?.postMessage({ type: 'confirm_action', approved });
     setPendingConfirmation(null);
   };
 
   const handleStopTask = async () => {
+    // stopping one goal is not a go-ahead for the next
+    setQueueHeld(true);
     try {
       portRef.current?.postMessage({
         type: 'cancel_task',
@@ -812,6 +844,8 @@ const SidePanel = () => {
     setShowStopButton(false);
     setIsFollowUpMode(false);
     setIsHistoricalSession(false);
+    setQueue([]);
+    setQueueHeld(false);
 
     // Disconnect any existing connection
     stopConnection();
@@ -850,6 +884,8 @@ const SidePanel = () => {
         setSessionTitle(fullSession.title);
         setMessages(fullSession.messages);
         setActivity(null);
+        setQueue([]);
+        setQueueHeld(false);
         followRef.current = true;
         setAwayFromEnd(false);
         // A message sent from here continues the session: the background reloads its context
@@ -1231,6 +1267,18 @@ const SidePanel = () => {
           {t('chat_jumpToLatest')}
         </button>
       )}
+      {(messages.length > 0 || showStopButton) && (
+        <AgentDock
+          messages={messages}
+          running={showStopButton}
+          activity={activity}
+          queue={queue.map(goal => goal.display ?? goal.text)}
+          queueHeld={queueHeld}
+          onUnqueue={index => setQueue(prev => prev.filter((_, i) => i !== index))}
+          onResumeQueue={() => setQueueHeld(false)}
+          onPick={task => void handleSendMessage(task)}
+        />
+      )}
       {pendingConfirmation !== null && (
         <div role="alertdialog" aria-label={pendingConfirmation} className="nb-confirm">
           <p title={pendingConfirmation}>{pendingConfirmation}</p>
@@ -1257,6 +1305,7 @@ const SidePanel = () => {
         historicalSessionId={isHistoricalSession && replayEnabled ? currentSessionId : null}
         onReplay={handleReplay}
         aside={modelView && messages.length > 0 && <ContextPeek view={modelView} live={showStopButton} />}
+        onQueue={isReplaying ? undefined : handleQueue}
       />
     </div>
   );

@@ -1,5 +1,15 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { FiMic, FiPaperclip, FiX, FiFileText, FiLoader, FiSquare, FiRotateCcw, FiArrowUp } from 'react-icons/fi';
+import {
+  FiMic,
+  FiPaperclip,
+  FiX,
+  FiFileText,
+  FiLoader,
+  FiSquare,
+  FiRotateCcw,
+  FiArrowUp,
+  FiCornerDownRight,
+} from 'react-icons/fi';
 import { t } from '@extension/i18n';
 import ActionModePicker, { cycleActionMode } from './ActionModePicker';
 
@@ -19,6 +29,8 @@ interface ChatInputProps {
   onReplay?: (sessionId: string) => void;
   /** sits in the toolbar between the attach buttons and Send, so it costs no height of its own */
   aside?: React.ReactNode;
+  /** while a task runs: keep the message as the next goal instead of telling it to the task (Alt+Enter) */
+  onQueue?: (text: string, displayText?: string) => void;
 }
 
 // File attachment interface
@@ -41,6 +53,7 @@ export default function ChatInput({
   historicalSessionId,
   onReplay,
   aside,
+  onQueue,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
@@ -72,7 +85,7 @@ export default function ChatInput({
   }, [text]);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.FormEvent, queue = false) => {
       e.preventDefault();
       const trimmedText = text.trim();
 
@@ -100,19 +113,20 @@ export default function ChatInput({
           displayContent = trimmedText ? `${trimmedText}\n\n${fileList}` : fileList;
         }
 
-        onSendMessage(messageContent, displayContent);
+        if (queue && onQueue) onQueue(messageContent, displayContent);
+        else onSendMessage(messageContent, displayContent);
         setText('');
         setAttachedFiles([]);
       }
     },
-    [text, attachedFiles, onSendMessage],
+    [text, attachedFiles, onSendMessage, onQueue],
   );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
-        handleSubmit(e);
+        handleSubmit(e, e.altKey && showStopButton);
       }
       // as in Claude Code: Shift+Tab steps through the action modes
       if (e.key === 'Tab' && e.shiftKey) {
@@ -120,7 +134,7 @@ export default function ChatInput({
         void cycleActionMode();
       }
     },
-    [handleSubmit],
+    [handleSubmit, showStopButton],
   );
 
   const handleReplay = useCallback(() => {
@@ -309,6 +323,16 @@ export default function ChatInput({
                 className="flex items-center gap-1.5 rounded-full border border-nb-line bg-nb-tile-2 px-3 py-1 text-[12.5px] font-medium text-nb-ink transition-colors hover:border-nb-muted">
                 <FiRotateCcw className="size-3.5" />
                 {t('chat_buttons_replay')}
+              </button>
+            )}
+            {showStopButton && onQueue && !isSendButtonDisabled && (
+              <button
+                type="button"
+                onClick={e => handleSubmit(e, true)}
+                aria-label={t('chat_buttons_queue')}
+                title={t('chat_buttons_queue')}
+                className="flex size-7 items-center justify-center rounded-full border border-nb-line bg-nb-tile-2 text-nb-ink-2 transition-colors hover:border-nb-muted hover:text-nb-ink">
+                <FiCornerDownRight className="size-3.5" />
               </button>
             )}
             {!(showStopButton && isSendButtonDisabled) && (

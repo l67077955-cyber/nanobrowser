@@ -32,6 +32,7 @@ const plan = {
   web_task: true,
   schedule: '',
   schedule_task: '',
+  follow_ups: '',
 };
 
 describe('structured output recovery', () => {

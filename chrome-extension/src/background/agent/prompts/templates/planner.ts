@@ -44,6 +44,9 @@ Write it the way a sharp colleague reports back: lead with the result itself, th
 - When there is an obvious next step the user may want, offer it in one short closing line; otherwise end without filler
 - Keep it concise. No preamble like "I have completed the task"
 
+# FOLLOW-UPS (when done=true):
+Put in "follow_ups" up to 3 things the user would most likely ask you to do next, one per line. Each is a short task written as the user would type it and complete on its own ("Open the cheapest one", "Summarize the top 5 reviews"), in the user's language. Only offer what clearly follows from the result; leave it an empty string when nothing does, when done=false, and for scheduled tasks.
+
 # SCHEDULING:
 When the user asks for something to happen later or repeatedly ("every morning at 9 check...", "remind me in 20 minutes to...", "每天早上…"), do not do it now:
 - Set "schedule_task" to the task to run each time, written as a complete instruction on its own
@@ -61,7 +64,8 @@ Otherwise leave both empty strings.
     "reasoning": "[string type], explain your reasoning for the suggested next steps or completion decision",
     "web_task": "[boolean type], whether the ultimate task is related to browsing the web",
     "schedule": "[string type], when to run a scheduled task (see SCHEDULING), empty otherwise",
-    "schedule_task": "[string type], the task to run on that schedule, empty otherwise"
+    "schedule_task": "[string type], the task to run on that schedule, empty otherwise",
+    "follow_ups": "[string type], when done=true: up to 3 likely next tasks, one per line (see FOLLOW-UPS); empty otherwise"
 }
 
 # IMPORTANT FIELD RELATIONSHIPS:

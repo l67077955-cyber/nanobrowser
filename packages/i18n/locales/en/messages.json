@@ -1838,5 +1838,46 @@
   },
   "options_general_unit_steps": {
     "message": "steps"
+  },
+  "dock_upNext": {
+    "message": "Up next"
+  },
+  "dock_queued": {
+    "message": "Then"
+  },
+  "dock_suggested": {
+    "message": "Next, maybe"
+  },
+  "dock_ready": {
+    "message": "Ready for the next thing"
+  },
+  "dock_idle": {
+    "message": "Idle"
+  },
+  "dock_queuePaused": {
+    "message": "Queue paused"
+  },
+  "dock_resume": {
+    "message": "Resume"
+  },
+  "dock_unqueue": {
+    "message": "Remove from the queue"
+  },
+  "dock_step": {
+    "message": "step $N$",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "dock_nextRoutine": {
+    "message": "Next routine"
+  },
+  "dock_toggle_a11y": {
+    "message": "Show or hide the plan"
+  },
+  "chat_buttons_queue": {
+    "message": "Do this next (Alt+Enter)"
   }
 }

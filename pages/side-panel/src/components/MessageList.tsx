@@ -292,13 +292,8 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
   const steps =
     stats.steps === 0 ? '' : stats.steps === 1 ? t('chat_work_steps_one') : t('chat_work_steps', [String(stats.steps)]);
 
-  // the planner's thinking is kept for the detailed view; the trail says what was done, not what was weighed
-  const trail = useMemo(
-    () =>
-      detailed || stats.steps === 0 ? entries : entries.filter(entry => entry.message.meta?.kind !== 'planner'),
-    [entries, detailed, stats.steps],
-  );
-  const folded = showAll ? 0 : Math.max(0, trail.length - VISIBLE_STEPS);
+  const roster = useMemo(() => crew(entries), [entries]);
+  const folded = showAll ? 0 : Math.max(0, entries.length - VISIBLE_STEPS);
 
   return (
     <div className={`nb-work${open ? ' open' : ''}${running ? ' running' : ''}`}>
@@ -309,6 +304,15 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
           </span>
           <span className="nb-work-title">{title}</span>
           {steps && <span className="nb-work-steps">· {steps}</span>}
+          {roster.length > 1 && (
+            <span className="nb-roster" title={roster.map(agent => AGENTS[agent].name).join(' · ')}>
+              {roster.map(agent => (
+                <i key={agent} className={agent}>
+                  {AGENTS[agent].name[0]}
+                </i>
+              ))}
+            </span>
+          )}
           <FiChevronDown className="nb-chevron" aria-hidden />
         </button>
         {detailed && stats.steps > 0 && <SummaryChip stats={stats} />}
@@ -321,7 +325,7 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
             </button>
           )}
           <ol className="nb-trail">
-            {trail.slice(folded).map(entry => (
+            {entries.slice(folded).map(entry => (
               <TrailEntry
                 key={`${entry.message.actor}-${entry.message.timestamp}-${entry.index}`}
                 entry={entry}
@@ -337,7 +341,7 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
   );
 }
 
-function liveText(activity: Activity | null): string {
+export function liveText(activity: Activity | null): string {
   switch (activity?.phase) {
     case 'planning':
       return t('chat_live_planning');
@@ -360,7 +364,7 @@ function liveText(activity: Activity | null): string {
 
 function LiveItem({ activity }: { activity: Activity | null }) {
   return (
-    <li className="nb-item live" aria-live="polite">
+    <li className={`nb-item live phase-${activity?.phase ?? 'idle'}`} aria-live="polite">
       <div className="nb-line">
         <span className="nb-dot">
           <i className="nb-pulse" />
@@ -427,9 +431,10 @@ function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: nu
   const more = meta.actions.length - 1;
   const pick = byJev && jev ? (jev.targetConfidence ?? jev.confidence) : undefined;
   const pickFloor = jev?.targetConfidence !== undefined ? floors.target : floors.operation;
+  const agent: Agent = byJev ? 'jev' : 'llm';
 
   return (
-    <li className={`nb-item${open ? ' open' : ''}${failed.length > 0 ? ' bad' : ''}`}>
+    <li className={`nb-item by-${agent}${open ? ' open' : ''}${failed.length > 0 ? ' bad' : ''}`}>
       <button
         type="button"
         className="nb-line"
@@ -447,6 +452,7 @@ function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: nu
           {/* the model's reasoning is one click away, so a run reads as one line per step */}
           {reason && (detailed || open) && <span className="nb-why">{reason}</span>}
         </span>
+        {!detailed && <Who agent={agent} model={meta.model} />}
         {detailed && (
           <span className="nb-metrics">
             <span className={`nb-chip ${byJev ? 'jev' : 'llm'}`} title={meta.model}>
@@ -533,15 +539,17 @@ function PlanItem({ meta, content, detailed }: { meta: PlannerMeta; content: str
   const lines = planLines(content);
 
   return (
-    <li className={`nb-item plan${open ? ' open' : ''}`}>
+    <li className={`nb-item plan by-plan${open ? ' open' : ''}`}>
       <button type="button" className="nb-line" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="nb-dot">
           <FiCompass />
         </span>
         <span className="nb-say">
-          <span className="nb-what">{t('chat_step_plan')}</span>
-          {!open && lines[0] && <span className="nb-why">{lines[0]}</span>}
+          <span className="nb-what" title={open ? undefined : lines[0]}>
+            {lines[0] ?? t('chat_step_plan')}
+          </span>
         </span>
+        {!detailed && <Who agent="plan" model={meta.model} />}
         {detailed && (
           <span className="nb-metrics">
             <span className="nb-chip plan" title={meta.model}>
@@ -562,6 +570,35 @@ function PlanItem({ meta, content, detailed }: { meta: PlannerMeta; content: str
         </div>
       )}
     </li>
+  );
+}
+
+/** Who did a row: the planner thinks, the navigator's LLM or Jev decides each step */
+type Agent = 'plan' | 'llm' | 'jev';
+
+const AGENTS: Record<Agent, { name: string }> = {
+  plan: { name: 'Planner' },
+  llm: { name: 'Navigator' },
+  jev: { name: 'Jev' },
+};
+
+/** The agents that took part in a run, in the order they first did something */
+function crew(entries: Entry[]): Agent[] {
+  const seen = new Set<Agent>();
+  for (const { message } of entries) {
+    const meta = message.meta;
+    if (meta?.kind === 'planner') seen.add('plan');
+    else if (meta?.kind === 'navigator') seen.add(meta.engine === 'jev' ? 'jev' : 'llm');
+  }
+  return [...seen];
+}
+
+/** The agent's name at the end of its row; the model behind it on hover */
+function Who({ agent, model }: { agent: Agent; model: string }) {
+  return (
+    <span className={`nb-who ${agent}`} title={model}>
+      {AGENTS[agent].name}
+    </span>
   );
 }
 
