@@ -139,69 +139,6 @@
       }
     }
   },
-  "chat_stt_processing": {
-    "message": "Processing speech..."
-  },
-  "chat_stt_recording_stop": {
-    "message": "Stop recording"
-  },
-  "chat_stt_input_start": {
-    "message": "Start voice input"
-  },
-  "chat_stt_processingFailed": {
-    "message": "Failed to process speech recording"
-  },
-  "chat_stt_model_notFound": {
-    "message": "No speech-to-text model configured or not a Gemini model. Please configure a Gemini model in settings."
-  },
-  "chat_stt_recognitionFailed": {
-    "message": "Speech recognition failed"
-  },
-  "chat_stt_microphone_permissionDenied": {
-    "message": "Microphone access denied. Please enable microphone permissions in browser settings."
-  },
-  "chat_stt_microphone_accessFailed": {
-    "message": "Failed to access microphone. "
-  },
-  "chat_stt_microphone_grantPermission": {
-    "message": "Please grant microphone permission."
-  },
-  "chat_stt_microphone_notFound": {
-    "message": "No microphone found."
-  },
-  "permissions_microphone_title": {
-    "message": "Enable Voice Input"
-  },
-  "permissions_microphone_description": {
-    "message": "Nanobrowser needs microphone access to convert your speech to text."
-  },
-  "permissions_microphone_grantButton": {
-    "message": "Grant Microphone Permission"
-  },
-  "permissions_microphone_requesting": {
-    "message": "Requesting microphone permission..."
-  },
-  "permissions_microphone_grantedSuccess": {
-    "message": "✅ Microphone permission granted! You can now use voice input."
-  },
-  "permissions_microphone_grantedButton": {
-    "message": "Permission Granted"
-  },
-  "permissions_microphone_denied": {
-    "message": "Permission denied. "
-  },
-  "permissions_microphone_allowHelp": {
-    "message": "Please click \"Allow\" when prompted for microphone access."
-  },
-  "permissions_microphone_notFound": {
-    "message": "No microphone found. Please check your audio devices."
-  },
-  "permissions_microphone_alreadyGranted": {
-    "message": "✅ Microphone permission already granted!"
-  },
-  "permissions_microphone_alreadyGrantedButton": {
-    "message": "Permission Already Granted"
-  },
   "options_nav_header": {
     "message": "Settings"
   },
@@ -325,9 +262,6 @@
   "options_models_selection_header": {
     "message": "Model Selection"
   },
-  "options_models_speechToText_header": {
-    "message": "Speech-to-Text Model"
-  },
   "options_models_agents_navigator": {
     "message": "Navigates websites and performs actions"
   },
@@ -381,9 +315,6 @@
   },
   "options_models_captcha_anyModelHint": {
     "message": "The list shows models of this provider; type the name of any other one that accepts images."
-  },
-  "options_models_stt_desc": {
-    "message": "Configure the Gemini model used for converting speech to text when using the microphone feature."
   },
   "options_models_chooseModel": {
     "message": "Choose Model"
@@ -546,12 +477,6 @@
   },
   "bg_cmd_nohighlight_ok": {
     "message": "highlight removed"
-  },
-  "bg_cmd_stt_noAudioData": {
-    "message": "No audio data provided"
-  },
-  "bg_cmd_stt_failed": {
-    "message": "Speech recognition failed"
   },
   "bg_cmd_replay_noHistory": {
     "message": "No history session ID provided"

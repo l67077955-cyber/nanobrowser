@@ -12,7 +12,6 @@ import { Button } from '@extension/ui';
 import {
   llmProviderStore,
   agentModelStore,
-  speechToTextModelStore,
   AgentNameEnum,
   llmProviderModelNames,
   ProviderTypeEnum,
@@ -88,7 +87,6 @@ export const ModelSettings = () => {
   >([]);
   // State for model input handling
 
-  const [selectedSpeechToTextModel, setSelectedSpeechToTextModel] = useState<string>('');
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -155,20 +153,6 @@ export const ModelSettings = () => {
     loadAgentModels();
     // a model chosen in another settings tab shows up here
     return agentModelStore.subscribe(loadAgentModels);
-  }, []);
-
-  useEffect(() => {
-    const loadSpeechToTextModel = async () => {
-      try {
-        const config = await speechToTextModelStore.getSpeechToTextModel();
-        setSelectedSpeechToTextModel(config ? `${config.provider}>${config.modelName}` : '');
-      } catch (error) {
-        console.error('Error loading speech-to-text model:', error);
-      }
-    };
-
-    loadSpeechToTextModel();
-    return speechToTextModelStore.subscribe(loadSpeechToTextModel);
   }, []);
 
   // Auto-focus the input field when a new provider is added
@@ -711,28 +695,6 @@ export const ModelSettings = () => {
       } catch (error) {
         console.error('Error saving agent parameters:', error);
       }
-    }
-  };
-
-  const handleSpeechToTextModelChange = async (modelValue: string) => {
-    setSelectedSpeechToTextModel(modelValue);
-
-    try {
-      if (modelValue) {
-        // Parse the "provider>model" format
-        const [provider, modelName] = modelValue.split('>');
-
-        // Save to proper storage
-        await speechToTextModelStore.setSpeechToTextModel({
-          provider,
-          modelName,
-        });
-      } else {
-        // Reset if no model selected
-        await speechToTextModelStore.resetSpeechToTextModel();
-      }
-    } catch (error) {
-      console.error('Error saving speech-to-text model:', error);
     }
   };
 
@@ -1663,39 +1625,6 @@ export const ModelSettings = () => {
         providers={Object.fromEntries(Object.entries(providers).filter(([id]) => providersFromStorage.has(id)))}
       />
 
-      {/* Speech-to-Text Model Selection */}
-      <div className={`rounded-xl border border-nb-line bg-nb-tile p-6 text-left shadow-nb`}>
-        <h2 className={`mb-4 text-left text-base font-semibold tracking-tight text-nb-ink`}>
-          {t('options_models_speechToText_header')}
-        </h2>
-        <p className={`mb-4 text-sm text-nb-muted`}>{t('options_models_stt_desc')}</p>
-
-        <div className={`rounded-lg border border-nb-hair bg-nb-tile-2 p-4`}>
-          <div className="flex items-center">
-            <label htmlFor="speech-to-text-model" className={`w-24 text-sm font-medium text-nb-ink-2`}>
-              {t('options_models_labels_model')}
-            </label>
-            <select
-              id="speech-to-text-model"
-              className={`flex-1 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-sm text-nb-ink focus:border-nb-llm focus:outline-none`}
-              value={selectedSpeechToTextModel}
-              onChange={e => handleSpeechToTextModelChange(e.target.value)}>
-              <option value="">{t('options_models_chooseModel')}</option>
-              {/* Filter available models to show only Gemini models */}
-              {availableModels
-                .filter(({ provider }) => {
-                  const providerConfig = providers[provider];
-                  return providerConfig?.type === ProviderTypeEnum.Gemini;
-                })
-                .map(({ provider, providerName, model }) => (
-                  <option key={`${provider}>${model}`} value={`${provider}>${model}`}>
-                    {`${providerName} > ${model}`}
-                  </option>
-                ))}
-            </select>
-          </div>
-        </div>
-      </div>
     </section>
   );
 };

@@ -1,10 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  FiMic,
   FiPaperclip,
   FiX,
   FiFileText,
-  FiLoader,
   FiSquare,
   FiRotateCcw,
   FiArrowUp,
@@ -16,9 +14,6 @@ import ActionModePicker, { cycleActionMode } from './ActionModePicker';
 interface ChatInputProps {
   onSendMessage: (text: string, displayText?: string) => void;
   onStopTask: () => void;
-  onMicClick?: () => void;
-  isRecording?: boolean;
-  isProcessingSpeech?: boolean;
   disabled: boolean;
   showStopButton: boolean;
   /** what the empty field says: it differs for a new chat, a follow-up and a task under way */
@@ -43,9 +38,6 @@ interface AttachedFile {
 export default function ChatInput({
   onSendMessage,
   onStopTask,
-  onMicClick,
-  isRecording = false,
-  isProcessingSpeech = false,
   disabled,
   showStopButton,
   placeholder,
@@ -268,36 +260,6 @@ export default function ChatInput({
               className="hidden"
               aria-hidden="true"
             />
-
-            {onMicClick && (
-              <button
-                type="button"
-                onClick={onMicClick}
-                disabled={disabled || isProcessingSpeech}
-                aria-label={
-                  isProcessingSpeech
-                    ? t('chat_stt_processing')
-                    : isRecording
-                      ? t('chat_stt_recording_stop')
-                      : t('chat_stt_input_start')
-                }
-                className={
-                  isRecording
-                    ? 'flex items-center gap-1.5 rounded-md bg-nb-tile-2 px-2 py-1 text-[11.5px] font-medium text-nb-critical'
-                    : iconButton
-                }>
-                {isProcessingSpeech ? (
-                  <FiLoader className="size-4 animate-spin" />
-                ) : isRecording ? (
-                  <>
-                    <span className="size-2 animate-pulse rounded-full bg-nb-critical" />
-                    {t('chat_stt_recording_stop')}
-                  </>
-                ) : (
-                  <FiMic className="size-4" />
-                )}
-              </button>
-            )}
           </div>
 
           <ActionModePicker />

@@ -139,69 +139,6 @@
       }
     }
   },
-  "chat_stt_processing": {
-    "message": "Processando fala..."
-  },
-  "chat_stt_recording_stop": {
-    "message": "Parar gravação"
-  },
-  "chat_stt_input_start": {
-    "message": "Iniciar entrada de voz"
-  },
-  "chat_stt_processingFailed": {
-    "message": "Falha ao processar gravação de fala"
-  },
-  "chat_stt_model_notFound": {
-    "message": "Nenhum modelo de conversão de fala para texto configurado ou não é um modelo Gemini. Por favor, configure um modelo Gemini nas configurações."
-  },
-  "chat_stt_recognitionFailed": {
-    "message": "Reconhecimento de fala falhou"
-  },
-  "chat_stt_microphone_permissionDenied": {
-    "message": "Acesso ao microfone negado. Por favor, ative as permissões de microfone nas configurações do navegador."
-  },
-  "chat_stt_microphone_accessFailed": {
-    "message": "Falha ao acessar o microfone. "
-  },
-  "chat_stt_microphone_grantPermission": {
-    "message": "Por favor, conceda permissão ao microfone."
-  },
-  "chat_stt_microphone_notFound": {
-    "message": "Nenhum microfone encontrado."
-  },
-  "permissions_microphone_title": {
-    "message": "Ativar Entrada de Voz"
-  },
-  "permissions_microphone_description": {
-    "message": "O Nanobrowser precisa de acesso ao microfone para converter sua fala em texto."
-  },
-  "permissions_microphone_grantButton": {
-    "message": "Conceder Permissão ao Microfone"
-  },
-  "permissions_microphone_requesting": {
-    "message": "Solicitando permissão de microfone..."
-  },
-  "permissions_microphone_grantedSuccess": {
-    "message": "✅ Permissão de microfone concedida! Agora você pode usar a entrada de voz."
-  },
-  "permissions_microphone_grantedButton": {
-    "message": "Permissão Concedida"
-  },
-  "permissions_microphone_denied": {
-    "message": "Permissão negada. "
-  },
-  "permissions_microphone_allowHelp": {
-    "message": "Por favor, clique em \"Permitir\" quando solicitado o acesso ao microfone."
-  },
-  "permissions_microphone_notFound": {
-    "message": "Nenhum microfone encontrado. Por favor, verifique seus dispositivos de áudio."
-  },
-  "permissions_microphone_alreadyGranted": {
-    "message": "✅ Permissão de microfone já concedida!"
-  },
-  "permissions_microphone_alreadyGrantedButton": {
-    "message": "Permissão Já Concedida"
-  },
   "options_nav_header": {
     "message": "Configurações"
   },
@@ -325,9 +262,6 @@
   "options_models_selection_header": {
     "message": "Seleção de Modelo"
   },
-  "options_models_speechToText_header": {
-    "message": "Modelo de Fala para Texto"
-  },
   "options_models_agents_navigator": {
     "message": "Navega em sites e executa ações"
   },
@@ -372,9 +306,6 @@
   },
   "options_models_captcha_anyModelHint": {
     "message": "The list shows models of this provider; type the name of any other one that accepts images."
-  },
-  "options_models_stt_desc": {
-    "message": "Configure o modelo Gemini usado para converter fala em texto ao usar o recurso de microfone."
   },
   "options_models_chooseModel": {
     "message": "Escolher Modelo"
@@ -537,12 +468,6 @@
   },
   "bg_cmd_nohighlight_ok": {
     "message": "destaque removido"
-  },
-  "bg_cmd_stt_noAudioData": {
-    "message": "Nenhum dado de áudio fornecido"
-  },
-  "bg_cmd_stt_failed": {
-    "message": "Reconhecimento de fala falhou"
   },
   "bg_cmd_replay_noHistory": {
     "message": "Nenhum ID de sessão de histórico fornecido"
