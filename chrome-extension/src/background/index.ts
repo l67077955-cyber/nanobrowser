@@ -679,6 +679,14 @@ async function setupExecutor(
       reasoningEffort: 'minimal',
     });
   }
+  logger.info(
+    '[captcha] model:',
+    captchaModel && captchaProviderConfig
+      ? `${captchaModel.modelName} (captcha setting)`
+      : captchaLLM
+        ? `${navigatorModel.modelName} (Navigator, vision on)`
+        : 'none',
+  );
 
   memoryLLM = plannerLLM ?? navigatorLLM;
   const memoryContext = [

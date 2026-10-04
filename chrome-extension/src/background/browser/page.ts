@@ -1246,6 +1246,26 @@ export default class Page {
       window.visualViewport?.pageTop ?? window.scrollY,
     ]);
     const scale = Math.min(4, Math.max(1, Math.round(CAPTCHA_TARGET_HEIGHT / box.height)));
+    // which element was taken, and the text around it: a colour instruction may live outside the picture
+    const described = await image
+      .evaluate(el => {
+        const src = el.getAttribute('src') ?? '';
+        const around = (el.closest('div, form, li, td') ?? el.parentElement)?.textContent ?? '';
+        return {
+          element: `<${el.tagName.toLowerCase()} id="${el.id}" class="${el.getAttribute('class') ?? ''}">`,
+          src: src.length > 120 ? `${src.slice(0, 120)}…` : src,
+          natural: el instanceof HTMLImageElement ? `${el.naturalWidth}x${el.naturalHeight}` : '',
+          textAround: around.replace(/\s+/g, ' ').trim().slice(0, 200),
+        };
+      })
+      .catch(() => null);
+    logger.info('[captcha] image', {
+      ...described,
+      box: `${Math.round(box.width)}x${Math.round(box.height)} at ${Math.round(box.x)},${Math.round(box.y)}`,
+      scale,
+      refresh,
+      byImageIndex: imageNode !== undefined,
+    });
     const screenshot = await this._puppeteerPage.screenshot({
       encoding: 'base64',
       type: 'png',

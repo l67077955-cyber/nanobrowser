@@ -1,6 +1,9 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage } from '@langchain/core/messages';
 import { withModelTimeout } from '../agent/agents/errors';
+import { createLogger } from '../log';
+
+const logger = createLogger('Captcha');
 
 const TIMEOUT_MS = 45000;
 // Codes are a handful of characters; a longer reply is the model talking instead of reading
@@ -18,6 +21,9 @@ Reply with exactly what has to be typed into that field and nothing else, no exp
 - An arithmetic question such as "3 + 5 = ?": reply with its result only.
 Keep upper and lower case as shown and ignore noise lines and dots. Give your best reading even when the
 image is hard to read; reply ${UNREADABLE} only when it shows no characters at all.`;
+
+const modelName = (llm: BaseChatModel) =>
+  'modelName' in llm ? String(llm.modelName) : 'model' in llm ? String(llm.model) : 'unknown';
 
 /** The model answered, but not with a code: the image is unclear or the model does not read images */
 export class CaptchaUnreadableError extends Error {
@@ -42,6 +48,16 @@ export function captchaAnswer(reply: string): string | null {
  * @param image base64 PNG
  */
 export async function readCaptcha(llm: BaseChatModel, image: string, signal: AbortSignal): Promise<string> {
+  const dataUrl = `data:image/png;base64,${image}`;
+  // the picture the model gets, drawn in the console; the data URL can also be opened in a tab
+  console.info(
+    '%c[Captcha] sent to model (%d KB):%c ',
+    'font-weight:bold',
+    Math.round((image.length * 3) / 4 / 1024),
+    `font-size:1px;padding:30px 120px;background:url(${dataUrl}) left center/contain no-repeat`,
+  );
+  logger.info('image data URL (paste into a tab to view):', dataUrl);
+  const started = Date.now();
   const reply = await withModelTimeout(
     'The captcha model',
     signal,
@@ -64,6 +80,12 @@ export async function readCaptcha(llm: BaseChatModel, image: string, signal: Abo
       ? reply.content
       : reply.content.map(part => (part.type === 'text' ? String(part.text) : '')).join('');
   const answer = captchaAnswer(text);
+  logger.info('model reply', {
+    model: modelName(llm),
+    ms: Date.now() - started,
+    raw: text.slice(0, 300),
+    answer,
+  });
   if (answer === null) throw new CaptchaUnreadableError(text);
   return answer;
 }
