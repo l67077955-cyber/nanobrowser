@@ -18,6 +18,7 @@ import {
   getPageText as _getPageText,
 } from './dom/service';
 import { findThroughShadowRoots } from './dom/shadowPath';
+import { AGENT_MARK_ID, drawAgentMark, removeAgentMark, setAgentMarkVisible } from './agentMark';
 import { DOMElementNode, type DOMState } from './dom/views';
 import {
   type BrowserContextConfig,
@@ -225,6 +226,25 @@ export default class Page {
     if (this._config.displayHighlights && this._validWebPage) {
       await _removeHighlights(this._tabId);
     }
+  }
+
+  /** Shows the user, on the page, the element the agent is about to act on (see agentMark.ts) */
+  private async markAgentTarget(element: ElementHandle, verb: string, elementNode: DOMElementNode): Promise<void> {
+    if (!this._puppeteerPage) return;
+    try {
+      const label = elementNode.highlightIndex != null ? `${verb} [${elementNode.highlightIndex}]` : verb;
+      const box = await element.boundingBox();
+      await this._puppeteerPage.evaluate(drawAgentMark, AGENT_MARK_ID, label, box);
+    } catch (error) {
+      // only a hint for the user: the action goes on without it
+      logger.debug('Failed to mark the element acted on:', error);
+    }
+  }
+
+  /** Takes the agent's mark off the page, when the task is over */
+  async clearAgentMark(): Promise<void> {
+    if (!this._puppeteerPage || !this._validWebPage) return;
+    await this._puppeteerPage.evaluate(removeAgentMark, AGENT_MARK_ID).catch(() => {});
   }
 
   async getClickableElements(showHighlightElements: boolean, focusElement: number): Promise<DOMState | null> {
@@ -475,7 +495,7 @@ export default class Page {
       }
 
       // Take screenshot if needed
-      const screenshot = useVision ? await this.takeScreenshot() : null;
+      const screenshot = useVision ? await this.screenshotWithoutMark() : null;
       const [scrollY, visualViewportHeight, scrollHeight] = await this.getScrollInfo();
 
       // update the state
@@ -501,6 +521,17 @@ export default class Page {
       }
       // Otherwise return last known good state
       return this._state;
+    }
+  }
+
+  /** A screenshot for the model, without the agent's own mark over the page */
+  private async screenshotWithoutMark(): Promise<string | null> {
+    const page = this._puppeteerPage;
+    await page?.evaluate(setAgentMarkVisible, AGENT_MARK_ID, false).catch(() => {});
+    try {
+      return await this.takeScreenshot();
+    } finally {
+      await page?.evaluate(setAgentMarkVisible, AGENT_MARK_ID, true).catch(() => {});
     }
   }
 
@@ -1067,6 +1098,7 @@ export default class Page {
         throw new Error(`Dropdown element with index ${index} not found`);
       }
       await this.assertSameElement(elementHandle, element);
+      await this.markAgentTarget(elementHandle, 'select', element);
 
       // Verify dropdown and select option in one call
       const result = await elementHandle.evaluate(
@@ -1469,6 +1501,7 @@ export default class Page {
         // Continue even if these operations fail
         logger.debug(`Non-critical error preparing element: ${e}`);
       }
+      await this.markAgentTarget(element, 'type', elementNode);
 
       // Get element properties to determine input method
       const tagName = await element.evaluate(el => el.tagName.toLowerCase());
@@ -1728,6 +1761,7 @@ export default class Page {
 
       // Scroll element into view if needed
       await this._scrollIntoViewIfNeeded(element);
+      await this.markAgentTarget(element, 'click', elementNode);
 
       // A real checkbox hidden under a styled one: a click on the input itself can tick it while the page
       // still reads the styled box (and refuses to submit), so click what a person would click

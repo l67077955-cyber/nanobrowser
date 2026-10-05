@@ -88,6 +88,8 @@ export default class BrowserContext {
     if (this._currentTabId) this._lastTabId = this._currentTabId;
     const currentPage = await this.getCurrentPage();
     currentPage?.removeHighlight();
+    // the task is over: the agent's mark goes from every page it worked on
+    await Promise.all([...this._attachedPages.values()].map(page => page.clearAgentMark()));
     // detach all pages
     for (const page of this._attachedPages.values()) {
       await page.detachPuppeteer();
