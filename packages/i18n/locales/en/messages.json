@@ -1546,6 +1546,14 @@
   "chat_answer_copy": {
     "message": "Copy"
   },
+  "chat_answer_writtenBy": {
+    "message": "$MODEL$ wrote this in $TIME$",
+    "description": "Under the final answer: the model that wrote it and how long that one call took, not the whole task",
+    "placeholders": {
+      "model": { "content": "$1", "example": "deepseek-flash" },
+      "time": { "content": "$2", "example": "9.6s" }
+    }
+  },
   "chat_answer_copied": {
     "message": "Copied"
   },

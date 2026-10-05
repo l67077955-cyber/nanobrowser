@@ -919,7 +919,7 @@ function Answer({ message, detailed }: { message: Message; detailed: boolean }) 
         </button>
         <span className="nb-time">
           {formatTime(message.timestamp)}
-          {detailed && meta && ` · ${shortModel(meta.model)} · ${formatMs(meta.latencyMs)}`}
+          {detailed && meta && ` · ${t('chat_answer_writtenBy', [shortModel(meta.model), formatMs(meta.latencyMs)])}`}
         </span>
       </div>
     </div>
