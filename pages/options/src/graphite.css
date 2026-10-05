@@ -25,14 +25,6 @@ html:root {
   color-scheme: light;
 }
 
-html .nb-options * {
-  border-radius: 6px;
-}
-html .nb-options [role='switch'],
-html .nb-options [role='switch'] > span {
-  border-radius: 999px;
-}
-
 html .nb-options {
   font-size: 13px;
 }
@@ -190,4 +182,68 @@ html .nb-options [role='switch'] > span {
 }
 html .nb-options input[type='range'] {
   accent-color: var(--nb-accent);
+}
+
+/* ---------- one size per kind of control, so rows and controls side by side line up ---------- */
+/* buttons: 28px, whatever size the call site asked for */
+html .nb-options .nb-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1;
+}
+/* a button next to a field takes the field's height */
+html .nb-options input + .nb-btn,
+html .nb-options textarea + .nb-btn {
+  height: 30px;
+}
+/* single-line fields and selects: 30px */
+html .nb-options select,
+html .nb-options input:not([type='range']):not([type='checkbox']):not([type='radio']):not(.sr-only) {
+  height: 30px;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+html .nb-options textarea {
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+/* one type scale: 14px card titles, 13px row titles; the general page's own sizes are the reference */
+html .nb-options h2.text-base {
+  font-size: 14px !important;
+}
+html .nb-options h3.text-base,
+html .nb-options label.text-base {
+  font-size: 13px;
+}
+
+/* ---------- one grid: every section's cards share the general page's 672px column and 16px inset ---------- */
+html .nb-opt-section > section {
+  max-width: 42rem;
+  margin-inline: auto;
+}
+html .nb-opt-section > section > .rounded-xl.p-6 {
+  padding: 16px;
+  border-color: var(--nb-line);
+}
+
+/* the other sections' text at the general page's size */
+html .nb-opt-section > section .text-sm {
+  font-size: 12.5px;
+}
+html .nb-opt-section > section .text-xs {
+  font-size: 11px;
+}
+
+/* one label column: every field in the models section starts at the same x */
+html .nb-opt-section > section label.w-20,
+html .nb-opt-section > section label.w-24 {
+  width: 6rem;
+  flex-shrink: 0;
+}
+html .nb-opt-section > section .ml-20 {
+  margin-left: 6rem;
 }

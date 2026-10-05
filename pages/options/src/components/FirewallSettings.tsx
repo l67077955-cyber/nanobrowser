@@ -62,7 +62,7 @@ export const FirewallSettings = () => {
               <label htmlFor="toggle-firewall" className={`text-base font-medium text-nb-ink`}>
                 {t('options_firewall_enableToggle')}
               </label>
-              <div className="relative inline-block w-12 select-none">
+              <div className="relative inline-block w-[38px] select-none">
                 <input
                   type="checkbox"
                   checked={isEnabled}
@@ -72,13 +72,13 @@ export const FirewallSettings = () => {
                 />
                 <label
                   htmlFor="toggle-firewall"
-                  className={`block h-6 cursor-pointer overflow-hidden rounded-full ${
+                  className={`block h-[22px] cursor-pointer overflow-hidden rounded-full p-[2px] ${
                     isEnabled ? 'bg-nb-llm' : 'bg-nb-track'
                   }`}>
                   <span className="sr-only">{t('options_firewall_toggleFirewall_a11y')}</span>
                   <span
-                    className={`block size-6 rounded-full border border-nb-line bg-nb-tile transition-transform ${
-                      isEnabled ? 'translate-x-6' : 'translate-x-0'
+                    className={`block size-[18px] rounded-full bg-nb-tile shadow-[0_1px_3px_rgba(0,0,0,0.25)] transition-transform ${
+                      isEnabled ? 'translate-x-4' : 'translate-x-0'
                     }`}
                   />
                 </label>

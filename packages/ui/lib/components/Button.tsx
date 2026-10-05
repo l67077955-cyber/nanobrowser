@@ -12,7 +12,8 @@ export function Button({ variant = 'primary', className, disabled, children, ...
   return (
     <button
       className={cn(
-        'rounded-lg border px-4 py-1 text-sm font-medium transition-colors',
+        // one size for every button, so buttons side by side line up whatever the call site passes
+        'nb-btn inline-flex h-7 items-center justify-center gap-1 rounded-md border px-3 text-[12.5px] font-medium leading-none transition-colors',
         {
           'border-transparent bg-nb-llm text-white hover:opacity-90': variant === 'primary' && !disabled,
           'border-nb-line bg-nb-tile-2 text-nb-ink-2 hover:bg-nb-tile hover:text-nb-ink':

@@ -3,7 +3,7 @@ import { generalSettingsStore, memoryStore, MAX_MEMORIES, type MemoryEntry } fro
 import { Button } from '@extension/ui';
 import { t } from '@extension/i18n';
 
-const TOGGLE_LABEL = `peer h-6 w-11 rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-5 after:rounded-full after:border after:border-nb-line after:bg-nb-tile after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-full peer-checked:after:border-nb-llm peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`;
+const TOGGLE_LABEL = `peer h-[22px] w-[38px] rounded-full bg-nb-track after:absolute after:left-[2px] after:top-[2px] after:size-[18px] after:rounded-full after:bg-nb-tile after:shadow-[0_1px_3px_rgba(0,0,0,0.25)] after:transition-all after:content-[''] peer-checked:bg-nb-llm peer-checked:after:translate-x-4 peer-focus:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-nb-llm`;
 const INPUT = `flex-1 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-sm text-nb-ink focus:border-nb-llm focus:outline-none`;
 const QUIET_BUTTON = `border border-nb-line bg-nb-tile-2 px-2 py-1 text-xs text-nb-ink-2 shadow-none hover:bg-nb-tile hover:text-nb-ink`;
 
