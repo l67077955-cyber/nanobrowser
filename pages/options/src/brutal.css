@@ -1,0 +1,191 @@
+/* The side panel's light brutalist skin (pages/side-panel/src/brutal.css) over Options.css: paper and ink,
+   square corners, 1px rules, monospace labels, no shadows. Keep the tokens in sync with the panel's.
+   Selectors are prefixed with `html` so they win over the base sheet whatever order they load in. */
+html:root {
+  --nb-page: #fbfaf7;
+  --nb-tile: #ffffff;
+  --nb-tile-2: #f2f1ec;
+  --nb-line: #111111;
+  --nb-hair: #dedcd5;
+  --nb-ink: #111111;
+  --nb-ink-2: #3f3e3a;
+  --nb-muted: #807e77;
+  --nb-track: #e8e6df;
+  /* settings have no model colours to tell apart: the accent is the ink */
+  --nb-llm: #111111;
+  --nb-jev: #08876d;
+  --nb-plan: #5a3fd6;
+  --nb-good: #1d8746;
+  --nb-warning: #c47700;
+  --nb-critical: #d1301f;
+  --nb-glow: none;
+  --nb-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+html .nb-options *,
+html .nb-options *::before,
+html .nb-options *::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html .nb-options {
+  font-size: 13px;
+}
+/* 100vw counts the scrollbar, which made the sheet scroll sideways */
+html #app-container {
+  width: auto;
+}
+
+html .nb-label,
+html .nb-options code,
+html .nb-options small,
+html .nb-options input[type='number'] {
+  font-family: var(--nb-mono);
+  letter-spacing: 0;
+}
+html .nb-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--nb-ink-2);
+}
+html .nb-options code {
+  background: var(--nb-tile-2);
+  border: 1px solid var(--nb-hair);
+  padding: 0 4px;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+}
+html ::-webkit-scrollbar-thumb {
+  background: var(--nb-hair);
+}
+html ::-webkit-scrollbar-thumb:hover {
+  background: var(--nb-ink);
+}
+
+/* ---------- the index: a ruled column of rows, the section in view inked in ---------- */
+html .nb-opt-nav {
+  border-right: 1px solid var(--nb-ink);
+}
+html .nb-opt-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--nb-ink);
+  font-family: var(--nb-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+html .nb-opt-nav a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--nb-hair);
+  font-size: 12.5px;
+  color: var(--nb-ink);
+  text-decoration: none;
+}
+html .nb-opt-nav a > svg {
+  width: 14px;
+  height: 14px;
+}
+html .nb-opt-nav a small {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--nb-muted);
+}
+html .nb-opt-nav a:hover,
+html .nb-opt-nav a:focus-visible,
+html .nb-opt-nav a[aria-current='true'] {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+  outline: none;
+}
+html .nb-opt-nav a[aria-current='true'] small,
+html .nb-opt-nav a:hover small {
+  color: var(--nb-hair);
+}
+
+/* ---------- sections: one long sheet, a rule between sections ---------- */
+html .nb-opt-section {
+  scroll-margin-top: 16px;
+  padding: 24px 0 32px;
+  border-bottom: 1px solid var(--nb-ink);
+}
+html .nb-opt-section:last-child {
+  border-bottom: 0;
+  min-height: 80vh;
+}
+html .nb-options h2 {
+  font-family: var(--nb-mono);
+  font-size: 13px !important;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+html .nb-options h3 {
+  font-weight: 600;
+}
+
+/* cards lose their padding-heavy look: a 1px ink frame */
+html .nb-options .bg-nb-tile {
+  border-color: var(--nb-ink);
+}
+html .nb-row {
+  min-height: 40px !important;
+}
+html .nb-row + .nb-row::before {
+  left: 0;
+  background: var(--nb-hair);
+}
+
+/* fields and buttons: ink frames, inked on focus */
+html .nb-options input:not([type='range']):not([type='checkbox']),
+html .nb-options select,
+html .nb-options textarea {
+  border-color: var(--nb-ink);
+  background: var(--nb-tile);
+}
+html .nb-options input:focus,
+html .nb-options select:focus,
+html .nb-options textarea:focus {
+  outline: 2px solid var(--nb-ink);
+  outline-offset: -2px;
+}
+html .nb-options button:not([role='switch']):not([role='option']).bg-nb-llm,
+html .nb-options button.bg-nb-ink {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+}
+
+/* the switch: a square track with a square knob, ink when on */
+html .nb-options [role='switch'] {
+  border: 1px solid var(--nb-ink);
+  background: var(--nb-tile);
+}
+html .nb-options [role='switch'][aria-checked='true'] {
+  background: var(--nb-ink);
+}
+html .nb-options [role='switch'] > span {
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--nb-ink);
+  border: 0;
+  --tw-ring-shadow: 0 0 #0000;
+}
+html .nb-options [role='switch'][aria-checked='true'] > span {
+  background: var(--nb-page);
+}
+html .nb-options input[type='range'] {
+  accent-color: var(--nb-ink);
+}

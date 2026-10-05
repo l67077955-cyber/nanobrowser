@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import '@src/Options.css';
+import '@src/brutal.css';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { t } from '@extension/i18n';
 import { FiSettings, FiCpu, FiShield, FiBookmark, FiLink } from 'react-icons/fi';
@@ -19,59 +20,77 @@ const TABS: { id: TabTypes; icon: React.ComponentType<{ className?: string }>; l
   { id: 'remote', icon: FiLink, label: t('options_tabs_remote') },
 ];
 
-const Options = () => {
-  const [activeTab, setActiveTab] = useState<TabTypes>('models');
+const SECTIONS: Record<TabTypes, React.ComponentType> = {
+  general: GeneralSettings,
+  models: ModelSettings,
+  firewall: FirewallSettings,
+  memory: MemorySettings,
+  remote: RemoteSettings,
+};
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'general':
-        return <GeneralSettings />;
-      case 'models':
-        return <ModelSettings />;
-      case 'firewall':
-        return <FirewallSettings />;
-      case 'memory':
-        return <MemorySettings />;
-      case 'remote':
-        return <RemoteSettings />;
-      default:
-        return null;
-    }
-  };
+/** All settings on one sheet; the index on the left jumps to a section and marks the one in view */
+const Options = () => {
+  const [current, setCurrent] = useState<TabTypes>('general');
+
+  useEffect(() => {
+    // a link to a section, e.g. options/index.html#models
+    const wanted = window.location.hash.slice(1);
+    if (TABS.some(tab => tab.id === wanted)) document.getElementById(wanted)?.scrollIntoView();
+
+    const sections = TABS.map(tab => document.getElementById(tab.id)).filter((el): el is HTMLElement => !!el);
+    // the section in view is the last one whose top has passed the upper third of the window
+    const update = () => {
+      const line = window.innerHeight / 3;
+      let inView = sections[0]?.id;
+      for (const section of sections) if (section.getBoundingClientRect().top <= line) inView = section.id;
+      if (inView) setCurrent(inView as TabTypes);
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
 
   return (
-    <div className="flex min-h-screen min-w-[768px] bg-nb-page text-nb-ink">
-      {/* Vertical Navigation Bar */}
-      <nav className="w-52 shrink-0 border-r border-nb-line">
-        <div className="sticky top-0 p-4">
-          <div className="mb-5 flex items-center gap-2 px-2">
-            <img src="/icon-128.png" alt="" className="size-6" />
-            <h1 className="text-base font-semibold tracking-tight">{t('options_nav_header')}</h1>
+    <div className="nb-options flex min-h-screen min-w-[768px] bg-nb-page text-left text-nb-ink">
+      <nav className="nb-opt-nav w-48 shrink-0">
+        <div className="sticky top-0">
+          <div className="nb-opt-brand">
+            <img src="/icon-128.png" alt="" className="size-[18px]" />
+            {t('options_nav_header')}
           </div>
-          <ul className="space-y-1">
-            {TABS.map(item => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab(item.id)}
-                  aria-current={activeTab === item.id ? 'page' : undefined}
-                  className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-nb-llm ${
-                    activeTab === item.id
-                      ? 'border-nb-line bg-nb-tile font-medium text-nb-ink shadow-nb'
-                      : 'border-transparent text-nb-ink-2 hover:bg-nb-tile-2 hover:text-nb-ink'
-                  }`}>
-                  <item.icon className={`size-4 ${activeTab === item.id ? 'text-nb-llm' : 'text-nb-muted'}`} />
-                  <span>{item.label}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          {TABS.map((item, index) => (
+            <a
+              key={item.id}
+              href={`#${item.id}`}
+              aria-current={current === item.id || undefined}
+              onClick={e => {
+                e.preventDefault();
+                document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' });
+                history.replaceState(null, '', `#${item.id}`);
+              }}>
+              <item.icon />
+              <span>{item.label}</span>
+              <small>{String(index + 1).padStart(2, '0')}</small>
+            </a>
+          ))}
         </div>
       </nav>
 
-      {/* Main Content Area */}
-      <main className="flex-1 p-8">
-        <div className="mx-auto min-w-[512px] max-w-screen-lg">{renderTabContent()}</div>
+      <main className="flex-1 px-8">
+        <div className="mx-auto min-w-[512px] max-w-screen-lg">
+          {TABS.map(({ id }) => {
+            const Section = SECTIONS[id];
+            return (
+              <section key={id} id={id} className="nb-opt-section">
+                <Section />
+              </section>
+            );
+          })}
+        </div>
       </main>
     </div>
   );
