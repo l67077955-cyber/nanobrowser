@@ -1,0 +1,277 @@
+/* Light brutalist skin over StepList.css and SidePanel.css: paper and ink, square corners, 1px rules,
+   monospace for anything that is a label or a number, no shadows, gradients or glows.
+   Selectors are prefixed with `html` so they win over the base sheets whatever order they load in. */
+html:root {
+  --nb-page: #fbfaf7;
+  --nb-tile: #ffffff;
+  --nb-tile-2: #f2f1ec;
+  --nb-line: #111111;
+  --nb-hair: #dedcd5;
+  --nb-ink: #111111;
+  --nb-ink-2: #3f3e3a;
+  --nb-muted: #807e77;
+  --nb-track: #e8e6df;
+  --nb-bubble: #ffffff;
+  --nb-llm: #2a55d4;
+  --nb-jev: #08876d;
+  --nb-plan: #5a3fd6;
+  --nb-good: #1d8746;
+  --nb-warning: #c47700;
+  --nb-critical: #d1301f;
+  --nb-glow: none;
+  --nb-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+html .nb-panel *,
+html .nb-panel *::before,
+html .nb-panel *::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html .nb-panel {
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+/* what is a label, a count or a time reads as machine text */
+html .nb-label,
+html .nb-num,
+html .nb-chip,
+html .nb-button,
+html .nb-jump,
+html .nb-work-head,
+html .nb-answer-foot,
+html .nb-dock-meta,
+html .nb-dock-n,
+html .nb-dock-chip,
+html .nb-welcome-tab,
+html .nb-menu small,
+html .header-title {
+  font-family: var(--nb-mono);
+  letter-spacing: 0;
+}
+html .nb-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--nb-ink-2);
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+}
+html ::-webkit-scrollbar-thumb {
+  background: var(--nb-hair);
+}
+html ::-webkit-scrollbar-thumb:hover {
+  background: var(--nb-ink);
+}
+
+/* ---------- header: one ruled strip ---------- */
+html .header,
+html .header.floating {
+  padding: 3px 6px 3px 10px;
+  border-bottom: 1px solid var(--nb-ink);
+  background: var(--nb-page);
+}
+html .header-title {
+  font-size: 11.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+html .header.floating .header-title {
+  color: var(--nb-ink);
+}
+html .header-icon {
+  padding: 5px;
+  color: var(--nb-ink);
+}
+html .header.floating .header-icon {
+  opacity: 1;
+}
+html .header-icon:hover,
+html .header-icon[aria-expanded='true'] {
+  color: var(--nb-page);
+  background: var(--nb-ink);
+}
+
+/* ---------- the stream: tighter ---------- */
+html .nb-stream {
+  gap: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+html .nb-turn {
+  gap: 8px;
+}
+html .nb-user {
+  max-width: 90%;
+  padding: 5px 9px;
+  border: 1px solid var(--nb-ink);
+  background: var(--nb-tile);
+}
+html .nb-answer {
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+html .nb-work-head {
+  margin-left: 0;
+  padding: 1px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+html .nb-work-head:hover {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+}
+html .nb-chip {
+  padding: 0 5px;
+  border-color: var(--nb-ink);
+  background: var(--nb-tile);
+  color: var(--nb-ink);
+  font-size: 10.5px;
+}
+html .nb-shimmer {
+  background: none;
+  color: var(--nb-ink-2);
+  animation: none;
+}
+
+/* ---------- buttons: outlined, invert on hover ---------- */
+html .nb-button {
+  padding: 3px 9px;
+  border: 1px solid var(--nb-ink);
+  background: var(--nb-tile);
+  color: var(--nb-ink);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  transition: none;
+}
+html .nb-button:hover,
+html .nb-button.primary {
+  border-color: var(--nb-ink);
+  background: var(--nb-ink);
+  color: var(--nb-page);
+  opacity: 1;
+}
+html .nb-button.primary:hover {
+  background: var(--nb-tile);
+  color: var(--nb-ink);
+}
+html .nb-button.primary.warn {
+  border-color: var(--nb-warning);
+  background: var(--nb-warning);
+  color: #fff;
+}
+html .nb-jump {
+  border-color: var(--nb-ink);
+  font-size: 11px;
+}
+
+/* ---------- composer and the cards above it ---------- */
+html .nb-composer {
+  padding: 0 8px 8px;
+}
+html .nb-input {
+  border: 1px solid var(--nb-ink) !important;
+  background: var(--nb-tile);
+}
+html .nb-input:focus-within {
+  outline: 2px solid var(--nb-ink);
+  outline-offset: -2px;
+}
+html .nb-confirm,
+html .nb-ask,
+html .nb-dock,
+html .nb-menu,
+html .nb-welcome-tab {
+  border: 1px solid var(--nb-ink);
+  background: var(--nb-tile);
+}
+html .nb-confirm,
+html .nb-ask,
+html .nb-dock {
+  margin-bottom: 4px;
+}
+html .nb-ask {
+  gap: 6px;
+  padding: 7px 8px 7px 10px;
+}
+html .nb-ask-row input {
+  border-color: var(--nb-ink);
+  background: var(--nb-tile);
+}
+html .nb-ask-row input:focus {
+  border-color: var(--nb-ink);
+  outline: 2px solid var(--nb-ink);
+  outline-offset: -2px;
+}
+
+/* the dock: the phase is a rule on the left and a blinking square, not a glowing orb */
+html .nb-dock {
+  border-left: 4px solid var(--orb);
+}
+html .nb-dock.phase-asking {
+  border-color: var(--nb-ink);
+  border-left-color: var(--orb);
+}
+html .nb-dock-head {
+  gap: 8px;
+  padding: 6px 6px 6px 8px;
+}
+html .nb-orb {
+  width: 9px;
+  height: 9px;
+  background: var(--orb);
+  animation: nb-brutal-blink 1s steps(2, jump-none) infinite;
+}
+html .nb-orb i {
+  display: none;
+}
+@keyframes nb-brutal-blink {
+  50% {
+    opacity: 0.15;
+  }
+}
+
+/* ---------- menus ---------- */
+html .nb-menu > a:hover {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+}
+html .nb-menu > a:hover small,
+html .nb-menu > a:hover .nb-menu-check {
+  color: var(--nb-page);
+}
+html .nb-menu hr {
+  margin: 4px 0;
+  border-top-color: var(--nb-ink);
+}
+
+html code {
+  background: var(--nb-tile-2);
+  font-family: var(--nb-mono);
+  font-size: 0.92em;
+}
+
+/* ---------- history: a ruled list ---------- */
+html .nb-history {
+  gap: 0;
+  border-top: 1px solid var(--nb-ink);
+}
+html .nb-history > li {
+  border-bottom: 1px solid var(--nb-hair);
+}
+html .nb-history > li:hover {
+  background: var(--nb-tile);
+}
+html .nb-history .tabular-nums {
+  font-family: var(--nb-mono);
+  font-size: 10.5px;
+}

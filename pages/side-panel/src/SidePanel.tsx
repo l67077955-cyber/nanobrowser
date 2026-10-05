@@ -25,6 +25,7 @@ import PinButton from './components/PinButton';
 import { getTargetTab } from './utils';
 import { EventType, type AgentEvent, ExecutionState } from './types/event';
 import './SidePanel.css';
+import './brutal.css';
 
 /** What a running task waits for from the user, as the background tells a panel that opens meanwhile */
 type WaitingFor = { state: ExecutionState; details: string; meta?: StepMeta };

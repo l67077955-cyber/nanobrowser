@@ -4,8 +4,9 @@ import { createLogger } from '../log';
 const logger = createLogger('standaloneWindow');
 
 const PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
-const BOUNDS_KEY = 'standalone-window-bounds';
-const DEFAULT_SIZE = { width: 440, height: 760 };
+// v2: the window got slimmer, so the size left from before is dropped once
+const BOUNDS_KEY = 'standalone-window-bounds-v2';
+const DEFAULT_SIZE = { width: 380, height: 720 };
 
 type Bounds = { left?: number; top?: number; width?: number; height?: number };
 

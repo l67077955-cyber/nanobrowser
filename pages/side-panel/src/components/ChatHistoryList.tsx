@@ -41,7 +41,7 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
           {t('chat_history_empty')}
         </div>
       ) : (
-        <ul className="flex flex-col gap-0.5">
+        <ul className="nb-history flex flex-col gap-0.5">
           {sessions.map(session => (
             <li key={session.id} className="group flex items-center gap-1 rounded-lg hover:bg-nb-tile">
               <button
