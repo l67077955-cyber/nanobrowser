@@ -24,6 +24,7 @@ test('the LaunchAgent starts at login and is kept alive', () => {
   const file = serviceFile('darwin', command);
   assert.match(file, /<key>RunAtLoad<\/key><true\/>/);
   assert.match(file, /<key>KeepAlive<\/key><true\/>/);
+  assert.match(file, /<key>AbandonProcessGroup<\/key><true\/>/);
   assert.match(file, /<string>\/repo\/cli\.mjs<\/string>/);
 });
 
@@ -31,6 +32,8 @@ test('the systemd unit restarts the bridge and logs to the file', () => {
   const file = serviceFile('linux', command);
   assert.match(file, /^ExecStart="\/usr\/bin\/node" "\/repo\/cli\.mjs" "--launch-browser"$/m);
   assert.match(file, /^Restart=always$/m);
+  // stopping the bridge leaves the browser it started alone
+  assert.match(file, /^KillMode=process$/m);
   assert.match(file, /^StandardOutput=append:\/tmp\/bridge\.log$/m);
 });
 
@@ -51,5 +54,12 @@ test('Chrome is looked for where it installs, and NANOBROWSER_CHROME wins', () =
   assert.equal(
     findChrome('linux', {}, () => false),
     null,
+  );
+  // Edge when there is no Chrome
+  assert.equal(
+    findChrome('win32', { 'PROGRAMFILES(X86)': 'C:\\Program Files (x86)' }, candidate =>
+      candidate.endsWith('msedge.exe'),
+    ),
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   );
 });

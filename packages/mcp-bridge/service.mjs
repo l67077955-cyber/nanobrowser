@@ -72,6 +72,8 @@ ${[node, ...args].map(part => `    <string>${xml(part)}</string>`).join('\n')}
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <!-- a browser the bridge started stays open when the bridge is stopped -->
+  <key>AbandonProcessGroup</key><true/>
   <key>StandardOutPath</key><string>${xml(log)}</string>
   <key>StandardErrorPath</key><string>${xml(log)}</string>
 </dict>
@@ -86,6 +88,8 @@ After=network.target
 ExecStart=${[node, ...args].map(systemdArg).join(' ')}
 Restart=always
 RestartSec=5
+# a browser the bridge started stays open when the bridge is stopped
+KillMode=process
 StandardOutput=append:${log}
 StandardError=append:${log}
 
@@ -168,17 +172,32 @@ export function serviceStatus(platform = process.platform) {
   return { installed: fs.existsSync(paths.file), ...paths };
 }
 
-/** Chrome on this computer, or null when it is not found */
+/** Chrome on this computer, Edge when there is no Chrome, or null when neither is found */
 export function findChrome(platform = process.platform, env = process.env, exists = fs.existsSync) {
   if (env.NANOBROWSER_CHROME) return env.NANOBROWSER_CHROME;
+  const windows = (...where) =>
+    [env.PROGRAMFILES, env['PROGRAMFILES(X86)'], env.LOCALAPPDATA]
+      .filter(Boolean)
+      .map(base => path.win32.join(base, ...where));
   const candidates =
     platform === 'win32'
-      ? [env.PROGRAMFILES, env['PROGRAMFILES(X86)'], env.LOCALAPPDATA]
-          .filter(Boolean)
-          .map(base => path.win32.join(base, 'Google', 'Chrome', 'Application', 'chrome.exe'))
+      ? [
+          ...windows('Google', 'Chrome', 'Application', 'chrome.exe'),
+          ...windows('Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        ]
       : platform === 'darwin'
-        ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-        : ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+        ? [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+          ]
+        : [
+            '/usr/bin/google-chrome',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/microsoft-edge',
+            '/usr/bin/microsoft-edge-stable',
+          ];
   return candidates.find(candidate => exists(candidate)) ?? null;
 }
 

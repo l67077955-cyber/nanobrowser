@@ -661,8 +661,42 @@ const remoteControl = new RemoteControl(
 // The bridge connection follows the settings. The alarm outlives the service worker, so a connection lost
 // while nothing else keeps the worker awake is made again.
 const REMOTE_ALARM = 'remote-control';
-async function applyRemoteControl() {
-  const config = await remoteControlStore.getConfig();
+// A bridge installed on this computer (cli.mjs install) pairs by handing over its address and token through
+// native messaging. It is asked once each time the worker starts, and only while no bridge is set.
+const PAIRING_HOST = 'com.nanobrowser.bridge';
+let pairingAsked = false;
+
+async function pairWithLocalBridge(): Promise<boolean> {
+  if (pairingAsked) return false;
+  pairingAsked = true;
+  try {
+    const reply = (await chrome.runtime.sendNativeMessage(PAIRING_HOST, { type: 'pair' })) as
+      | { url?: unknown; token?: unknown }
+      | undefined;
+    if (typeof reply?.url !== 'string' || typeof reply.token !== 'string' || reply.token.length < 16) return false;
+    await remoteControlStore.updateConfig({ enabled: true, url: reply.url, token: reply.token });
+    logger.info('paired with the bridge on this computer');
+    return true;
+  } catch {
+    // no bridge installed on this computer
+    return false;
+  }
+}
+
+let remoteApplied = Promise.resolve();
+/** Settings change in quick succession: each change is applied after the one before */
+function applyRemoteControl(): Promise<void> {
+  remoteApplied = remoteApplied.then(applyRemoteSettings, applyRemoteSettings);
+  return remoteApplied;
+}
+
+async function applyRemoteSettings() {
+  let config = await remoteControlStore.getConfig();
+  if (!config.token && (await pairWithLocalBridge())) config = await remoteControlStore.getConfig();
+  if (config.enabled && !config.browserId) {
+    await remoteControlStore.updateConfig({ browserId: crypto.randomUUID().slice(0, 8) });
+    config = await remoteControlStore.getConfig();
+  }
   remoteControl.apply(config);
   if (config.enabled) {
     await chrome.alarms.create(REMOTE_ALARM, { periodInMinutes: 0.5 });

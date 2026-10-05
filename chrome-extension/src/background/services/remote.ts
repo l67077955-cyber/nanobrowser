@@ -39,6 +39,16 @@ export interface RemoteTaskEvent {
   fields?: string[];
 }
 
+/** The operating system, as the bridge names a browser by default: win, mac, linux, cros, android */
+export function platformOf(userAgent: string): string {
+  if (/Windows/.test(userAgent)) return 'win';
+  if (/CrOS/.test(userAgent)) return 'cros';
+  if (/Android/.test(userAgent)) return 'android';
+  if (/Macintosh|Mac OS X/.test(userAgent)) return 'mac';
+  if (/Linux/.test(userAgent)) return 'linux';
+  return 'other';
+}
+
 /** What the bridge may ask for. A handler that throws answers the request with its message as the error. */
 export type RemoteHandlers = Record<string, (params: Record<string, unknown>) => Promise<unknown>>;
 
@@ -63,6 +73,7 @@ export class RemoteControl {
     private readonly handlers: RemoteHandlers,
     private readonly version: string,
     private readonly createSocket: (url: string) => RemoteSocket = url => new WebSocket(url) as unknown as RemoteSocket,
+    private readonly platform = platformOf(globalThis.navigator?.userAgent ?? ''),
   ) {}
 
   get status(): RemoteStatus {
@@ -121,7 +132,15 @@ export class RemoteControl {
 
     socket.onopen = () => {
       if (this.socket !== socket) return;
-      this.send({ type: 'hello', token: this.config.token, version: this.version });
+      // the id keeps this browser apart from others on the same bridge; the name is how agents pick it
+      this.send({
+        type: 'hello',
+        token: this.config.token,
+        version: this.version,
+        id: this.config.browserId || undefined,
+        name: this.config.name?.trim() || this.platform,
+        platform: this.platform,
+      });
     };
     socket.onmessage = event => {
       if (this.socket !== socket) return;

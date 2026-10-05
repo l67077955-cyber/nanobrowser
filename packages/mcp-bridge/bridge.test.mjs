@@ -14,8 +14,8 @@ async function startBridge(options = {}) {
   return { bridge, port };
 }
 
-/** A browser on the bridge; `onRequest` answers what the bridge asks of it */
-async function connectBrowser(port, onRequest, token = TOKEN) {
+/** A browser on the bridge; `onRequest` answers what the bridge asks of it; `hello` adds to what it presents */
+async function connectBrowser(port, onRequest, token = TOKEN, hello = {}) {
   const socket = new WebSocket(`ws://127.0.0.1:${port}/extension`, { origin: 'chrome-extension://abc' });
   const ready = new Promise((resolve, reject) => {
     socket.on('message', data => {
@@ -32,7 +32,7 @@ async function connectBrowser(port, onRequest, token = TOKEN) {
     socket.on('close', code => reject(new Error(`closed ${code}`)));
   });
   await once(socket, 'open');
-  socket.send(JSON.stringify({ type: 'hello', token, version: '0.1.13' }));
+  socket.send(JSON.stringify({ type: 'hello', token, version: '0.1.13', ...hello }));
   await ready;
   return socket;
 }
@@ -51,6 +51,12 @@ async function tool(port, name, args = {}) {
   const { body } = await rpc(port, 'tools/call', { name, arguments: args });
   const text = body.result.content[0].text;
   return body.result.isError ? { error: text } : JSON.parse(text);
+}
+
+/** Every content block of a tool's result */
+async function toolContent(port, name, args = {}) {
+  const { body } = await rpc(port, 'tools/call', { name, arguments: args });
+  return body.result.content;
 }
 
 test('an agent without the token is turned away', async t => {
@@ -145,7 +151,7 @@ test('every start, step and end of a task is recorded for the run log', async t 
   assert.deepEqual(
     records.map(({ t: time, ...entry }) => (assert.equal(typeof time, 'number'), entry)),
     [
-      { kind: 'start', taskId: 't1', text: 'what is the title of example.com' },
+      { kind: 'start', taskId: 't1', text: 'what is the title of example.com', browser: 'browser' },
       { kind: 'event', taskId: 't1', actor: 'planner', state: 'step.start', step: 1, details: '' },
       {
         kind: 'event',
@@ -197,6 +203,17 @@ test('a long task is returned as running and followed with get_task', async t =>
     extension_version: '0.1.13',
     busy: true,
     task_id: 't2',
+    browsers: [
+      {
+        name: 'browser',
+        id: 'browser',
+        platform: null,
+        extension_version: '0.1.13',
+        busy: true,
+        task_id: 't2',
+        default: true,
+      },
+    ],
   });
 
   const stopped = await tool(port, 'cancel_task', { task_id: 't2' });
@@ -321,4 +338,100 @@ test('the user is told what a task waits for, with the page, and their answer go
   assert.equal(answered.status, 'running');
   assert.deepEqual(answers, [{ taskId: 't-code', answer: '123456' }]);
   assert.deepEqual(overs, ['t-code']);
+});
+
+test('a waiting task shows its page once, as an image next to the question and its fields', async t => {
+  const { bridge, port } = await startBridge();
+  t.after(() => bridge.close());
+  let say;
+  const browser = await connectBrowser(port, (method, params, socket) => {
+    say = message => socket.send(JSON.stringify({ taskId: 't-qr', ...message }));
+    return { taskId: 't-qr' };
+  });
+  t.after(() => browser.close());
+  await tool(port, 'run_task', { task: 'sign in', wait_seconds: 0 });
+  say({
+    type: 'event',
+    actor: 'navigator',
+    state: 'act.ask',
+    step: 1,
+    details: 'Scan the QR code',
+    screenshot: 'QUJD',
+  });
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+  const first = await toolContent(port, 'get_task', { task_id: 't-qr', wait_seconds: 0 });
+  assert.deepEqual(first[1], { type: 'image', data: 'QUJD', mimeType: 'image/jpeg' });
+  const described = JSON.parse(first[0].text);
+  assert.equal(described.question, 'Scan the QR code');
+  assert.deepEqual(described.fields, []);
+  // the agent has the page: polling again does not send it again
+  assert.equal((await toolContent(port, 'get_task', { task_id: 't-qr', wait_seconds: 0 })).length, 1);
+});
+
+test('browsers with ids of their own are all kept, and tasks go to the one asked for or the default', async t => {
+  const { bridge, port } = await startBridge({ hostPlatform: 'linux' });
+  t.after(() => bridge.close());
+  const ran = [];
+  const answer = name => method => {
+    if (method === 'run_task') ran.push(name);
+    return method === 'run_task' ? { taskId: `t-${name}-${ran.length}` } : { busy: false, taskId: null };
+  };
+  const server = await connectBrowser(port, answer('server'), TOKEN, { id: 's1', name: 'server', platform: 'linux' });
+  const laptop = await connectBrowser(port, answer('laptop'), TOKEN, { id: 'l1', name: 'laptop', platform: 'win' });
+  t.after(() => {
+    server.close();
+    laptop.close();
+  });
+
+  const status = await tool(port, 'status');
+  assert.deepEqual(
+    status.browsers.map(({ name, id, platform, default: chosen }) => ({ name, id, platform, chosen })),
+    [
+      { name: 'server', id: 's1', platform: 'linux', chosen: undefined },
+      { name: 'laptop', id: 'l1', platform: 'win', chosen: true },
+    ],
+  );
+  // a browser on another system than the bridge's is the user's own computer: it comes first
+  assert.equal((await tool(port, 'run_task', { task: 'a', wait_seconds: 0 })).browser, 'laptop');
+  assert.equal((await tool(port, 'run_task', { task: 'b', wait_seconds: 0, browser: 'server' })).browser, 'server');
+  assert.equal((await tool(port, 'run_task', { task: 'c', wait_seconds: 0, browser: 'l1' })).browser, 'laptop');
+  assert.deepEqual(ran, ['laptop', 'server', 'laptop']);
+  assert.match((await tool(port, 'run_task', { task: 'd', browser: 'phone' })).error, /phone.*server, laptop/);
+});
+
+test('the browsers named with prefer come first', async t => {
+  const { bridge, port } = await startBridge({ hostPlatform: 'linux', prefer: ['server'] });
+  t.after(() => bridge.close());
+  const run = () => ({ taskId: 't-p' });
+  const server = await connectBrowser(port, run, TOKEN, { id: 's1', name: 'server', platform: 'linux' });
+  const laptop = await connectBrowser(port, run, TOKEN, { id: 'l1', name: 'laptop', platform: 'win' });
+  t.after(() => {
+    server.close();
+    laptop.close();
+  });
+  assert.equal((await tool(port, 'run_task', { task: 'a', wait_seconds: 0 })).browser, 'server');
+});
+
+test('the same browser connecting again replaces its old connection, and the task it was running fails', async t => {
+  const { bridge, port } = await startBridge();
+  t.after(() => bridge.close());
+  const first = await connectBrowser(port, () => ({ taskId: 't-r' }), TOKEN, {
+    id: 'same',
+    name: 'pc',
+    platform: 'win',
+  });
+  const closed = once(first, 'close');
+  const task = await tool(port, 'run_task', { task: 'slow', wait_seconds: 0 });
+  assert.equal(task.status, 'running');
+  const second = await connectBrowser(port, () => ({ busy: false }), TOKEN, {
+    id: 'same',
+    name: 'pc',
+    platform: 'win',
+  });
+  t.after(() => second.close());
+  const [code] = await closed;
+  assert.equal(code, 4409);
+  assert.equal((await tool(port, 'status')).browsers.length, 1);
+  assert.equal((await tool(port, 'get_task', { task_id: 't-r', wait_seconds: 0 })).status, 'failed');
 });

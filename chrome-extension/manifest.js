@@ -73,6 +73,8 @@ const manifest = withOperaSidebar(
       'notifications',
       // keeps Chrome running with its windows closed, so the bridge can reach the extension at any time
       'background',
+      // a bridge installed on this computer hands over its address and token (pairing)
+      'nativeMessaging',
     ],
     options_page: 'options/index.html',
     background: {

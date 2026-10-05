@@ -10,6 +10,10 @@ export interface RemoteControlConfig {
   url: string;
   /** shared secret the bridge checks before it accepts this browser */
   token: string;
+  /** made once for this browser profile: the bridge tells browsers apart by it */
+  browserId?: string;
+  /** how the bridge lists this browser; its operating system when empty */
+  name?: string;
 }
 
 export type RemoteControlStorage = BaseStorage<RemoteControlConfig> & {

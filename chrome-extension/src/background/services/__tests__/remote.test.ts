@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CLOSE_UNAUTHORIZED, RemoteControl, type RemoteHandlers, type RemoteSocket } from '../remote';
+import { CLOSE_UNAUTHORIZED, platformOf, RemoteControl, type RemoteHandlers, type RemoteSocket } from '../remote';
 
 class FakeSocket implements RemoteSocket {
   sent: Record<string, unknown>[] = [];
@@ -27,11 +27,16 @@ const CONFIG = { enabled: true, url: 'ws://localhost:8787/extension', token: 'se
 
 function setup(handlers: RemoteHandlers = {}) {
   const sockets: FakeSocket[] = [];
-  const remote = new RemoteControl(handlers, '0.1.13', url => {
-    const socket = new FakeSocket(url);
-    sockets.push(socket);
-    return socket;
-  });
+  const remote = new RemoteControl(
+    handlers,
+    '0.1.13',
+    url => {
+      const socket = new FakeSocket(url);
+      sockets.push(socket);
+      return socket;
+    },
+    'linux',
+  );
   return { remote, sockets };
 }
 
@@ -61,9 +66,28 @@ describe('RemoteControl', () => {
     remote.apply(CONFIG);
     expect(remote.status).toBe('connecting');
     sockets[0].onopen?.();
-    expect(sockets[0].sent).toEqual([{ type: 'hello', token: 'secret-token', version: '0.1.13' }]);
+    expect(sockets[0].sent).toEqual([
+      { type: 'hello', token: 'secret-token', version: '0.1.13', name: 'linux', platform: 'linux' },
+    ]);
     sockets[0].receive({ type: 'hello_ack' });
     expect(remote.status).toBe('connected');
+  });
+
+  it('presents the id of this browser and the name it was given', () => {
+    const { remote, sockets } = setup();
+    remote.apply({ ...CONFIG, browserId: 'b1c2d3e4', name: 'laptop' });
+    sockets[0].onopen?.();
+    expect(sockets[0].sent[0]).toMatchObject({ id: 'b1c2d3e4', name: 'laptop', platform: 'linux' });
+  });
+
+  it('names the operating system from the user agent', () => {
+    expect(platformOf('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36')).toBe(
+      'win',
+    );
+    expect(platformOf('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36')).toBe('mac');
+    expect(platformOf('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/154.0 Edg/154.0')).toBe('linux');
+    expect(platformOf('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36')).toBe('android');
+    expect(platformOf('Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36')).toBe('cros');
   });
 
   it('does not connect without a token', () => {

@@ -3,12 +3,15 @@
  * Call the Nanobrowser bridge from a shell, for agents without an MCP client.
  *
  *   node nb.mjs status
- *   node nb.mjs run "<task>" [--wait 120]
+ *   node nb.mjs run "<task>" [--wait 120] [--browser <name>]
  *   node nb.mjs get <task_id> [--wait 120]
+ *   node nb.mjs answer <task_id> "<the user's reply>"      or  answer <task_id> --approve | --decline
  *   node nb.mjs cancel <task_id>
  *
  * NANOBROWSER_MCP_URL (default http://localhost:8787/mcp) and NANOBROWSER_BRIDGE_TOKEN, or the token file
  * ~/.config/nanobrowser/bridge-token. Prints the tool's JSON result; exits 1 when the tool reports an error.
+ * A task waiting for the user comes with a screenshot of the page once: it is saved to a file, whose path is
+ * added to the JSON as screenshot_file.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,7 +20,12 @@ import { parseArgs } from 'node:util';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { wait: { type: 'string' } },
+  options: {
+    wait: { type: 'string' },
+    browser: { type: 'string' },
+    approve: { type: 'boolean', default: false },
+    decline: { type: 'boolean', default: false },
+  },
 });
 
 const url = process.env.NANOBROWSER_MCP_URL ?? 'http://localhost:8787/mcp';
@@ -32,16 +40,23 @@ function token() {
   }
 }
 
-const [command, arg] = positionals;
+const [command, arg, reply] = positionals;
 const wait = values.wait === undefined ? {} : { wait_seconds: Number(values.wait) };
+const decision = values.approve ? { approve: true } : values.decline ? { approve: false } : {};
 const calls = {
   status: () => ['status', {}],
-  run: () => ['run_task', { task: arg, ...wait }],
+  run: () => ['run_task', { task: arg, ...wait, ...(values.browser ? { browser: values.browser } : {}) }],
   get: () => ['get_task', { task_id: arg, ...wait }],
+  answer: () => ['answer_task', { task_id: arg, answer: reply ?? '', ...decision }],
   cancel: () => ['cancel_task', { task_id: arg }],
 };
-if (!calls[command] || (command !== 'status' && !arg)) {
-  console.error('Usage: nb.mjs status | run "<task>" [--wait N] | get <task_id> [--wait N] | cancel <task_id>');
+const incomplete =
+  (command !== 'status' && !arg) || (command === 'answer' && reply === undefined && !values.approve && !values.decline);
+if (!calls[command] || incomplete) {
+  console.error(
+    'Usage: nb.mjs status | run "<task>" [--wait N] [--browser <name>] | get <task_id> [--wait N]\n' +
+      '       | answer <task_id> "<reply>" | answer <task_id> --approve|--decline | cancel <task_id>',
+  );
   process.exit(2);
 }
 const [name, args] = calls[command]();
@@ -67,5 +82,15 @@ if (!result) {
   console.error(JSON.stringify(body.error ?? body));
   process.exit(1);
 }
-console.log(result.content?.[0]?.text ?? '');
+const text = result.content?.find(part => part.type === 'text')?.text ?? '';
+const image = result.content?.find(part => part.type === 'image');
+if (image && !result.isError) {
+  // the page the task shows while it waits for the user: for passing on to them
+  const described = JSON.parse(text);
+  const file = path.join(os.tmpdir(), `nanobrowser-${described.task_id ?? 'page'}-${Date.now()}.jpg`);
+  fs.writeFileSync(file, Buffer.from(image.data, 'base64'));
+  console.log(JSON.stringify({ ...described, screenshot_file: file }, null, 2));
+} else {
+  console.log(text);
+}
 process.exit(result.isError ? 1 : 0);
