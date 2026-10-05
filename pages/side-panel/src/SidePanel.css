@@ -73,7 +73,8 @@ code {
 }
 
 .header-icon:hover,
-.header-icon[aria-expanded='true'] {
+.header-icon[aria-expanded='true'],
+.header-icon[aria-pressed='true'] {
   color: var(--nb-ink);
   background: var(--nb-tile-2);
 }

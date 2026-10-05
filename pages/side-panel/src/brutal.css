@@ -95,7 +95,8 @@ html .header.floating .header-icon {
   opacity: 1;
 }
 html .header-icon:hover,
-html .header-icon[aria-expanded='true'] {
+html .header-icon[aria-expanded='true'],
+html .header-icon[aria-pressed='true'] {
   color: var(--nb-page);
   background: var(--nb-ink);
 }
@@ -310,4 +311,18 @@ html .nb-mode-button {
 html .nb-mode-button[aria-expanded='true'] {
   background: var(--nb-ink);
   color: var(--nb-page);
+}
+
+/* menu rows that are buttons invert like the links do */
+html .nb-menu > button:hover:enabled {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+}
+html .nb-menu > button:hover:enabled small,
+html .nb-menu > button:hover:enabled .nb-menu-check {
+  color: var(--nb-page);
+}
+html .nb-menu > button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

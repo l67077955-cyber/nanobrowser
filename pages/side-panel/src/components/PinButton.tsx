@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BsPinAngle, BsPinAngleFill } from 'react-icons/bs';
+import { LuPin } from 'react-icons/lu';
 import { t } from '@extension/i18n';
 
 // Document Picture-in-Picture: a small window the system keeps above all others, and that never takes focus
@@ -122,7 +122,7 @@ export default function PinButton({ onPinnedChange }: { onPinnedChange: (pinned:
       aria-pressed={pinned}
       aria-label={label}
       title={label}>
-      {pinned ? <BsPinAngleFill size={15} /> : <BsPinAngle size={15} />}
+      <LuPin size={16} />
     </button>
   );
 }
