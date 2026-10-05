@@ -619,7 +619,8 @@ export class ActionBuilder {
       const intent = input.intent || t('act_readPage_start');
       this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_START, intent);
       const page = await this.context.browserContext.getCurrentPage();
-      const { title, url, text } = await page.getPageText();
+      // the first part is read after scrolling the page through, so that what loads on scroll is in it too
+      const { title, url, text } = await page.getPageText(!input.offset);
       const start = Math.min(input.offset ?? 0, text.length);
       const end = Math.min(start + READ_PAGE_CHARS, text.length);
       if (end <= start) {

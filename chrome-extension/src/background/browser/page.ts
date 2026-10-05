@@ -16,6 +16,7 @@ import {
   removeHighlights as _removeHighlights,
   getScrollInfo as _getScrollInfo,
   getPageText as _getPageText,
+  loadLazyContent,
 } from './dom/service';
 import { findThroughShadowRoots } from './dom/shadowPath';
 import { AGENT_MARK_ID, drawAgentMark, removeAgentMark, setAgentMarkVisible } from './agentMark';
@@ -269,9 +270,13 @@ export default class Page {
   }
 
   /** The readable text of the whole page, not only the part in view */
-  async getPageText(): Promise<{ title: string; url: string; text: string }> {
+  async getPageText(loadLazy = false): Promise<{ title: string; url: string; text: string }> {
     if (!this._validWebPage) {
       return { title: '', url: '', text: '' };
+    }
+    if (loadLazy) {
+      // a page that has not loaded everything yet still has some text to give
+      await loadLazyContent(this._tabId).catch(error => logger.warning('Could not scroll the page through', error));
     }
     return _getPageText(this._tabId);
   }

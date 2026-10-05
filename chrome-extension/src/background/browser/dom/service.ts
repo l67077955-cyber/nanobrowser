@@ -636,6 +636,40 @@ export async function getPageText(tabId: number): Promise<{ title: string; url: 
   return result;
 }
 
+/**
+ * Scroll down through the page a screen at a time, so that what loads as it comes into view (deal grids,
+ * comments, product lists) is in the page before its text is read; stops at the bottom or after a few screens,
+ * and leaves the page where it was.
+ */
+export async function loadLazyContent(tabId: number): Promise<void> {
+  await inTime(
+    chrome.scripting.executeScript({
+      injectImmediately: true,
+      target: { tabId },
+      func: async () => {
+        const MAX_SCREENS = 8;
+        const PAUSE_MS = 300;
+        const pause = () => new Promise(resolve => setTimeout(resolve, PAUSE_MS));
+        const start = window.scrollY;
+        const bottom = () => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4;
+        let moved = false;
+        for (let screen = 0; screen < MAX_SCREENS; screen++) {
+          if (bottom()) {
+            // the page may still grow once the bottom came into view
+            const height = document.documentElement.scrollHeight;
+            await pause();
+            if (document.documentElement.scrollHeight === height) break;
+          }
+          window.scrollBy(0, window.innerHeight);
+          moved = true;
+          await pause();
+        }
+        if (moved) window.scrollTo(0, start);
+      },
+    }),
+  );
+}
+
 export async function getScrollInfo(tabId: number): Promise<[number, number, number]> {
   const results = await inTime(
     chrome.scripting.executeScript({
