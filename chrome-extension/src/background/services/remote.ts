@@ -33,6 +33,10 @@ export interface RemoteTaskEvent {
   step: number;
   details: string;
   timestamp: number;
+  /** with a question or an approval: what the page shows (base64 JPEG), for the user away from this browser */
+  screenshot?: string;
+  /** with a question: the values it asks for */
+  fields?: string[];
 }
 
 /** What the bridge may ask for. A handler that throws answers the request with its message as the error. */

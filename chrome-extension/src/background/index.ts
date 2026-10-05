@@ -420,6 +420,18 @@ let remoteTask: { taskId: string; task: string; waitingFor: WaitingFor | null } 
  * reported to the bridge. The user comes first: a task of theirs is not interrupted, and one they start
  * from the side panel takes over.
  */
+/** What the page of a task waiting for the user shows, or nothing when it cannot be taken in a few seconds */
+async function waitingScreenshot(): Promise<string | undefined> {
+  try {
+    const page = await browserContext.getCurrentPage();
+    const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 3000));
+    return (await Promise.race([page.takeScreenshot(), timeout])) ?? undefined;
+  } catch (error) {
+    logger.warning('remote task: no screenshot for the user', error);
+    return undefined;
+  }
+}
+
 async function startRemoteTask(task: string): Promise<string> {
   if (activeTask) throw new Error('The browser is busy with another task');
   const taskId = `remote-${crypto.randomUUID()}`;
@@ -460,6 +472,11 @@ async function startRemoteTask(task: string): Promise<string> {
 
   const end: RemoteTaskEnd = { taskId, status: 'failed', result: 'The task stopped before it was finished' };
   executor.subscribeExecutionEvents(async (event: AgentEvent) => {
+    // the user may be far from this browser: a question or an approval goes out with what the page shows
+    const waiting = event.state === ExecutionState.ACT_ASK || event.state === ExecutionState.ACT_CONFIRM;
+    const screenshot = waiting ? await waitingScreenshot() : undefined;
+    const meta = event.data.meta;
+    const fields = meta?.kind === 'question' ? meta.fields?.map(field => field.label) : undefined;
     remoteControl.sendEvent({
       taskId,
       actor: event.actor,
@@ -467,6 +484,8 @@ async function startRemoteTask(task: string): Promise<string> {
       step: event.data.step,
       details: event.data.details,
       timestamp: event.timestamp,
+      ...(screenshot ? { screenshot } : {}),
+      ...(fields?.length ? { fields } : {}),
     });
     switch (event.state) {
       case ExecutionState.TASK_OK:
@@ -609,6 +628,25 @@ const remoteControl = new RemoteControl(
       }
       await currentExecutor.cancel();
       return { cancelled: true };
+    },
+    // the user's reply to what a remote task waits for, passed on by the bridge from wherever they are
+    answer_task: async params => {
+      if (activeTask?.source !== 'remote' || activeTask.taskId !== params.taskId || !currentExecutor) {
+        throw new Error(t('bg_errors_noRunningTask'));
+      }
+      const waiting =
+        currentExecutor.waitingForUser && remoteTask?.taskId === params.taskId ? remoteTask.waitingFor : null;
+      if (!waiting || !remoteTask) throw new Error('The task is not waiting for the user');
+      remoteTask.waitingFor = null;
+      const answer = typeof params.answer === 'string' ? params.answer.trim() : '';
+      if (waiting.state === ExecutionState.ACT_CONFIRM) {
+        const approved =
+          typeof params.approve === 'boolean' ? params.approve : /^(y|yes|ok|approve|是|好|确认|同意)/i.test(answer);
+        currentExecutor.confirmAction(approved);
+        return { answered: true, approved };
+      }
+      currentExecutor.answerQuestion(answer);
+      return { answered: true };
     },
     status: async () => ({
       version: chrome.runtime.getManifest().version,

@@ -94,7 +94,7 @@ test('the MCP handshake lists the tools', async t => {
   const list = await rpc(port, 'tools/list', {});
   assert.deepEqual(
     list.body.result.tools.map(one => one.name),
-    ['run_task', 'get_task', 'cancel_task', 'status'],
+    ['run_task', 'get_task', 'answer_task', 'cancel_task', 'status'],
   );
 });
 
@@ -281,4 +281,44 @@ test('a task that asks the user is reported as waiting for them, and running aga
   say({ type: 'event', actor: 'navigator', state: 'act.ok', step: 3, details: 'Typed the code' });
   await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal((await tool(port, 'get_task', { task_id: 't-ask', wait_seconds: 0 })).status, 'running');
+});
+
+test('the user is told what a task waits for, with the page, and their answer goes to the browser', async t => {
+  const waits = [];
+  const overs = [];
+  const { bridge, port } = await startBridge({
+    onWaiting: task => waits.push({ id: task.id, ...task.waiting }),
+    onWaitingOver: task => overs.push(task.id),
+  });
+  t.after(() => bridge.close());
+  let say;
+  const answers = [];
+  const browser = await connectBrowser(port, (method, params, socket) => {
+    say = message => socket.send(JSON.stringify({ taskId: 't-code', ...message }));
+    if (method === 'answer_task') answers.push(params);
+    return method === 'run_task' ? { taskId: 't-code' } : { answered: true };
+  });
+  t.after(() => browser.close());
+
+  assert.match((await tool(port, 'answer_task', { task_id: 'nope', answer: '1' })).error, /No task/);
+  await tool(port, 'run_task', { task: 'sign in', wait_seconds: 0 });
+  assert.match((await tool(port, 'answer_task', { task_id: 't-code', answer: '1' })).error, /not waiting/);
+
+  say({
+    type: 'event',
+    actor: 'navigator',
+    state: 'act.ask',
+    step: 2,
+    details: 'The SMS code?',
+    fields: ['code'],
+    screenshot: 'AAAA',
+  });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.deepEqual(waits, [{ id: 't-code', question: 'The SMS code?', fields: ['code'], screenshot: 'AAAA' }]);
+  assert.equal((await tool(port, 'get_task', { task_id: 't-code', wait_seconds: 0 })).question, 'The SMS code?');
+
+  const answered = await tool(port, 'answer_task', { task_id: 't-code', answer: '123456' });
+  assert.equal(answered.status, 'running');
+  assert.deepEqual(answers, [{ taskId: 't-code', answer: '123456' }]);
+  assert.deepEqual(overs, ['t-code']);
 });

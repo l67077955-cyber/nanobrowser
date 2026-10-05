@@ -109,7 +109,7 @@ Common action sequences:
 
 11. Sign-in pages:
 
-- When a site asks to sign in and the browser has no saved login for it (see Form filling), use ask_user with on_page true to ask the user to sign in in this tab, briefly, and continue once they reply. Do not explain how to sign in.
+- When a site asks to sign in and the browser has no saved login for it (see Form filling), use ask_user with on_page true to ask the user to sign in in this tab, briefly, and continue once they reply. Do not explain how to sign in. When the sign-in page offers a QR code to scan with the site's app (扫码登录), ask the user to scan it rather than going for an SMS code: one scan from their phone, no slider captcha. The user may be away from this browser and is shown what the page shows, so leave the code in view and do not refresh it.
 - When the user asks for a specific part of a sign-in form to be filled in, such as the image captcha or a phone number they gave, do exactly that part.
 
 12. Plan:

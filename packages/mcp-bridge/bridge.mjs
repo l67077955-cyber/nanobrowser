@@ -56,6 +56,22 @@ const TOOLS = [
     },
   },
   {
+    name: 'answer_task',
+    description:
+      'Answer what a task waiting for the user asks (status waiting_user or waiting_confirmation), when the user has told you: ' +
+      'a code they received, a value, or "done" once they did something on the page. For an approval, set approve. ' +
+      'Never make up an answer the user did not give.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string' },
+        answer: { type: 'string', description: 'The user’s reply, as they gave it' },
+        approve: { type: 'boolean', description: 'For waiting_confirmation: whether the user approves the action' },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
     name: 'cancel_task',
     description: 'Stop a running task started with run_task.',
     inputSchema: { type: 'object', properties: { task_id: { type: 'string' } }, required: ['task_id'] },
@@ -83,7 +99,8 @@ function waitSeconds(value) {
  * @param {{ token: string, log?: (...args: unknown[]) => void, pingIntervalMs?: number, requestTimeoutMs?: number,
  *   startBrowser?: () => void, browserStartMs?: number, record?: (entry: object) => void }} options startBrowser is
  *   called when an agent needs the browser and none is connected; the bridge then waits browserStartMs for it to
- *   connect. record receives every start, event and end of a task, for a run log
+ *   connect. record receives every start, event and end of a task, for a run log. onWaiting is called when a task
+ *   starts to wait for the user (task.waiting holds the question and a screenshot) and onWaitingOver when it stops
  */
 export function createBridge({
   token,
@@ -93,6 +110,8 @@ export function createBridge({
   startBrowser,
   browserStartMs = 30_000,
   record = () => {},
+  onWaiting = () => {},
+  onWaitingOver = () => {},
 }) {
   if (!token || token.length < 16) throw new Error('The bridge token must have at least 16 characters');
 
@@ -147,8 +166,15 @@ export function createBridge({
     task.status = status;
     task.result = result;
     task.endedAt = Date.now();
+    stopWaiting(task);
     record({ t: task.endedAt, kind: 'end', taskId: task.id, status, result });
     for (const wake of task.waiters.splice(0)) wake();
+  }
+
+  function stopWaiting(task) {
+    if (!task.waiting) return;
+    task.waiting = null;
+    onWaitingOver(task);
   }
 
   function onExtensionMessage(message) {
@@ -174,11 +200,20 @@ export function createBridge({
           step: message.step,
           details: message.details === undefined ? '' : String(message.details),
         });
-        if (message.state === 'act.confirm') task.status = 'waiting_confirmation';
-        else if (message.state === 'act.ask') task.status = 'waiting_user';
+        if (message.state === 'act.confirm' || message.state === 'act.ask') {
+          task.status = message.state === 'act.ask' ? 'waiting_user' : 'waiting_confirmation';
+          task.waiting = {
+            question: message.details === undefined ? '' : String(message.details),
+            fields: Array.isArray(message.fields) ? message.fields.map(String) : [],
+            screenshot: typeof message.screenshot === 'string' ? message.screenshot : null,
+          };
+          onWaiting(task);
+        }
         // the planner goes on reporting while the user is waited for: only the next action ends the wait
-        else if (!task.status.startsWith('waiting_') || String(message.state).startsWith('act.'))
+        else if (!task.status.startsWith('waiting_') || String(message.state).startsWith('act.')) {
           task.status = 'running';
+          stopWaiting(task);
+        }
         if (typeof message.step === 'number') task.step = message.step;
         // the steps worth telling an agent about: what was planned, what was done, what went wrong
         if (/^(step\.ok|step\.fail|act\.ok|act\.fail|act\.confirm|act\.ask)$/.test(message.state) && message.details) {
@@ -266,6 +301,7 @@ export function createBridge({
       task_id: task.id,
       status: task.status,
       ...(END_STATES.has(task.status) ? { result: task.result } : {}),
+      ...(task.waiting ? { question: task.waiting.question } : {}),
       step: task.step,
       recent_steps: task.events.slice(-8).map(event => `${event.actor} ${event.state}: ${event.details}`),
     };
@@ -286,6 +322,21 @@ export function createBridge({
     });
   }
 
+  /** The user's reply to what a task waits for; approve decides an approval, otherwise read from the answer */
+  async function answerTask(taskId, answer, approve) {
+    const task = tasks.get(taskId);
+    if (!task) throw new Error(`No task with the id ${taskId}`);
+    if (!task.waiting) throw new Error('The task is not waiting for the user');
+    await callExtension('answer_task', {
+      taskId,
+      answer: typeof answer === 'string' ? answer : '',
+      ...(typeof approve === 'boolean' ? { approve } : {}),
+    });
+    task.status = 'running';
+    stopWaiting(task);
+    return task;
+  }
+
   async function callTool(name, args, signal) {
     switch (name) {
       case 'run_task': {
@@ -299,6 +350,7 @@ export function createBridge({
           step: 0,
           events: [],
           waiters: [],
+          waiting: null,
           startedAt: Date.now(),
           endedAt: null,
         };
@@ -313,6 +365,11 @@ export function createBridge({
         const task = tasks.get(args.task_id);
         if (!task) throw new Error(`No task with the id ${args.task_id}`);
         await waitForEnd(task, waitSeconds(args.wait_seconds), signal);
+        return describe(task);
+      }
+      case 'answer_task': {
+        const task = await answerTask(args.task_id, args.answer, args.approve);
+        await waitForEnd(task, 0, signal);
         return describe(task);
       }
       case 'cancel_task': {
@@ -452,6 +509,7 @@ export function createBridge({
 
   return {
     server,
+    answerTask,
     close() {
       for (const client of sockets.clients) client.terminate();
       sockets.close();

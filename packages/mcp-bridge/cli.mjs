@@ -3,6 +3,7 @@
  * Start the Nanobrowser MCP bridge, or have it run in the background from login on.
  *
  *   node cli.mjs [--port 8787] [--host 127.0.0.1] [--token-file <path>] [--launch-browser] [--run-log <path>]
+ *                [--telegram-chat <chat id> --telegram-token-file <path>]
  *   node cli.mjs install [same options]     run it in the background from login on, and now
  *   node cli.mjs uninstall                  stop that and remove it
  *   node cli.mjs status                     whether it is installed and running
@@ -10,7 +11,9 @@
  * The token comes from NANOBROWSER_BRIDGE_TOKEN or from the token file, which is created on first start.
  * With --launch-browser, Chrome is started without a window when an agent needs the browser and none is
  * connected; `install` turns it on. With --run-log, every task's start, steps and end are appended to that
- * file as JSON lines, which viewer.mjs shows as a web page.
+ * file as JSON lines, which viewer.mjs shows as a web page. With --telegram-chat, a task that waits for the user
+ * (a code, a QR code to scan, an approval) is sent to that Telegram chat with a screenshot, and the reply goes
+ * back to the task; the bot token comes from NANOBROWSER_TELEGRAM_TOKEN or the token file.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,6 +22,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { createBridge } from './bridge.mjs';
+import { createTelegram } from './telegram.mjs';
 import { findChrome, installService, launchChrome, serviceStatus, uninstallService } from './service.mjs';
 
 const { values, positionals } = parseArgs({
@@ -29,6 +33,11 @@ const { values, positionals } = parseArgs({
     'token-file': { type: 'string', default: path.join(os.homedir(), '.config', 'nanobrowser', 'bridge-token') },
     'launch-browser': { type: 'boolean', default: false },
     'run-log': { type: 'string' },
+    'telegram-chat': { type: 'string', default: process.env.NANOBROWSER_TELEGRAM_CHAT },
+    'telegram-token-file': {
+      type: 'string',
+      default: path.join(os.homedir(), '.config', 'nanobrowser', 'telegram-token'),
+    },
   },
 });
 
@@ -111,7 +120,26 @@ if (command === 'install') {
         }
       }
     : undefined;
-  const bridge = createBridge({ token, log, record, startBrowser: chrome ? () => launchChrome(chrome) : undefined });
+  // the user is reached on Telegram when a task waits for them; the bridge is made first, the relay needs it
+  let telegram = null;
+  const chatId = values['telegram-chat'];
+  const bridge = createBridge({
+    token,
+    log,
+    record,
+    startBrowser: chrome ? () => launchChrome(chrome) : undefined,
+    onWaiting: task => telegram?.onWaiting(task),
+    onWaitingOver: task => telegram?.onWaitingOver(task),
+  });
+  if (chatId) {
+    let botToken = process.env.NANOBROWSER_TELEGRAM_TOKEN;
+    try {
+      botToken ??= fs.readFileSync(values['telegram-token-file'], 'utf8').trim();
+    } catch {
+      log(`no Telegram bot token: set NANOBROWSER_TELEGRAM_TOKEN or write it to ${values['telegram-token-file']}`);
+    }
+    if (botToken) telegram = createTelegram({ token: botToken, chatId, answerTask: bridge.answerTask, log });
+  }
 
   bridge.server.on('error', error => {
     log(`cannot listen on ${values.host}:${values.port}: ${error.message}`);
@@ -125,6 +153,7 @@ if (command === 'install') {
     log(`  token:     ${source}`);
     if (chrome) log(`  browser:   started on demand (${chrome})`);
     if (runLog) log(`  run log:   ${runLog}`);
+    if (telegram) log(`  telegram:  tasks waiting for the user are sent to chat ${chatId}`);
     if (!local) {
       log(
         '  WARNING: not bound to this machine only. Put TLS in front of it: the token travels with every connection.',
