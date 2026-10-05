@@ -106,11 +106,13 @@ export default function ContextPeek({ view, live }: { view: PageView; live: bool
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('pointerdown', onPointer);
-    document.addEventListener('keydown', onKey);
+    // the panel can be moved into a pinned window, which has a document of its own
+    const doc = rootRef.current?.ownerDocument ?? document;
+    doc.addEventListener('pointerdown', onPointer);
+    doc.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('pointerdown', onPointer);
-      document.removeEventListener('keydown', onKey);
+      doc.removeEventListener('pointerdown', onPointer);
+      doc.removeEventListener('keydown', onKey);
     };
   }, [open]);
 

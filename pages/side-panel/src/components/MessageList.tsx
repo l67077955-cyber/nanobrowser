@@ -7,7 +7,7 @@ import {
   generalSettingsStore,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
-import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import type { IconType } from 'react-icons';
 import {
   FiAlertCircle,
@@ -783,9 +783,11 @@ function Answer({ message, detailed }: { message: Message; detailed: boolean }) 
   const meta = message.meta?.kind === 'planner' ? message.meta : undefined;
   const text = answerText(message.content).trim() || t('chat_answer_done');
 
-  const copy = async () => {
+  const copy = async (event: MouseEvent<HTMLButtonElement>) => {
     try {
-      await navigator.clipboard.writeText(text);
+      // the clipboard of the window the button is in, which has focus: the panel can be pinned in a window of its own
+      const view = event.currentTarget.ownerDocument.defaultView ?? window;
+      await view.navigator.clipboard.writeText(text);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch (error) {

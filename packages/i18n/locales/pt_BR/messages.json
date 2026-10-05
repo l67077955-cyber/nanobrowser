@@ -37,6 +37,18 @@
   "nav_dockToSidePanel_a11y": {
     "message": "Move back to the side panel"
   },
+  "nav_pin_a11y": {
+    "message": "Keep on top of other windows"
+  },
+  "nav_unpin_a11y": {
+    "message": "Stop keeping on top"
+  },
+  "nav_pinned_here": {
+    "message": "Nanobrowser is pinned on top of your windows."
+  },
+  "nav_unpin_bringBack": {
+    "message": "Bring it back here"
+  },
   "nav_back": {
     "message": "← Voltar"
   },

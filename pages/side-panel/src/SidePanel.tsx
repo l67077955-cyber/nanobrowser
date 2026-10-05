@@ -21,6 +21,7 @@ import AskCard, { type Ask } from './components/AskCard';
 import ChatHistoryList from './components/ChatHistoryList';
 import BookmarkList from './components/BookmarkList';
 import WindowToggleButton, { useHandedOffSession } from './components/WindowToggleButton';
+import PinButton from './components/PinButton';
 import { getTargetTab } from './utils';
 import { EventType, type AgentEvent, ExecutionState } from './types/event';
 import './SidePanel.css';
@@ -58,6 +59,7 @@ const SidePanel = () => {
   const [detailed, setDetailed] = useState(readDetailedView);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
   // the chat follows new steps only while the user is reading at its end
   const [awayFromEnd, setAwayFromEnd] = useState(false);
   const followRef = useRef(true);
@@ -1120,16 +1122,18 @@ const SidePanel = () => {
   // the menu closes on a click anywhere else, and on Escape
   useEffect(() => {
     if (!menuOpen) return;
+    // the document the menu is in: the panel can be moved into a pinned window, whose events are of its own realm
+    const doc = menuRef.current?.ownerDocument ?? document;
     const close = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !menuRef.current?.contains(event.target as Node)) {
+      if ('key' in event ? event.key === 'Escape' : !menuRef.current?.contains(event.target as Node)) {
         setMenuOpen(false);
       }
     };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
+    doc.addEventListener('mousedown', close);
+    doc.addEventListener('keydown', close);
     return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', close);
+      doc.removeEventListener('mousedown', close);
+      doc.removeEventListener('keydown', close);
     };
   }, [menuOpen]);
 
@@ -1249,7 +1253,9 @@ const SidePanel = () => {
               </button>
             </>
           )}
-          <WindowToggleButton sessionId={currentSessionId} />
+          <PinButton onPinnedChange={setPinned} />
+          {/* the pinned window lives as long as the page under it, so that page stays put */}
+          {!pinned && <WindowToggleButton sessionId={currentSessionId} />}
           <div className="relative" ref={menuRef}>
             <button
               type="button"
