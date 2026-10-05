@@ -165,7 +165,7 @@ export default function AgentDock({
                 {plan.map((line, i) => (
                   <li key={`${i}-${line}`} className={i === 0 ? 'now' : undefined}>
                     <span className="nb-dock-n">{i + 1}</span>
-                    <span>{line}</span>
+                    <span title={line}>{line}</span>
                   </li>
                 ))}
               </ol>

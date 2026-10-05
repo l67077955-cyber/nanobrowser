@@ -83,7 +83,7 @@ const BookmarkList: React.FC<BookmarkListProps> = ({
   return (
     <div className="p-2">
       <h3 className="nb-label px-2 pb-2 pt-1">{t('chat_bookmarks_header')}</h3>
-      <ul className="flex flex-col gap-0.5">
+      <ul className="nb-history flex flex-col gap-0.5">
         {bookmarks.map(bookmark => (
           <li
             key={bookmark.id}

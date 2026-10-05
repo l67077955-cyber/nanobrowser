@@ -355,3 +355,174 @@ html .nb-seg > button[aria-checked='true'] {
 html .nb-seg > button:hover:not([aria-checked='true']) {
   background: var(--nb-tile-2);
 }
+
+/* ---------- density: small type and short rows everywhere, so nothing in a 380px window looks swollen ---------- */
+html .nb-stream {
+  gap: 12px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+html .nb-answer {
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* what the user asked: a quiet box, not a heavy frame */
+html .nb-user {
+  padding: 3px 8px;
+  border-color: var(--nb-hair);
+  background: var(--nb-tile-2);
+}
+html .nb-line {
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 4px;
+  padding: 0;
+}
+html .nb-say {
+  padding: 1px 6px;
+}
+html .nb-what small,
+html .nb-why,
+html .nb-who {
+  font-size: 11px;
+}
+html .nb-trail::before {
+  left: 9.5px;
+}
+
+/* the header: a 28px strip with 14px icons */
+html .header,
+html .header.floating {
+  padding: 2px 4px 2px 8px;
+}
+html .header-icon {
+  padding: 4px;
+}
+html .header-icon svg {
+  width: 14px;
+  height: 14px;
+}
+html .header-title {
+  font-size: 10.5px;
+}
+html .header-lead img {
+  width: 14px;
+  height: 14px;
+}
+html .nb-menu {
+  top: calc(100% + 2px);
+  right: -4px;
+  width: 210px;
+}
+html .nb-menu > button {
+  height: 28px;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+html .nb-menu > button > svg {
+  width: 13px;
+  height: 13px;
+}
+html .nb-menu-view {
+  height: 32px;
+  padding: 0 6px 0 10px;
+}
+
+/* the dock: one line for now, one line per step to come */
+html .nb-dock-head {
+  gap: 7px;
+  padding: 4px 4px 4px 7px;
+}
+html .nb-dock-headline {
+  font-size: 12px;
+}
+html .nb-dock-meta {
+  font-size: 10.5px;
+}
+html .nb-dock-toggle {
+  width: 22px;
+  height: 22px;
+}
+html .nb-dock-body {
+  gap: 6px;
+  max-height: 30vh;
+  padding: 5px 8px 7px;
+}
+html .nb-dock-group {
+  gap: 2px;
+}
+html .nb-dock-plan li {
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+html .nb-dock-plan li > span:last-child,
+html .nb-dock-queue li > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+html .nb-dock-n {
+  width: 13px;
+  height: 13px;
+  font-size: 9px;
+}
+html .nb-dock-queue li,
+html .nb-dock-chip {
+  font-size: 11.5px;
+}
+html .nb-dock-chip {
+  padding: 2px 7px;
+}
+
+/* the composer: one short line until there is more to say */
+html .nb-input textarea {
+  padding: 6px 9px 0;
+  font-size: 12.5px;
+}
+html .nb-input svg {
+  max-width: 14px;
+  max-height: 14px;
+}
+html .nb-ask {
+  gap: 4px;
+  padding: 5px 6px 5px 8px;
+}
+html .nb-ask-head p,
+html .nb-confirm p {
+  font-size: 12px;
+}
+
+/* the welcome: a greeting, not a poster */
+html .nb-welcome-logo {
+  width: 20px;
+  height: 20px;
+}
+html .nb-welcome-hero h1,
+html .nb-welcome-hero h2 {
+  margin: 8px 0 2px;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+html .nb-welcome-hero p {
+  font-size: 12.5px;
+}
+html .nb-modes {
+  width: 236px;
+}
+html .nb-modes > button {
+  padding: 5px 8px;
+}
+html .nb-modes small {
+  font-size: 10.5px;
+}
+
+/* saved tasks and history: short ruled rows */
+html .nb-history > li > button,
+html .nb-history > li > div > button {
+  padding: 5px 8px;
+}
+html .nb-history .text-\[13px\] {
+  font-size: 12px;
+}
