@@ -241,20 +241,6 @@ html .nb-orb i {
   }
 }
 
-/* ---------- menus ---------- */
-html .nb-menu > a:hover {
-  background: var(--nb-ink);
-  color: var(--nb-page);
-}
-html .nb-menu > a:hover small,
-html .nb-menu > a:hover .nb-menu-check {
-  color: var(--nb-page);
-}
-html .nb-menu hr {
-  margin: 4px 0;
-  border-top-color: var(--nb-ink);
-}
-
 html code {
   background: var(--nb-tile-2);
   font-family: var(--nb-mono);
@@ -313,30 +299,59 @@ html .nb-mode-button[aria-expanded='true'] {
   color: var(--nb-page);
 }
 
-/* menu rows that are buttons invert like the links do */
-html .nb-menu > button:hover:enabled {
+/* ---------- the more menu: a sheet hanging off the header's rule at the window's right edge ---------- */
+html .nb-menu {
+  top: calc(100% + 3px);
+  right: -6px;
+  padding: 0;
+  border: 1px solid var(--nb-ink);
+  border-right: 0;
+  animation: none;
+}
+html .nb-menu > button {
+  height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--nb-hair);
+}
+html .nb-menu > button > svg {
+  color: var(--nb-ink);
+}
+html .nb-menu > button:hover:enabled,
+html .nb-menu > button:focus-visible {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+  outline: none;
+}
+html .nb-menu > button:hover:enabled > svg,
+html .nb-menu > button:focus-visible > svg {
+  color: var(--nb-page);
+}
+html .nb-menu-view {
+  height: 38px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--nb-ink);
+}
+html .nb-menu > :last-child {
+  border-bottom: 0;
+}
+html .nb-seg {
+  padding: 0;
+  border: 1px solid var(--nb-ink);
+  background: var(--nb-tile);
+}
+html .nb-seg > button {
+  padding: 2px 7px;
+  font-family: var(--nb-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+}
+html .nb-seg > button + button {
+  border-left: 1px solid var(--nb-ink);
+}
+html .nb-seg > button[aria-checked='true'] {
   background: var(--nb-ink);
   color: var(--nb-page);
 }
-html .nb-menu > button:hover:enabled small,
-html .nb-menu > button:hover:enabled .nb-menu-check {
-  color: var(--nb-page);
-}
-html .nb-menu > button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* menu rows that are buttons invert like the links do */
-html .nb-menu > button:hover:enabled {
-  background: var(--nb-ink);
-  color: var(--nb-page);
-}
-html .nb-menu > button:hover:enabled small,
-html .nb-menu > button:hover:enabled .nb-menu-check {
-  color: var(--nb-page);
-}
-html .nb-menu > button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+html .nb-seg > button:hover:not([aria-checked='true']) {
+  background: var(--nb-tile-2);
 }

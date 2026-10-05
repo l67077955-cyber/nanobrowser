@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FiExternalLink, FiSidebar } from 'react-icons/fi';
+import { FiArrowUpRight, FiExternalLink, FiSidebar } from 'react-icons/fi';
 import { t } from '@extension/i18n';
 
 const HANDOFF_KEY = 'nb-handoff-session';
@@ -101,10 +101,9 @@ export default function WindowToggleButton({
   if (menuItem) {
     return (
       <button type="button" role="menuitem" onClick={handleClick} disabled={disabled}>
-        <span className="nb-menu-check">
-          <Icon size={14} />
-        </span>
+        <Icon aria-hidden="true" />
         {label}
+        <FiArrowUpRight className="nb-menu-out" aria-hidden="true" />
       </button>
     );
   }

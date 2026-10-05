@@ -1,6 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { FiSettings, FiPlus, FiClock, FiChevronLeft, FiMoreHorizontal, FiCheck, FiArrowDown } from 'react-icons/fi';
+import {
+  FiSettings,
+  FiPlus,
+  FiClock,
+  FiChevronLeft,
+  FiMoreHorizontal,
+  FiArrowDown,
+  FiArrowUpRight,
+} from 'react-icons/fi';
 import {
   type Message,
   type StepMeta,
@@ -1269,35 +1277,33 @@ const SidePanel = () => {
                       setMenuOpen(false);
                       void handleLoadHistory();
                     }}>
-                    <span className="nb-menu-check">
-                      <FiClock size={14} />
-                    </span>
-                    {t('nav_loadHistory_a11y')}
+                    <FiClock aria-hidden="true" />
+                    {t('chat_history_title')}
                   </button>
                 )}
                 {/* the pinned window lives as long as the page under it, so that page stays put */}
                 {!pinned && <WindowToggleButton sessionId={currentSessionId} menuItem />}
-                {(!showHistory || !pinned) && <hr />}
-                <div className="nb-label px-2.5 pb-1 pt-1.5">{t('nav_view')}</div>
-                <button
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={!detailed}
-                  onClick={() => chooseDetailed(false)}>
-                  <span className="nb-menu-check">{!detailed && <FiCheck size={14} />}</span>
-                  <span>
-                    {t('nav_view_simple')}
-                    <small>{t('nav_view_simple_hint')}</small>
-                  </span>
-                </button>
-                <button type="button" role="menuitemradio" aria-checked={detailed} onClick={() => chooseDetailed(true)}>
-                  <span className="nb-menu-check">{detailed && <FiCheck size={14} />}</span>
-                  <span>
-                    {t('nav_view_detailed')}
-                    <small>{t('nav_view_detailed_hint')}</small>
-                  </span>
-                </button>
-                <hr />
+                <div className="nb-menu-view" role="group" aria-label={t('nav_view')}>
+                  <span className="nb-label">{t('nav_view')}</span>
+                  <div className="nb-seg">
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={!detailed}
+                      title={t('nav_view_simple_hint')}
+                      onClick={() => chooseDetailed(false)}>
+                      {t('nav_view_simple')}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={detailed}
+                      title={t('nav_view_detailed_hint')}
+                      onClick={() => chooseDetailed(true)}>
+                      {t('nav_view_detailed')}
+                    </button>
+                  </div>
+                </div>
                 <button
                   type="button"
                   role="menuitem"
@@ -1305,10 +1311,9 @@ const SidePanel = () => {
                     setMenuOpen(false);
                     chrome.runtime.openOptionsPage();
                   }}>
-                  <span className="nb-menu-check">
-                    <FiSettings size={14} />
-                  </span>
+                  <FiSettings aria-hidden="true" />
                   {t('nav_settings_a11y')}
+                  <FiArrowUpRight className="nb-menu-out" aria-hidden="true" />
                 </button>
               </div>
             )}
