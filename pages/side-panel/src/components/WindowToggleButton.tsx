@@ -44,7 +44,14 @@ export function useHandedOffSession(show: (sessionId: string) => void): void {
  * Header button that moves Nanobrowser between the side panel and a window of its own, taking the open chat
  * along. A running task goes on through the move and shows up where Nanobrowser opens.
  */
-export default function WindowToggleButton({ sessionId }: { sessionId: string | null }) {
+export default function WindowToggleButton({
+  sessionId,
+  menuItem = false,
+}: {
+  sessionId: string | null;
+  /** a row in the header's menu rather than an icon of its own */
+  menuItem?: boolean;
+}) {
   // null until known; a side panel is not a tab
   const [inWindow, setInWindow] = useState<boolean | null>(null);
   // the browser window the side panel goes back to, looked up ahead: opening it must happen in the click itself
@@ -90,6 +97,18 @@ export default function WindowToggleButton({ sessionId }: { sessionId: string | 
       .catch(err => console.error('Failed to open the separate window:', err));
   };
 
+  const Icon = inWindow ? FiSidebar : FiExternalLink;
+  if (menuItem) {
+    return (
+      <button type="button" role="menuitem" onClick={handleClick} disabled={disabled}>
+        <span className="nb-menu-check">
+          <Icon size={14} />
+        </span>
+        {label}
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -98,7 +117,7 @@ export default function WindowToggleButton({ sessionId }: { sessionId: string | 
       className="header-icon disabled:cursor-not-allowed disabled:opacity-40"
       aria-label={label}
       title={label}>
-      {inWindow ? <FiSidebar size={16} /> : <FiExternalLink size={16} />}
+      <Icon size={16} />
     </button>
   );
 }

@@ -1244,19 +1244,9 @@ const SidePanel = () => {
                 title={t('nav_newChat_a11y')}>
                 <FiPlus size={16} />
               </button>
-              <button
-                type="button"
-                onClick={handleLoadHistory}
-                className="header-icon"
-                aria-label={t('nav_loadHistory_a11y')}
-                title={t('nav_loadHistory_a11y')}>
-                <FiClock size={16} />
-              </button>
             </>
           )}
           <PinButton onPinnedChange={setPinned} />
-          {/* the pinned window lives as long as the page under it, so that page stays put */}
-          {!pinned && <WindowToggleButton sessionId={currentSessionId} />}
           <div className="relative" ref={menuRef}>
             <button
               type="button"
@@ -1270,6 +1260,24 @@ const SidePanel = () => {
             </button>
             {menuOpen && (
               <div className="nb-menu" role="menu">
+                {/* the header keeps only new chat, pin and this menu; the rest is one click further */}
+                {!showHistory && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void handleLoadHistory();
+                    }}>
+                    <span className="nb-menu-check">
+                      <FiClock size={14} />
+                    </span>
+                    {t('nav_loadHistory_a11y')}
+                  </button>
+                )}
+                {/* the pinned window lives as long as the page under it, so that page stays put */}
+                {!pinned && <WindowToggleButton sessionId={currentSessionId} menuItem />}
+                {(!showHistory || !pinned) && <hr />}
                 <div className="nb-label px-2.5 pb-1 pt-1.5">{t('nav_view')}</div>
                 <button
                   type="button"

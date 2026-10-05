@@ -326,3 +326,17 @@ html .nb-menu > button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* menu rows that are buttons invert like the links do */
+html .nb-menu > button:hover:enabled {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+}
+html .nb-menu > button:hover:enabled small,
+html .nb-menu > button:hover:enabled .nb-menu-check {
+  color: var(--nb-page);
+}
+html .nb-menu > button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
