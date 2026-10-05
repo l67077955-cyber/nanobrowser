@@ -1477,6 +1477,15 @@
       }
     }
   },
+  "chat_work_trouble": {
+    "message": "$COUNT$ went wrong",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
   "chat_work_steps": {
     "message": "$COUNT$ steps",
     "placeholders": {

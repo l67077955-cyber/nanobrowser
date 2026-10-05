@@ -31,6 +31,7 @@ import {
   FiSettings,
   FiShield,
   FiType,
+  FiX,
   FiZap,
 } from 'react-icons/fi';
 import Markdown from './Markdown';
@@ -57,6 +58,7 @@ import {
   workStats,
 } from './steps';
 import './StepList.css';
+import './log.css';
 
 /** What the agent is doing right now, between the steps it has finished */
 export interface Activity {
@@ -230,6 +232,7 @@ function TurnView({ turn, running, activity, detailed, onRetry }: TurnViewProps)
                 entries={segment.entries}
                 startedAt={turn.startedAt}
                 running={running && i === segments.length - 1}
+                failed={segments[i + 1]?.kind === 'failure'}
                 activity={activity}
                 detailed={detailed}
               />
@@ -260,12 +263,56 @@ interface WorkProps {
   entries: Entry[];
   startedAt: number;
   running: boolean;
+  /** the task ended in a failure right after these steps */
+  failed?: boolean;
   activity: Activity | null;
   detailed: boolean;
 }
 
-/** The steps taken for a request: open while they happen, one line once they are done */
-function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
+/** A row of the trail: a step, how long it took, and how many times the same row came in a row */
+interface Row {
+  entry: Entry;
+  /** wall time from the row before it, or from the request, to this one */
+  ms: number;
+  repeat: number;
+}
+
+const isPlain = (entry: Entry) => entry.message.meta?.kind !== 'navigator' && entry.message.meta?.kind !== 'planner';
+
+/** The trail's rows: the same message coming again (a retried error) is one row with a count */
+function toRows(entries: Entry[], startedAt: number): Row[] {
+  const rows: Row[] = [];
+  let before = startedAt;
+  for (const entry of entries) {
+    const ms = Math.max(0, entry.message.timestamp - before);
+    before = entry.message.timestamp;
+    const last = rows[rows.length - 1];
+    if (last && isPlain(entry) && isPlain(last.entry) && last.entry.message.content === entry.message.content) {
+      last.repeat++;
+      last.ms += ms;
+      continue;
+    }
+    rows.push({ entry, ms, repeat: 1 });
+  }
+  return rows;
+}
+
+const isTrouble = (entry: Entry) => {
+  const { message } = entry;
+  if (message.meta?.kind === 'navigator') return message.meta.actions.some(action => !action.ok);
+  return isPlain(entry) && (message.failed ?? /fail|error/i.test(message.content));
+};
+
+// while a run goes on, the rows before this many latest ones step back
+const NEAR_ROWS = 3;
+
+/**
+ * The steps taken for a request. Every row carries the three things a person follows: what was done (one
+ * line, the rest a click away), how it went (the glyph's colour) and how long it took (the column on the
+ * right). Strength follows what matters now: the latest rows of a running task in full ink, earlier ones
+ * quieter, colour only where something went wrong. Done, it folds to one line that still says all three.
+ */
+function Work({ entries, startedAt, running, failed = false, activity, detailed }: WorkProps) {
   const [chosen, setChosen] = useState<boolean | null>(null);
   const [showAll, setShowAll] = useState(false);
   const open = chosen ?? (running || detailed);
@@ -293,19 +340,28 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
   else title = stats.steps > 0 ? t('chat_work_done', [elapsed]) : t('chat_work_thought', [elapsed]);
   const steps =
     stats.steps === 0 ? '' : stats.steps === 1 ? t('chat_work_steps_one') : t('chat_work_steps', [String(stats.steps)]);
+  const trouble = useMemo(() => entries.filter(isTrouble).length, [entries]);
 
   const roster = useMemo(() => crew(entries), [entries]);
-  const folded = showAll ? 0 : Math.max(0, entries.length - VISIBLE_STEPS);
+  const rows = useMemo(() => toRows(entries, startedAt), [entries, startedAt]);
+  const folded = showAll ? 0 : Math.max(0, rows.length - VISIBLE_STEPS);
+  const status = running ? 'running' : failed ? 'failed' : 'done';
 
   return (
-    <div className={`nb-work${open ? ' open' : ''}${running ? ' running' : ''}`}>
+    <div className={`nb-work${open ? ' open' : ''} ${status}`}>
       <div className="nb-work-top">
         <button type="button" className="nb-work-head" aria-expanded={open} onClick={() => setChosen(!open)}>
           <span className="nb-work-mark" aria-hidden>
-            {running ? <i className="nb-pulse" /> : <FiCheck />}
+            {running ? <i className="nb-pulse" /> : failed ? <FiX /> : <FiCheck />}
           </span>
           <span className="nb-work-title">{title}</span>
           {steps && <span className="nb-work-steps">· {steps}</span>}
+          {trouble > 0 && (
+            <span className="nb-work-trouble" title={t('chat_work_trouble', [String(trouble)])}>
+              <FiAlertCircle aria-hidden />
+              {trouble}
+            </span>
+          )}
           {roster.length > 1 && (
             <span className="nb-roster" title={roster.map(agent => AGENTS[agent].name).join(' · ')}>
               {roster.map(agent => (
@@ -327,15 +383,16 @@ function Work({ entries, startedAt, running, activity, detailed }: WorkProps) {
             </button>
           )}
           <ol className="nb-trail">
-            {entries.slice(folded).map(entry => (
+            {rows.slice(folded).map((row, i) => (
               <TrailEntry
-                key={`${entry.message.actor}-${entry.message.timestamp}-${entry.index}`}
-                entry={entry}
+                key={`${row.entry.message.actor}-${row.entry.message.timestamp}-${row.entry.index}`}
+                row={row}
                 detailed={detailed}
-                newPage={newPages.has(entry.index)}
+                newPage={newPages.has(row.entry.index)}
+                past={running && folded + i < rows.length - NEAR_ROWS}
               />
             ))}
-            {running && <LiveItem activity={activity} />}
+            {running && <LiveItem activity={activity} since={last?.message.timestamp ?? startedAt} now={now} />}
           </ol>
         </div>
       )}
@@ -364,7 +421,7 @@ export function liveText(activity: Activity | null): string {
   }
 }
 
-function LiveItem({ activity }: { activity: Activity | null }) {
+function LiveItem({ activity, since, now }: { activity: Activity | null; since: number; now: number }) {
   return (
     <li className={`nb-item live phase-${activity?.phase ?? 'idle'}`} aria-live="polite">
       <div className="nb-line">
@@ -374,34 +431,70 @@ function LiveItem({ activity }: { activity: Activity | null }) {
         <span className="nb-say">
           <span className="nb-what nb-shimmer">{liveText(activity).replace(/[.…]+$/, '')}…</span>
         </span>
+        <StepTime ms={now - since} live />
       </div>
     </li>
   );
 }
 
-function TrailEntry({ entry, detailed, newPage }: { entry: Entry; detailed: boolean; newPage: boolean }) {
-  const { message, step } = entry;
+// a step that took longer than this is one the user waited on, and its time is shown in full ink
+const SLOW_MS = 10_000;
+
+/** How long a row took, in the column at the right: quiet, a little louder when it was slow */
+function StepTime({ ms, live = false }: { ms: number; live?: boolean }) {
+  const text = ms < 10_000 && !live ? `${(ms / 1000).toFixed(1)}s` : formatDuration(ms);
+  return <span className={`nb-t${ms >= SLOW_MS ? ' slow' : ''}${live ? ' live' : ''}`}>{text}</span>;
+}
+
+interface TrailEntryProps {
+  row: Row;
+  detailed: boolean;
+  newPage: boolean;
+  /** an earlier row of a run still going on, shown quieter */
+  past: boolean;
+}
+
+function TrailEntry({ row, detailed, newPage, past }: TrailEntryProps) {
+  const { message, step } = row.entry;
   if (message.meta?.kind === 'navigator') {
     return (
       <>
         {newPage && message.meta.view && <PageMark view={message.meta.view} />}
-        <NavigatorItem meta={message.meta} step={step} detailed={detailed} />
+        <NavigatorItem meta={message.meta} step={step} detailed={detailed} ms={row.ms} past={past} />
       </>
     );
   }
   if (message.meta?.kind === 'planner') {
-    return <PlanItem meta={message.meta} content={message.content} detailed={detailed} />;
+    return <PlanItem meta={message.meta} content={message.content} detailed={detailed} ms={row.ms} past={past} />;
   }
-  // Rows without a record: failed actions, replayed ones, and history saved before step records existed
+  return <PlainItem row={row} past={past} />;
+}
+
+/** Rows without a record: failed actions, replayed ones, and history saved before step records existed */
+function PlainItem({ row, past }: { row: Row; past: boolean }) {
+  const [open, setOpen] = useState(false);
+  const { message } = row.entry;
   const failed = message.failed ?? /fail|error/i.test(message.content);
+  // the error's own words run long; its first part says enough until it is opened
+  const [head] = message.content.split(/:\s|\n/);
+  const long = head.length < message.content.length;
   return (
-    <li className={`nb-item plain${failed ? ' bad' : ''}`}>
-      <div className="nb-line">
+    <li className={`nb-item plain${failed ? ' bad' : ''}${open ? ' open' : ''}${past ? ' past' : ''}`}>
+      <button
+        type="button"
+        className="nb-line"
+        aria-expanded={long ? open : undefined}
+        disabled={!long}
+        onClick={() => setOpen(!open)}>
         <span className="nb-dot">{failed ? <FiAlertCircle /> : <FiInfo />}</span>
         <span className="nb-say">
-          <span className="nb-what">{message.content}</span>
+          <span className="nb-what">
+            {open ? message.content : head}
+            {row.repeat > 1 && <small className="nb-times"> ×{row.repeat}</small>}
+          </span>
         </span>
-      </div>
+        <StepTime ms={row.ms} />
+      </button>
     </li>
   );
 }
@@ -422,7 +515,15 @@ function PageMark({ view }: { view: PageView }) {
   );
 }
 
-function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: number; detailed: boolean }) {
+interface NavigatorItemProps {
+  meta: NavigatorMeta;
+  step: number;
+  detailed: boolean;
+  ms: number;
+  past: boolean;
+}
+
+function NavigatorItem({ meta, step, detailed, ms, past }: NavigatorItemProps) {
   const [open, setOpen] = useState(false);
   const floors = useContext(FloorsContext);
   const byJev = meta.engine === 'jev';
@@ -434,14 +535,22 @@ function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: nu
   const pick = byJev && jev ? (jev.targetConfidence ?? jev.confidence) : undefined;
   const pickFloor = jev?.targetConfidence !== undefined ? floors.target : floors.operation;
   const agent: Agent = byJev ? 'jev' : 'llm';
+  const warned = failed.length === 0 && (meta.notes?.length ?? 0) > 0;
+  // the simple view keeps the row to one line: what went wrong shows in the glyph, the words a click away
+  const notesShown = detailed || open;
 
   return (
-    <li className={`nb-item by-${agent}${open ? ' open' : ''}${failed.length > 0 ? ' bad' : ''}`}>
+    <li
+      className={`nb-item by-${agent}${open ? ' open' : ''}${failed.length > 0 ? ' bad' : ''}${warned ? ' warn' : ''}${past ? ' past' : ''}`}>
       <button
         type="button"
         className="nb-line"
         aria-expanded={open}
-        title={!detailed && !open ? reason : undefined}
+        title={
+          !detailed && !open
+            ? [`${AGENTS[agent].name} · ${shortModel(meta.model)}`, reason].filter(Boolean).join('\n')
+            : undefined
+        }
         onClick={() => setOpen(!open)}>
         <span className="nb-dot">
           <Icon />
@@ -454,7 +563,7 @@ function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: nu
           {/* the model's reasoning is one click away, so a run reads as one line per step */}
           {reason && (detailed || open) && <span className="nb-why">{reason}</span>}
         </span>
-        {!detailed && <Who agent={agent} model={meta.model} />}
+        <StepTime ms={ms} />
         {detailed && (
           <span className="nb-metrics">
             <span className={`nb-chip ${byJev ? 'jev' : 'llm'}`} title={meta.model}>
@@ -474,15 +583,16 @@ function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: nu
         </div>
       )}
       {failed.map((action, i) => (
-        <div key={i} className="nb-note bad">
+        <div key={i} className={`nb-note bad${notesShown ? '' : ' brief'}`}>
           {action === meta.actions[0] ? action.error : `${describeAction(action)}: ${action.error}`}
         </div>
       ))}
-      {meta.notes?.map((note, i) => (
-        <div key={i} className="nb-note warn">
-          {detailed ? note : humanizeNote(note)}
-        </div>
-      ))}
+      {notesShown &&
+        meta.notes?.map((note, i) => (
+          <div key={i} className="nb-note warn">
+            {detailed ? note : humanizeNote(note)}
+          </div>
+        ))}
       {open && (
         <div className="nb-detail">
           {meta.view && (
@@ -536,13 +646,26 @@ function NavigatorItem({ meta, step, detailed }: { meta: NavigatorMeta; step: nu
   );
 }
 
-function PlanItem({ meta, content, detailed }: { meta: PlannerMeta; content: string; detailed: boolean }) {
+interface PlanItemProps {
+  meta: PlannerMeta;
+  content: string;
+  detailed: boolean;
+  ms: number;
+  past: boolean;
+}
+
+function PlanItem({ meta, content, detailed, ms, past }: PlanItemProps) {
   const [open, setOpen] = useState(false);
   const lines = planLines(content);
 
   return (
-    <li className={`nb-item plan by-plan${open ? ' open' : ''}`}>
-      <button type="button" className="nb-line" aria-expanded={open} onClick={() => setOpen(!open)}>
+    <li className={`nb-item plan by-plan${open ? ' open' : ''}${past ? ' past' : ''}`}>
+      <button
+        type="button"
+        className="nb-line"
+        aria-expanded={open}
+        title={!detailed && !open ? `${AGENTS.plan.name} · ${shortModel(meta.model)}` : undefined}
+        onClick={() => setOpen(!open)}>
         <span className="nb-dot">
           <FiCompass />
         </span>
@@ -551,7 +674,7 @@ function PlanItem({ meta, content, detailed }: { meta: PlannerMeta; content: str
             {lines[0] ?? t('chat_step_plan')}
           </span>
         </span>
-        {!detailed && <Who agent="plan" model={meta.model} />}
+        <StepTime ms={ms} />
         {detailed && (
           <span className="nb-metrics">
             <span className="nb-chip plan" title={meta.model}>
@@ -593,15 +716,6 @@ function crew(entries: Entry[]): Agent[] {
     else if (meta?.kind === 'navigator') seen.add(meta.engine === 'jev' ? 'jev' : 'llm');
   }
   return [...seen];
-}
-
-/** The agent's name at the end of its row; the model behind it on hover */
-function Who({ agent, model }: { agent: Agent; model: string }) {
-  return (
-    <span className={`nb-who ${agent}`} title={model}>
-      {AGENTS[agent].name}
-    </span>
-  );
 }
 
 /** The run's numbers as a small mark beside its line; the full card shows on hover, or stays when clicked */

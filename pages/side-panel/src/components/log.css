@@ -1,0 +1,197 @@
+/* The step log, tuned on three channels at once so each carries one sense:
+   - length carries detail: one line per step, the reason, errors and page facts a click away;
+   - colour carries status, and only status: quiet glyphs for steps that went fine, amber for a step that
+     needed a correction, red for one that failed; agent hues are kept faint, the names are on hover;
+   - strength carries time and attention: the time column is quiet unless a step was slow, and while a run
+     goes on the latest rows stand in full ink while earlier ones step back.
+   `html body` outranks the `html` rules of brutal.css, whichever sheet loads last. */
+
+/* ---------- the head: status, time and size of the run on one line ---------- */
+html body .nb-work-mark {
+  color: var(--nb-good);
+}
+html body .nb-work.failed .nb-work-mark {
+  color: var(--nb-critical);
+}
+html body .nb-work-head {
+  max-width: 100%;
+  white-space: nowrap;
+}
+/* what went wrong in the run, counted, so a folded run still tells it */
+html body .nb-work-trouble {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--nb-warning);
+  font-weight: 600;
+}
+html body .nb-work-trouble svg {
+  width: 11px;
+  height: 11px;
+}
+html body .nb-work.failed .nb-work-trouble {
+  color: var(--nb-critical);
+}
+
+/* ---------- the trail: one line per step on a thin rail ---------- */
+html body .nb-trail {
+  gap: 0;
+}
+html body .nb-trail::before {
+  left: 7.5px;
+  top: 9px;
+  bottom: 9px;
+  background: var(--nb-hair);
+}
+html body .nb-line {
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px;
+  padding: 0;
+  line-height: 18px;
+}
+html body .nb-dot {
+  width: 16px;
+  height: 18px;
+  background: var(--nb-page);
+  color: var(--nb-muted);
+}
+html body .nb-dot svg {
+  width: 12px;
+  height: 12px;
+}
+html body .nb-say {
+  padding: 0 5px;
+}
+html body .nb-what {
+  color: var(--nb-ink-2);
+}
+
+/* in the simple view a closed row is one line, whatever it says */
+html body .nb-stream:not(.detailed) .nb-item:not(.open) .nb-what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* who did a step: a faint hue on the glyph, no tinted disc, no name */
+html body .nb-item.by-plan .nb-dot,
+html body .nb-item.by-llm:not(.bad) .nb-dot,
+html body .nb-item.by-jev:not(.bad) .nb-dot {
+  background: var(--nb-page);
+}
+html body .nb-item.by-plan .nb-dot {
+  color: color-mix(in srgb, var(--nb-plan) 55%, var(--nb-muted));
+}
+html body .nb-item.by-llm:not(.bad):not(.warn) .nb-dot {
+  color: color-mix(in srgb, var(--nb-llm) 55%, var(--nb-muted));
+}
+html body .nb-item.by-jev:not(.bad):not(.warn) .nb-dot {
+  color: color-mix(in srgb, var(--nb-jev) 55%, var(--nb-muted));
+}
+html body .nb-item.by-plan:not(.open) .nb-what {
+  color: var(--nb-muted);
+}
+
+/* status: the only saturated colour in the log */
+html body .nb-item.warn .nb-dot {
+  color: var(--nb-warning);
+}
+html body .nb-item.bad .nb-dot {
+  color: var(--nb-critical);
+}
+html body .nb-item.plain.bad .nb-what {
+  color: var(--nb-ink-2);
+}
+html body .nb-times {
+  color: var(--nb-critical);
+  font-family: var(--nb-mono);
+  font-size: 10.5px;
+}
+html body .nb-note {
+  margin: 0 0 2px 22px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 15px;
+}
+html body .nb-note.bad {
+  color: color-mix(in srgb, var(--nb-critical) 85%, var(--nb-ink));
+}
+/* an error under a closed row: its first line, the rest when the row is opened */
+html body .nb-note.brief {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html body button.nb-line:disabled {
+  cursor: default;
+}
+html body button.nb-line:disabled:hover .nb-say {
+  background: none;
+}
+
+/* time: a quiet column on the right, louder when the user waited */
+html body .nb-t {
+  min-width: 30px;
+  padding-right: 2px;
+  color: var(--nb-muted);
+  font-family: var(--nb-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+html body .nb-t.slow {
+  color: var(--nb-ink);
+  font-weight: 600;
+}
+html body .nb-t.live {
+  color: var(--nb-ink-2);
+}
+
+/* attention: while a run goes on, the latest rows in full ink and the earlier ones stepped back */
+html body .nb-work.running .nb-item:not(.past) .nb-what {
+  color: var(--nb-ink);
+}
+html body .nb-item.past {
+  opacity: 0.5;
+}
+html body .nb-item.past:hover,
+html body .nb-item.past.open {
+  opacity: 1;
+}
+html body .nb-item.live .nb-dot {
+  height: 18px;
+}
+
+/* the page the following steps happened on: a small marker on the rail, not a row of its own weight */
+html body .nb-pagemark {
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 6px;
+  padding-top: 4px;
+  font-size: 10.5px;
+  line-height: 16px;
+}
+html body .nb-pagemark .nb-dot {
+  height: 16px;
+}
+html body .nb-pagemark .nb-dot svg {
+  width: 10px;
+  height: 10px;
+}
+html body .nb-pagemark-text {
+  padding: 0 5px;
+}
+html body .nb-pagemark b {
+  font-weight: 500;
+}
+
+/* the detailed view adds a line of numbers under the sentence, under the time too */
+html body .nb-metrics {
+  grid-column: 2 / span 2;
+  padding: 0 5px 2px;
+  font-size: 10.5px;
+}
+html body .nb-detail {
+  margin: 2px 0 6px 22px;
+}
