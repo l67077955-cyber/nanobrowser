@@ -1531,6 +1531,13 @@
   "chat_answer_copy": {
     "message": "Copy"
   },
+  "chat_answer_writtenBy": {
+    "message": "$MODEL$ wrote this in $TIME$",
+    "placeholders": {
+      "model": { "content": "$1", "example": "deepseek-flash" },
+      "time": { "content": "$2", "example": "9.6s" }
+    }
+  },
   "chat_answer_copied": {
     "message": "Copied"
   },
