@@ -8,14 +8,27 @@ import {
   FiMoreHorizontal,
   FiArrowDown,
   FiArrowUpRight,
+  FiAlignLeft,
+  FiAlignJustify,
+  FiEye,
+  FiZap,
+  FiUserCheck,
+  FiSquare,
+  FiBookmark,
+  FiRepeat,
+  FiMessageSquare,
+  FiTerminal,
 } from 'react-icons/fi';
 import {
+  type ActionMode,
   type Message,
+  type ScheduledTask,
   type StepMeta,
   Actors,
   chatHistoryStore,
   agentModelStore,
   generalSettingsStore,
+  scheduleStore,
 } from '@extension/storage';
 import favoritesStorage, { type FavoritePrompt } from '@extension/storage/lib/prompt/favorites';
 import { t } from '@extension/i18n';
@@ -24,6 +37,8 @@ import ContextPeek from './components/ModelView';
 import Welcome from './components/Welcome';
 import { latestView, withoutPageText } from './components/steps';
 import ChatInput from './components/ChatInput';
+import type { PaletteCommand } from './components/CommandPalette';
+import { formatWhen } from './components/RoutineList';
 import AgentDock from './components/AgentDock';
 import AskCard, { type Ask } from './components/AskCard';
 import ChatHistoryList from './components/ChatHistoryList';
@@ -1146,6 +1161,112 @@ const SidePanel = () => {
     };
   }, [menuOpen]);
 
+  // the lists the `/` palette offers besides the actions, read again each time it opens
+  const [paletteRoutines, setPaletteRoutines] = useState<ScheduledTask[]>([]);
+  const [paletteMode, setPaletteMode] = useState<ActionMode | null>(null);
+  const handlePaletteOpen = useCallback(() => {
+    void loadChatSessions();
+    scheduleStore
+      .getAll()
+      .then(setPaletteRoutines)
+      .catch(error => console.error('Failed to load routines:', error));
+    generalSettingsStore
+      .getSettings()
+      .then(({ actionMode }) => setPaletteMode(actionMode))
+      .catch(error => console.error('Failed to read the action mode:', error));
+  }, [loadChatSessions]);
+
+  const actionModes: { mode: ActionMode; icon: PaletteCommand['icon']; label: string }[] = [
+    { mode: 'readonly', icon: FiEye, label: t('chat_actionMode_readonly') },
+    { mode: 'auto', icon: FiZap, label: t('chat_actionMode_auto') },
+    { mode: 'manual', icon: FiUserCheck, label: t('chat_actionMode_manual') },
+  ];
+  const actions = t('chat_palette_actions');
+  const paletteCommands: PaletteCommand[] = [
+    ...(showStopButton
+      ? [{ id: 'stop', group: actions, label: t('chat_buttons_stop'), icon: FiSquare, run: handleStopTask }]
+      : []),
+    { id: 'new', group: actions, label: t('nav_newChat_a11y'), icon: FiPlus, run: handleNewChat },
+    { id: 'history', group: actions, label: t('chat_history_title'), icon: FiClock, run: handleLoadHistory },
+    {
+      id: 'view-simple',
+      group: actions,
+      label: t('chat_palette_viewSimple'),
+      icon: FiAlignLeft,
+      current: !detailed,
+      run: () => chooseDetailed(false),
+    },
+    {
+      id: 'view-detailed',
+      group: actions,
+      label: t('chat_palette_viewDetailed'),
+      icon: FiAlignJustify,
+      current: detailed,
+      run: () => chooseDetailed(true),
+    },
+    ...actionModes.map(({ mode, icon, label }) => ({
+      id: `mode-${mode}`,
+      group: actions,
+      label: t('chat_palette_mode', label),
+      icon,
+      hint: '⇧Tab',
+      current: paletteMode === mode,
+      run: () => {
+        void generalSettingsStore.updateSettings({ actionMode: mode });
+      },
+    })),
+    {
+      id: 'settings',
+      group: actions,
+      label: t('nav_settings_a11y'),
+      icon: FiSettings,
+      hint: '↗',
+      run: () => chrome.runtime.openOptionsPage(),
+    },
+    ...favoritePrompts.map(prompt => ({
+      id: `saved-${prompt.id}`,
+      group: t('chat_bookmarks_header'),
+      label: prompt.title || prompt.content,
+      icon: FiBookmark,
+      run: () => handleBookmarkSelect(prompt.content),
+    })),
+    ...paletteRoutines.map(routine => ({
+      id: `routine-${routine.id}`,
+      group: t('chat_routines_header'),
+      label: routine.task,
+      icon: FiRepeat,
+      hint: routine.enabled && routine.nextRunAt ? formatWhen(routine.nextRunAt) : undefined,
+      run: () => handleBookmarkSelect(routine.task),
+    })),
+    ...chatSessions
+      .filter(session => session.id !== currentSessionId)
+      .slice(0, 8)
+      .map(session => ({
+        id: `chat-${session.id}`,
+        group: t('chat_palette_recent'),
+        label: session.title,
+        icon: FiMessageSquare,
+        hint: formatWhen(session.createdAt),
+        run: () => void handleSessionSelect(session.id),
+      })),
+    {
+      id: 'debug-state',
+      group: actions,
+      label: t('chat_palette_debugState'),
+      icon: FiTerminal,
+      hint: '/state',
+      run: () => void handleCommand('/state'),
+    },
+    {
+      id: 'debug-nohighlight',
+      group: actions,
+      label: t('chat_palette_debugNoHighlight'),
+      icon: FiTerminal,
+      hint: '/nohighlight',
+      run: () => void handleCommand('/nohighlight'),
+    },
+  ];
+
   // what the model is looking at: the page it has just been shown, else the one its last step was decided on
   const modelView = useMemo(() => activity?.view ?? latestView(messages), [activity, messages]);
 
@@ -1214,6 +1335,8 @@ const SidePanel = () => {
         onReplay={handleReplay}
         aside={modelView && messages.length > 0 && <ContextPeek view={modelView} live={showStopButton} />}
         onQueue={isReplaying ? undefined : handleQueue}
+        commands={paletteCommands}
+        onPaletteOpen={handlePaletteOpen}
       />
     </div>
   );

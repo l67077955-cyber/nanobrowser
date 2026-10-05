@@ -526,3 +526,87 @@ html .nb-history > li > div > button {
 html .nb-history .text-\[13px\] {
   font-size: 12px;
 }
+
+/* ---------- the `/` command palette: a ruled sheet standing on the chat box ---------- */
+html .nb-palette {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  max-height: min(320px, 55vh);
+  border: 1px solid var(--nb-ink);
+  background: var(--nb-tile);
+}
+html .nb-palette ul {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+html .nb-palette-group {
+  display: block;
+  padding: 5px 8px 2px;
+  border-top: 1px solid var(--nb-hair);
+}
+html .nb-palette li:first-child .nb-palette-group {
+  border-top: 0;
+}
+html .nb-palette button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--nb-ink);
+}
+html .nb-palette button > svg,
+html .nb-palette button > i {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+}
+html .nb-palette-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html .nb-palette button[aria-current='true'] .nb-palette-label::after {
+  content: ' ●';
+  font-size: 8px;
+  vertical-align: middle;
+}
+html .nb-palette small,
+html .nb-palette-foot,
+html .nb-palette-empty {
+  font-family: var(--nb-mono);
+  font-size: 10px;
+  color: var(--nb-muted);
+  white-space: nowrap;
+}
+html .nb-palette button[aria-selected='true'] {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+}
+html .nb-palette button[aria-selected='true'] small {
+  color: var(--nb-hair);
+}
+html .nb-palette-empty {
+  margin: 0;
+  padding: 8px;
+}
+html .nb-palette-foot {
+  margin: 0;
+  padding: 2px 8px;
+  border-top: 1px solid var(--nb-ink);
+  background: var(--nb-tile-2);
+}

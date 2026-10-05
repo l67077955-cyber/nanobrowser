@@ -1863,5 +1863,41 @@
   },
   "act_readPage_empty": {
     "message": "The page has no more text to read"
+  },
+  "chat_palette_a11y": {
+    "message": "Commands"
+  },
+  "chat_palette_actions": {
+    "message": "Actions"
+  },
+  "chat_palette_recent": {
+    "message": "Recent chats"
+  },
+  "chat_palette_empty": {
+    "message": "No command matches"
+  },
+  "chat_palette_hint": {
+    "message": "↑↓ choose · Enter run · Esc close"
+  },
+  "chat_palette_viewSimple": {
+    "message": "View: Simple"
+  },
+  "chat_palette_viewDetailed": {
+    "message": "View: Detailed"
+  },
+  "chat_palette_mode": {
+    "message": "Mode: $MODE$",
+    "placeholders": {
+      "mode": {
+        "content": "$1",
+        "example": "Auto"
+      }
+    }
+  },
+  "chat_palette_debugState": {
+    "message": "Debug: log the page state"
+  },
+  "chat_palette_debugNoHighlight": {
+    "message": "Debug: remove the highlights"
   }
 }
