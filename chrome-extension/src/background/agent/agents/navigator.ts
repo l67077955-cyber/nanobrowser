@@ -1012,6 +1012,12 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         }
         // actions planned before the user's reply may no longer be what they want
         if (actionName === 'ask_user') break;
+        // the rest was planned on this one working (typing then sending): don't send an empty box
+        if (result.error && i < actions.length - 1) {
+          this.cutShort = skippedAfterFailure(i, actions.length);
+          results.push(this.cutShort);
+          break;
+        }
         // Let the page react before the next action; after the last one, the next step's observation
         // already waits for the network to go idle.
         if (i < actions.length - 1) {
@@ -1036,6 +1042,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
             includeInMemory: true,
           }),
         );
+        if (i < actions.length - 1) {
+          this.cutShort = skippedAfterFailure(i, actions.length);
+          results.push(this.cutShort);
+          break;
+        }
       }
     }
     return results;
@@ -1258,4 +1269,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
     return action;
   }
+}
+
+/** The note left when an action failed and the ones planned after it were not run */
+function skippedAfterFailure(index: number, total: number): ActionResult {
+  const msg = `Action ${index + 1} / ${total} failed, so the remaining ${total - index - 1} were not run`;
+  logger.info(msg);
+  return new ActionResult({ extractedContent: msg, includeInMemory: true });
 }

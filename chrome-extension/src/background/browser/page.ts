@@ -655,6 +655,37 @@ export default class Page {
     }
   }
 
+  /**
+   * Scroll the open dialog instead of the page behind it: a modal (a plan table, a settings box) scrolls
+   * inside its own box, so scrolling the window changes nothing. Null when no open dialog can scroll.
+   */
+  async scrollOpenDialog(how: { percent: number } | { pages: number }): Promise<{ moved: boolean } | null> {
+    if (!this._puppeteerPage) {
+      throw new Error('Puppeteer is not connected');
+    }
+    return this._puppeteerPage.evaluate(how => {
+      const visible = (el: Element) => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+      };
+      const dialogs = Array.from(
+        document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'),
+      ).filter(visible);
+      const dialog = dialogs[dialogs.length - 1];
+      if (!dialog) return null;
+      const scrolls = (el: Element) =>
+        /^(auto|scroll|overlay)$/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 4;
+      const boxes = [dialog, ...Array.from(dialog.querySelectorAll('*'))].filter(el => scrolls(el) && visible(el));
+      if (!boxes.length) return null;
+      const box = boxes.reduce((a, b) => (b.clientHeight * b.clientWidth > a.clientHeight * a.clientWidth ? b : a));
+      const max = box.scrollHeight - box.clientHeight;
+      const before = box.scrollTop;
+      const top = 'percent' in how ? (max * how.percent) / 100 : before + how.pages * box.clientHeight;
+      box.scrollTo({ top: Math.max(0, Math.min(max, top)), behavior: 'instant' });
+      return { moved: Math.abs(box.scrollTop - before) > 1 };
+    }, how);
+  }
+
   // scroll to a percentage of the page or element
   // if yPercent is 0, scroll to the top of the page, if 100, scroll to the bottom of the page
   // if elementNode is provided, scroll to a percentage of the element
@@ -1419,7 +1450,7 @@ export default class Page {
 
       const located = await this.locateElement(elementNode);
       if (!located) {
-        throw new Error(`Element: ${elementNode} not found`);
+        throw new ElementNotFoundError(`Element: ${elementNode} not found`);
       }
       await this.assertSameElement(located, elementNode);
       const element = await this.textFieldOf(located);
@@ -1539,6 +1570,8 @@ export default class Page {
     } catch (error) {
       const errorMsg = `Failed to input text into element: ${elementNode}. Error: ${error instanceof Error ? error.message : String(error)}`;
       logger.error(errorMsg);
+      // a re-rendered field can be found again by the caller
+      if (error instanceof ElementNotFoundError) throw new ElementNotFoundError(errorMsg);
       throw new Error(errorMsg);
     }
   }

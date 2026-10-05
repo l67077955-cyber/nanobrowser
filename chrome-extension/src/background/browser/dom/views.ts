@@ -2,6 +2,9 @@ import type { CoordinateSet, HashedDomElement, ViewportInfo } from './history/vi
 import { HistoryTreeProcessor } from './history/service';
 import { capTextLength } from '../util';
 
+/** Attributes shown longer than the usual 15 characters: a link cut short gets opened as a broken URL */
+const ATTRIBUTE_CAPS: Record<string, number> = { icon: 60, href: 150 };
+
 export const DEFAULT_INCLUDE_ATTRIBUTES = [
   'title',
   'type',
@@ -311,7 +314,7 @@ export class DOMElementNode extends DOMBaseNode {
             if (Object.keys(attributesToInclude).length > 0) {
               // Format as key1='value1' key2='value2'
               attributesHtmlStr = Object.entries(attributesToInclude)
-                .map(([key, value]) => `${key}=${capTextLength(value, key === 'icon' ? 60 : 15)}`)
+                .map(([key, value]) => `${key}=${capTextLength(value, ATTRIBUTE_CAPS[key] ?? 15)}`)
                 .join(' ');
             }
           }

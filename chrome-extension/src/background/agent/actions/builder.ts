@@ -225,6 +225,15 @@ export class ActionBuilder {
     return page.getCachedState()?.selectorMap.get(index);
   }
 
+  /** The result of scrolling the open dialog rather than the page behind it */
+  private dialogScrolled(moved: boolean): ActionResult {
+    const msg = moved
+      ? 'Scrolled inside the open dialog'
+      : 'The open dialog is already scrolled as far as it goes; close it (Escape or its close button) to reach the page behind';
+    this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
+    return new ActionResult({ extractedContent: msg, includeInMemory: true });
+  }
+
   buildDefaultActions() {
     const actions = [];
 
@@ -441,7 +450,17 @@ export class ActionBuilder {
           throw new Error(t('act_errors_elementNotExist', [input.index.toString()]));
         }
 
-        const content = await page.inputTextElementNode(this.context.options.useVision, elementNode, input.text);
+        let content: string | null;
+        try {
+          content = await page.inputTextElementNode(this.context.options.useVision, elementNode, input.text);
+        } catch (error) {
+          // The page re-rendered the field (e.g. a chat box after a reply); type once more if it is unambiguous
+          if (!(error instanceof ElementNotFoundError)) throw error;
+          const relocated = await page.relocateElement(elementNode);
+          if (!relocated) throw error;
+          logger.info(`Element ${input.index} was re-rendered, typing into it at its new index ${relocated.highlightIndex}`);
+          content = await page.inputTextElementNode(this.context.options.useVision, relocated, input.text);
+        }
         const msg = t('act_inputText_ok', [input.text, input.index.toString()]);
         this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
         return new ActionResult({
@@ -639,6 +658,8 @@ export class ActionBuilder {
         logger.info(`Scrolling to percent: ${input.yPercent} with elementNode: ${elementNode.xpath}`);
         await page.scrollToPercent(input.yPercent, elementNode);
       } else {
+        const dialog = await page.scrollOpenDialog({ percent: input.yPercent }).catch(() => null);
+        if (dialog) return this.dialogScrolled(dialog.moved);
         await page.scrollToPercent(input.yPercent);
       }
       const msg = t('act_scrollToPercent_ok', [input.yPercent.toString()]);
@@ -661,6 +682,8 @@ export class ActionBuilder {
         }
         await page.scrollToPercent(0, elementNode);
       } else {
+        const dialog = await page.scrollOpenDialog({ percent: 0 }).catch(() => null);
+        if (dialog) return this.dialogScrolled(dialog.moved);
         await page.scrollToPercent(0);
       }
       const msg = t('act_scrollToTop_ok');
@@ -683,6 +706,8 @@ export class ActionBuilder {
         }
         await page.scrollToPercent(100, elementNode);
       } else {
+        const dialog = await page.scrollOpenDialog({ percent: 100 }).catch(() => null);
+        if (dialog) return this.dialogScrolled(dialog.moved);
         await page.scrollToPercent(100);
       }
       const msg = t('act_scrollToBottom_ok');
@@ -722,6 +747,8 @@ export class ActionBuilder {
 
         await page.scrollToPreviousPage(elementNode);
       } else {
+        const dialog = await page.scrollOpenDialog({ pages: -1 }).catch(() => null);
+        if (dialog) return this.dialogScrolled(dialog.moved);
         // Check if page is already at top
         const [initialScrollY] = await page.getScrollInfo();
         if (initialScrollY === 0) {
@@ -770,6 +797,8 @@ export class ActionBuilder {
 
         await page.scrollToNextPage(elementNode);
       } else {
+        const dialog = await page.scrollOpenDialog({ pages: 1 }).catch(() => null);
+        if (dialog) return this.dialogScrolled(dialog.moved);
         // Check if page is already at bottom
         const [initialScrollY, initialVisualViewportHeight, initialScrollHeight] = await page.getScrollInfo();
         if (initialScrollY + initialVisualViewportHeight >= initialScrollHeight) {
