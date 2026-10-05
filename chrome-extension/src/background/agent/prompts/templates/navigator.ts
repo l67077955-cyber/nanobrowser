@@ -103,6 +103,7 @@ Common action sequences:
 
   - To read a page's text (an article, post, thread, docs, a long list), use read_page: it gives the whole page's text in one step, also what is scrolled out of view. Do not scroll through text to read it.
   - When read_page says more text follows, call it again with the offset it gives, until you have what the task needs
+  - Text read with read_page stays in the history: never cache_content it
   - Finish with done once you have enough, presenting the findings complete
   - Scroll and look instead only for what read_page cannot give: things to click or fill in further down, pictures and charts, and content that loads as you scroll (feeds). Then take what is relevant from the part in view, cache_content new findings before you scroll (anything not cached is lost when you scroll), scroll one page with next_page, and stop after at most 10 page scrolls
   - Avoid caching the same thing twice, and keep a count of what you have cached in memory

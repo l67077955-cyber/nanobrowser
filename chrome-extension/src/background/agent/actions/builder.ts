@@ -638,6 +638,7 @@ export class ActionBuilder {
       return new ActionResult({
         extractedContent: `Text of "${title}" (${url}), characters ${start}-${end} of ${text.length}:\n${content}\n${more}`,
         includeInMemory: true,
+        readPage: true,
       });
     }, readPageActionSchema);
     actions.push(readPage);

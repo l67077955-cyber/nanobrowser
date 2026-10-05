@@ -94,7 +94,7 @@ export class Executor {
   private steers: string[] = [];
   /** the step loop is going: a message sent now is taken in by this run */
   private running = false;
-  /** the navigator went round in circles: the planner looks again before its next step */
+  /** the navigator went round in circles or read a page's text: the planner looks again before its next step */
   private planBeforeNextStep = false;
   /** how many history steps have already been read for things to remember */
   private stepsRemembered = 0;
@@ -639,6 +639,11 @@ export class Executor {
       context.consecutiveFailures = 0;
       if (navOutput.result?.done) {
         return true;
+      }
+      if (navOutput.result?.readPage) {
+        // the text read is often the answer itself: the planner judges it at once and can finish with it,
+        // instead of the navigator taking notes and wrapping up in steps of their own before that check
+        this.planBeforeNextStep = true;
       }
     } catch (error) {
       logger.error(`Failed to execute step: ${describeError(error)}`);

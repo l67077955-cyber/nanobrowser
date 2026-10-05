@@ -451,6 +451,8 @@ export interface NavigatorResult {
   done: boolean;
   /** the model chose actions it had already repeated too often; they were not taken */
   stuck?: boolean;
+  /** a read_page brought the page's text into the history */
+  readPage?: boolean;
 }
 
 export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
@@ -691,7 +693,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       if (actionResults.length > 0 && actionResults[actionResults.length - 1].isDone) {
         done = true;
       }
-      agentOutput.result = { done, stuck };
+      agentOutput.result = { done, stuck, readPage: actionResults.some(result => result.readPage) };
       return agentOutput;
     } catch (error) {
       this.removeLastStateMessageFromMemory();

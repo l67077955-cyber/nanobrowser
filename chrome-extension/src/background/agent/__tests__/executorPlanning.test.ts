@@ -80,6 +80,21 @@ describe('Executor planning', () => {
     expect(run.steps()).toBe(5);
   });
 
+  it('plans right after the navigator read a page, and finishes with what it read', async () => {
+    const run = scripted([plan(false), plan(true, 'from the page text')], [0, 0]);
+    const navigate = (run.executor as unknown as { navigator: { execute: () => Promise<AgentOutput<unknown>> } })
+      .navigator;
+    const step = navigate.execute;
+    navigate.execute = async () => {
+      const output = await step();
+      return run.steps() === 2 ? { ...output, result: { done: false, readPage: true } } : output;
+    };
+    await run.executor.execute();
+    expect(run.pagesPlanned).toEqual([0, 2]);
+    expect(run.context.finalAnswer).toBe('from the page text');
+    expect(run.steps()).toBe(2);
+  });
+
   it('takes a finish that the navigator and a plan under way agree on without another plan', async () => {
     const run = scripted([plan(false), plan(true, 'both agree')], [0, 1], 4);
     await run.executor.execute();
