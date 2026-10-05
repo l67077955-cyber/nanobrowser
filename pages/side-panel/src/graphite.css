@@ -1,0 +1,532 @@
+/* Graphite skin over StepList.css and SidePanel.css: a grey frame with the chat on a white sheet, hairlines,
+   small radii, one teal accent and monospace for times; dense, so a 380px window never looks swollen.
+   Popovers are the only things with a shadow.
+   Selectors are prefixed with `html` so they win over the base sheets whatever order they load in. */
+html:root {
+  --nb-page: #f4f4f5;
+  --nb-tile: #ffffff;
+  --nb-tile-2: #f4f4f5;
+  --nb-line: #dcdce0;
+  --nb-hair: #e7e7ea;
+  --nb-ink: #18181b;
+  --nb-ink-2: #3f3f46;
+  --nb-muted: #8b8b94;
+  --nb-track: #e9e9ec;
+  --nb-bubble: #f4f4f5;
+  --nb-accent: #0d9488;
+  --nb-accent-soft: #dff3f0;
+  --nb-llm: #4f6bd8;
+  --nb-jev: #0d9488;
+  --nb-plan: #7c5cc4;
+  --nb-good: #16a34a;
+  --nb-warning: #c98a1a;
+  --nb-critical: #dc4438;
+  --nb-glow: none;
+  --nb-pop: 0 1px 2px rgba(24, 24, 27, 0.05), 0 8px 24px rgba(24, 24, 27, 0.1);
+  --nb-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+/* one radius for everything small; cards and popovers set their own below. Round marks stay round. */
+html .nb-panel * {
+  border-radius: 6px;
+}
+html .nb-panel .nb-dot,
+html .nb-panel .animate-spin {
+  border-radius: 50%;
+}
+html .nb-panel .nb-orb {
+  border-radius: 2px;
+}
+
+html .nb-panel {
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+html .nb-num,
+html .nb-answer-foot,
+html .nb-dock-meta {
+  font-variant-numeric: tabular-nums;
+}
+html .nb-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--nb-muted);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+html ::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--nb-line);
+}
+html ::-webkit-scrollbar-thumb:hover {
+  background: var(--nb-muted);
+}
+
+/* ---------- header: a 28px grey strip above the sheet ---------- */
+html .header,
+html .header.floating {
+  position: relative;
+  padding: 2px 4px 2px 9px;
+  border-bottom: 1px solid var(--nb-line);
+  background: var(--nb-track);
+}
+
+/* ---------- the sheet: the chat on white inside the grey frame ---------- */
+html .nb-sheet {
+  margin: 6px 6px 6px;
+  border: 1px solid var(--nb-hair);
+  border-radius: 8px;
+  background: var(--nb-tile);
+}
+html .nb-sheet > .nb-col {
+  padding-top: 10px;
+}
+html .header-title,
+html .header.floating .header-title {
+  color: var(--nb-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+html .header-lead img {
+  width: 14px;
+  height: 14px;
+}
+html .header-icon,
+html .header.floating .header-icon {
+  padding: 4px;
+  color: var(--nb-muted);
+  opacity: 1;
+}
+html .header-icon svg {
+  width: 14px;
+  height: 14px;
+}
+html .header-icon:hover,
+html .header-icon[aria-expanded='true'] {
+  color: var(--nb-ink);
+  background: var(--nb-tile-2);
+}
+html .header-icon[aria-pressed='true'] {
+  color: var(--nb-accent);
+  background: var(--nb-accent-soft);
+}
+
+/* ---------- the stream ---------- */
+html .nb-stream {
+  gap: 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+html .nb-turn {
+  gap: 8px;
+}
+html .nb-user {
+  max-width: 88%;
+  padding: 4px 9px;
+  border-left: 2px solid var(--nb-accent);
+  border-radius: 6px;
+  background: var(--nb-bubble);
+}
+html .nb-answer {
+  font-size: 13px;
+  line-height: 1.5;
+}
+html .nb-work-head {
+  margin-left: -4px;
+  padding: 1px 6px 1px 4px;
+  color: var(--nb-ink-2);
+  font-family: var(--nb-mono);
+  font-size: 10.5px;
+}
+html .nb-work-head:hover {
+  background: var(--nb-tile-2);
+  color: var(--nb-ink);
+}
+html .nb-work-mark {
+  color: var(--nb-accent);
+}
+html .nb-chip {
+  padding: 0 6px;
+  border-color: var(--nb-hair);
+  background: var(--nb-tile-2);
+  font-size: 10.5px;
+}
+html .nb-say {
+  padding: 1px 6px;
+}
+html .nb-what small,
+html .nb-why,
+html .nb-who {
+  font-size: 11px;
+}
+html .nb-answer-foot {
+  font-family: var(--nb-mono);
+  font-size: 10px;
+}
+
+/* ---------- buttons: quiet outlines, the main one in the accent ---------- */
+html .nb-button {
+  padding: 3px 10px;
+  border: 1px solid var(--nb-line);
+  background: var(--nb-tile);
+  color: var(--nb-ink);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+html .nb-button:hover {
+  border-color: var(--nb-line);
+  background: var(--nb-tile-2);
+}
+html .nb-button.primary {
+  border-color: var(--nb-accent);
+  background: var(--nb-accent);
+  color: #fff;
+}
+html .nb-button.primary:hover {
+  opacity: 0.9;
+  background: var(--nb-accent);
+}
+html .nb-button.primary.warn {
+  border-color: var(--nb-warning);
+  background: var(--nb-warning);
+}
+html .nb-jump {
+  border-color: var(--nb-line);
+  box-shadow: var(--nb-pop);
+  font-size: 11px;
+}
+
+/* ---------- composer and the cards above it ---------- */
+html .nb-composer {
+  padding: 0 8px 8px;
+}
+html .nb-input {
+  border: 1px solid var(--nb-line) !important;
+  border-radius: 8px;
+  background: var(--nb-tile);
+  box-shadow: none;
+}
+html .nb-input:focus-within {
+  border-color: var(--nb-accent) !important;
+  box-shadow: 0 0 0 3px var(--nb-accent-soft);
+}
+html .nb-input textarea {
+  padding: 6px 9px 0;
+  font-size: 12.5px;
+}
+html .nb-input svg {
+  max-width: 14px;
+  max-height: 14px;
+}
+html .nb-input button.bg-nb-ink {
+  background: var(--nb-accent);
+  color: #fff;
+}
+html .nb-confirm,
+html .nb-ask,
+html .nb-dock,
+html .nb-welcome-tab {
+  margin-bottom: 4px;
+  border: 1px solid var(--nb-line);
+  border-radius: 8px;
+  background: var(--nb-tile);
+}
+html .nb-ask {
+  gap: 4px;
+  padding: 6px 7px 6px 9px;
+}
+html .nb-ask-head p,
+html .nb-confirm p {
+  font-size: 12px;
+}
+html .nb-ask-row input {
+  border-color: var(--nb-line);
+  background: var(--nb-tile);
+}
+html .nb-ask-row input:focus {
+  border-color: var(--nb-accent);
+  box-shadow: 0 0 0 3px var(--nb-accent-soft);
+}
+
+/* ---------- the dock: a breathing square in the phase's colour, one line per step ---------- */
+html .nb-dock.phase-asking {
+  border-color: color-mix(in srgb, var(--nb-warning) 40%, var(--nb-line));
+}
+html .nb-dock-head {
+  gap: 8px;
+  padding: 4px 4px 4px 9px;
+}
+html .nb-orb {
+  width: 7px;
+  height: 7px;
+  background: var(--orb);
+  animation: nb-graphite-breathe 1.4s ease-in-out infinite;
+}
+html .nb-orb i {
+  display: none;
+}
+html .nb-dock.phase-idle .nb-orb {
+  opacity: 0.4;
+  animation: none;
+}
+@keyframes nb-graphite-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html .nb-orb {
+    animation: none;
+  }
+}
+html .nb-dock-headline {
+  font-size: 12px;
+}
+html .nb-dock-meta {
+  font-family: var(--nb-mono);
+  font-size: 10px;
+}
+html .nb-dock-toggle {
+  width: 22px;
+  height: 22px;
+}
+html .nb-dock-body {
+  gap: 6px;
+  max-height: 30vh;
+  padding: 5px 9px 7px;
+  border-top-color: var(--nb-hair);
+}
+html .nb-dock-group {
+  gap: 2px;
+}
+html .nb-dock-plan li {
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+html .nb-dock-plan li > span:last-child,
+html .nb-dock-queue li > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+html .nb-dock-n {
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  font-size: 9px;
+}
+html .nb-dock-queue li,
+html .nb-dock-chip {
+  font-size: 11.5px;
+}
+html .nb-dock-chip {
+  padding: 2px 8px;
+}
+
+html code {
+  background: var(--nb-tile-2);
+  font-family: var(--nb-mono);
+  font-size: 0.92em;
+}
+
+/* ---------- popovers: the more menu, action modes and the command palette ---------- */
+html .nb-menu,
+html .nb-modes,
+html .nb-palette {
+  border: 1px solid var(--nb-line);
+  border-radius: 8px;
+  background: var(--nb-tile);
+  box-shadow: var(--nb-pop);
+}
+html .nb-menu {
+  top: calc(100% + 4px);
+  right: 0;
+  width: 212px;
+  padding: 4px;
+}
+html .nb-menu > button {
+  height: 28px;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+html .nb-menu > button > svg {
+  width: 13px;
+  height: 13px;
+  color: var(--nb-muted);
+}
+html .nb-menu > button:hover:enabled,
+html .nb-menu > button:focus-visible {
+  background: var(--nb-tile-2);
+  outline: none;
+}
+html .nb-menu-view {
+  height: 32px;
+  margin: 2px 0;
+  padding: 0 4px 0 8px;
+  border-top: 1px solid var(--nb-hair);
+  border-bottom: 1px solid var(--nb-hair);
+  border-radius: 0;
+}
+html .nb-seg {
+  padding: 2px;
+  background: var(--nb-track);
+}
+html .nb-seg > button {
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+html .nb-seg > button[aria-checked='true'] {
+  background: var(--nb-tile);
+  color: var(--nb-ink);
+  box-shadow: 0 1px 2px rgba(20, 20, 40, 0.08);
+}
+
+html .nb-modes {
+  width: 236px;
+  padding: 4px;
+}
+html .nb-modes > button {
+  padding: 5px 8px;
+  border-radius: 5px;
+}
+html .nb-modes > button[aria-checked='true'] {
+  background: var(--nb-accent-soft);
+}
+html .nb-modes > button[aria-checked='true'] .nb-menu-check {
+  color: var(--nb-accent);
+}
+html .nb-modes small {
+  font-size: 10.5px;
+}
+html .nb-mode-button {
+  color: var(--nb-ink-2);
+}
+html .nb-mode-button[aria-expanded='true'] {
+  background: var(--nb-tile-2);
+}
+
+html .nb-palette {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  max-height: min(320px, 55vh);
+  padding: 4px 4px 0;
+  overflow: hidden;
+}
+html .nb-palette ul {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+html .nb-palette-group {
+  display: block;
+  padding: 6px 8px 2px;
+}
+html .nb-palette button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: var(--nb-ink);
+  font-size: 12.5px;
+  text-align: left;
+}
+html .nb-palette button > svg,
+html .nb-palette button > i {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  color: var(--nb-muted);
+}
+html .nb-palette-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html .nb-palette button[aria-current='true'] .nb-palette-label::after {
+  content: ' ●';
+  color: var(--nb-accent);
+  font-size: 7px;
+  vertical-align: middle;
+}
+html .nb-palette small,
+html .nb-palette-foot,
+html .nb-palette-empty {
+  color: var(--nb-muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+html .nb-palette button[aria-selected='true'] {
+  background: var(--nb-tile-2);
+}
+html .nb-palette-empty {
+  margin: 0;
+  padding: 8px;
+}
+html .nb-palette-foot {
+  margin: 4px -4px 0;
+  padding: 3px 12px;
+  border-top: 1px solid var(--nb-hair);
+  border-radius: 0;
+  background: var(--nb-tile-2);
+}
+
+/* ---------- history and saved tasks: short rows, a soft hover ---------- */
+html .nb-history {
+  gap: 1px;
+}
+html .nb-history > li:hover {
+  background: var(--nb-tile-2);
+}
+html .nb-history > li > button,
+html .nb-history > li > div > button {
+  padding: 5px 8px;
+}
+html .nb-history .text-\[13px\] {
+  font-size: 12px;
+}
+html .nb-history .tabular-nums {
+  font-family: var(--nb-mono);
+  font-size: 10px;
+}
+
+/* ---------- the welcome: a greeting, not a poster ---------- */
+html .nb-welcome-logo {
+  width: 20px;
+  height: 20px;
+}
+html .nb-welcome-hero h1,
+html .nb-welcome-hero h2 {
+  margin: 8px 0 2px;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+html .nb-welcome-hero p {
+  color: var(--nb-ink-2);
+  font-size: 12.5px;
+}

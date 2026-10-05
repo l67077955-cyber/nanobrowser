@@ -4,7 +4,7 @@
      needed a correction, red for one that failed; agent hues are kept faint, the names are on hover;
    - strength carries time and attention: the time column is quiet unless a step was slow, and while a run
      goes on the latest rows stand in full ink while earlier ones step back.
-   `html body` outranks the `html` rules of brutal.css, whichever sheet loads last. */
+   `html body` outranks the `html` rules of graphite.css, whichever sheet loads last. */
 
 /* ---------- the head: status, time and size of the run on one line ---------- */
 html body .nb-work-mark {

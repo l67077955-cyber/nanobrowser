@@ -48,7 +48,7 @@ import PinButton from './components/PinButton';
 import { getTargetTab } from './utils';
 import { EventType, type AgentEvent, ExecutionState } from './types/event';
 import './SidePanel.css';
-import './brutal.css';
+import './graphite.css';
 
 /** What a running task waits for from the user, as the background tells a panel that opens meanwhile */
 type WaitingFor = { state: ExecutionState; details: string; meta?: StepMeta };
@@ -1498,7 +1498,7 @@ const SidePanel = () => {
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className="scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll">
+                className="nb-sheet scrollbar-gutter-stable flex-1 overflow-x-hidden overflow-y-scroll">
                 <div className="nb-col flex min-h-full flex-col px-3 pb-3 pt-11">
                   {messages.length === 0 ? (
                     <Welcome onOpenSession={handleSessionSelect}>

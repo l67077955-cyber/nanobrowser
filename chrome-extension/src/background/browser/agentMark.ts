@@ -1,5 +1,5 @@
 /*
- * What the user sees on the page while the agent works on it: a thin ink rule along the top of the tab with a
+ * What the user sees on the page while the agent works on it: a thin teal rule along the top of the tab with a
  * tag saying what was done last, and a box around the element acted on. It lives in a closed shadow root on
  * the top document, takes no pointer events (so it is never hit by a click nor by elementFromPoint), and is
  * hidden while a screenshot is taken.
@@ -18,8 +18,8 @@ export interface MarkBox {
 
 /** Draws or moves the rule, the tag and the box; the box goes away on its own after a moment */
 export function drawAgentMark(id: string, label: string, box: MarkBox | null): void {
-  const ink = '#111111';
-  const paper = '#fbfaf7';
+  const ink = '#0d9488';
+  const paper = '#ffffff';
   const mono = "ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,monospace";
   type Host = HTMLElement & { __nbRoot?: ShadowRoot; __nbTimer?: number };
 
@@ -34,11 +34,11 @@ export function drawAgentMark(id: string, label: string, box: MarkBox | null): v
     root.innerHTML = `<style>
       * { box-sizing: border-box; }
       .rule { position: fixed; top: 0; left: 0; right: 0; height: 2px; background: ${ink}; }
-      .tag { position: fixed; top: 2px; right: 0; padding: 1px 6px; background: ${ink}; color: ${paper};
-        font: 500 10px/14px ${mono}; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap;
+      .tag { position: fixed; top: 2px; right: 0; padding: 1px 7px; background: ${ink}; color: ${paper};
+        border-radius: 0 0 0 5px; font: 500 10px/15px ${mono}; white-space: nowrap;
         max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
-      .box { position: fixed; border: 2px solid ${ink}; outline: 1px solid ${paper}; display: none; }
-      .box span { position: absolute; left: -2px; bottom: 100%; padding: 0 4px; background: ${ink}; color: ${paper};
+      .box { position: fixed; border: 2px solid ${ink}; border-radius: 5px; outline: 1px solid ${paper}; display: none; }
+      .box span { position: absolute; left: -2px; bottom: 100%; padding: 0 5px; border-radius: 4px 4px 0 0; background: ${ink}; color: ${paper};
         font: 500 10px/13px ${mono}; white-space: nowrap; }
       .box.below span { bottom: auto; top: 100%; }
     </style><div class="rule"></div><div class="tag"></div><div class="box"><span></span></div>`;

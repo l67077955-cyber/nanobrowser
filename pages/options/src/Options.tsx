@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import '@src/Options.css';
-import '@src/brutal.css';
+import '@src/graphite.css';
 import { withErrorBoundary, withSuspense } from '@extension/shared';
 import { t } from '@extension/i18n';
 import { FiSettings, FiCpu, FiShield, FiBookmark, FiLink } from 'react-icons/fi';

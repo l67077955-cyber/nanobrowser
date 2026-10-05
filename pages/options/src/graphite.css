@@ -1,0 +1,193 @@
+/* The side panel's graphite skin (pages/side-panel/src/graphite.css) over Options.css: a grey frame, white
+   sheets with hairlines, small radii, one teal accent, monospace for small facts. Keep the tokens in sync
+   with the panel's. Selectors are prefixed with `html` so they win over the base sheet whatever order they load in. */
+html:root {
+  --nb-page: #f4f4f5;
+  --nb-tile: #ffffff;
+  --nb-tile-2: #f4f4f5;
+  --nb-line: #dcdce0;
+  --nb-hair: #e7e7ea;
+  --nb-ink: #18181b;
+  --nb-ink-2: #3f3f46;
+  --nb-muted: #8b8b94;
+  --nb-track: #e9e9ec;
+  --nb-accent: #0d9488;
+  --nb-accent-soft: #dff3f0;
+  /* settings have no model colours to tell apart: the accent stands in for them */
+  --nb-llm: #0d9488;
+  --nb-jev: #0d9488;
+  --nb-plan: #7c5cc4;
+  --nb-good: #16a34a;
+  --nb-warning: #c98a1a;
+  --nb-critical: #dc4438;
+  --nb-glow: none;
+  --nb-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+html .nb-options * {
+  border-radius: 6px;
+}
+html .nb-options [role='switch'],
+html .nb-options [role='switch'] > span {
+  border-radius: 999px;
+}
+
+html .nb-options {
+  font-size: 13px;
+}
+/* 100vw counts the scrollbar, which made the sheet scroll sideways */
+html #app-container {
+  width: auto;
+}
+
+html .nb-options code,
+html .nb-options small,
+html .nb-options input[type='number'] {
+  font-family: var(--nb-mono);
+}
+html .nb-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--nb-muted);
+}
+html .nb-options code {
+  padding: 0 4px;
+  border: 1px solid var(--nb-hair);
+  background: var(--nb-tile-2);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+html ::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--nb-line);
+}
+html ::-webkit-scrollbar-thumb:hover {
+  background: var(--nb-muted);
+}
+
+/* ---------- the index: a grey column, the section in view on a white pill ---------- */
+html .nb-opt-nav {
+  padding: 0 6px;
+  border-right: 1px solid var(--nb-line);
+  border-radius: 0;
+  background: var(--nb-track);
+}
+html .nb-opt-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 6px;
+  color: var(--nb-ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+html .nb-opt-nav a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  margin-bottom: 1px;
+  padding: 0 8px;
+  color: var(--nb-ink-2);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+html .nb-opt-nav a > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--nb-muted);
+}
+html .nb-opt-nav a small {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--nb-muted);
+}
+html .nb-opt-nav a:hover,
+html .nb-opt-nav a:focus-visible {
+  background: var(--nb-tile-2);
+  color: var(--nb-ink);
+  outline: none;
+}
+html .nb-opt-nav a[aria-current='true'] {
+  background: var(--nb-tile);
+  color: var(--nb-ink);
+  box-shadow: 0 0 0 1px var(--nb-hair);
+}
+html .nb-opt-nav a[aria-current='true'] > svg {
+  color: var(--nb-accent);
+}
+
+/* ---------- sections: one long sheet, a hairline between sections ---------- */
+html .nb-opt-section {
+  scroll-margin-top: 16px;
+  padding: 22px 0 28px;
+  border-bottom: 1px solid var(--nb-hair);
+  border-radius: 0;
+}
+html .nb-opt-section:last-child {
+  border-bottom: 0;
+  min-height: 80vh;
+}
+html .nb-options h2 {
+  font-size: 14px !important;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+html .nb-options h3 {
+  font-weight: 600;
+}
+
+/* cards: white sheets on the grey ground, framed by a hairline */
+html .nb-options .bg-nb-tile {
+  border-color: var(--nb-hair);
+  border-radius: 8px;
+}
+html .nb-row {
+  min-height: 40px !important;
+}
+html .nb-row + .nb-row::before {
+  left: 0;
+  background: var(--nb-hair);
+}
+
+/* fields and buttons: hairline frames, teal on focus */
+html .nb-options input:not([type='range']):not([type='checkbox']),
+html .nb-options select,
+html .nb-options textarea {
+  border-color: var(--nb-line);
+  background: var(--nb-tile);
+}
+html .nb-options input:focus,
+html .nb-options select:focus,
+html .nb-options textarea:focus {
+  border-color: var(--nb-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--nb-accent-soft);
+}
+html .nb-options button:not([role='switch']):not([role='option']).bg-nb-llm,
+html .nb-options button.bg-nb-ink {
+  background: var(--nb-accent);
+  color: #fff;
+}
+
+/* the switch: a round track, teal when on */
+html .nb-options [role='switch'] {
+  border: 1px solid var(--nb-line);
+  background: var(--nb-track);
+}
+html .nb-options [role='switch'][aria-checked='true'] {
+  border-color: var(--nb-accent);
+  background: var(--nb-accent);
+}
+html .nb-options [role='switch'] > span {
+  background: var(--nb-tile);
+  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.2);
+}
+html .nb-options input[type='range'] {
+  accent-color: var(--nb-accent);
+}
