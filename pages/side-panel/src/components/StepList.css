@@ -1415,6 +1415,47 @@ button.nb-line:hover .nb-dot {
 }
 
 /* ---------- the header's menu ---------- */
+.nb-modes {
+  position: fixed;
+  z-index: 30;
+  width: 264px;
+  max-width: calc(100vw - 16px);
+  padding: 4px;
+  border: 1px solid var(--nb-line);
+  border-radius: 14px;
+  background: var(--nb-tile);
+  animation: nb-rise 0.12s ease-out;
+}
+.nb-modes > button {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--nb-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.nb-modes > button:hover,
+.nb-modes > button:focus-visible {
+  background: var(--nb-tile-2);
+  outline: none;
+}
+.nb-modes b {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.nb-modes small {
+  display: block;
+  color: var(--nb-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
 .nb-menu {
   position: absolute;
   top: calc(100% + 4px);

@@ -275,3 +275,39 @@ html .nb-history .tabular-nums {
   font-family: var(--nb-mono);
   font-size: 10.5px;
 }
+
+/* ---------- action modes: a ruled panel, the chosen one inverted ---------- */
+html .nb-modes {
+  border: 1px solid var(--nb-ink);
+  padding: 0;
+}
+html .nb-modes > button {
+  border-top: 1px solid var(--nb-hair);
+}
+html .nb-modes > button[aria-checked='true'] {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+}
+html .nb-modes > button[aria-checked='true'] svg,
+html .nb-modes > button[aria-checked='true'] small {
+  color: var(--nb-page);
+}
+html .nb-modes > button:hover,
+html .nb-modes > button:focus-visible {
+  outline: 2px solid var(--nb-ink);
+  outline-offset: -2px;
+}
+html .nb-modes b {
+  font-family: var(--nb-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+html .nb-mode-button {
+  font-family: var(--nb-mono);
+  text-transform: uppercase;
+}
+html .nb-mode-button[aria-expanded='true'] {
+  background: var(--nb-ink);
+  color: var(--nb-page);
+}
