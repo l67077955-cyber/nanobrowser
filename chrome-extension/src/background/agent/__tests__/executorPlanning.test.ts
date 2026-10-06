@@ -103,6 +103,61 @@ describe('Executor planning', () => {
   });
 });
 
+describe('Executor calling off out-of-date plans', () => {
+  /** records the signal each planner call got, to see which were called off */
+  function withSignals(run: ReturnType<typeof scripted>) {
+    const internals = run.executor as unknown as {
+      planner: { execute: (signal?: AbortSignal) => Promise<AgentOutput<PlannerOutput>> };
+    };
+    const planOnce = internals.planner.execute;
+    const signals: (AbortSignal | undefined)[] = [];
+    internals.planner.execute = signal => {
+      signals.push(signal);
+      return planOnce(signal);
+    };
+    return signals;
+  }
+
+  it('does not wait for a plan under way when the navigator says it is done, but plans on the current page', async () => {
+    // the periodic plan from step 3 would take five more steps; the navigator finishes at step 4
+    const run = scripted(
+      [plan(false), plan(true, 'from an older page'), plan(true, 'from the current page')],
+      [0, 5],
+      4,
+    );
+    const signals = withSignals(run);
+    await run.executor.execute();
+    expect(run.pagesPlanned).toEqual([0, 3, 4]);
+    expect(signals[1]?.aborted).toBe(true);
+    expect(signals[2]?.aborted).toBe(false);
+    expect(run.context.finalAnswer).toBe('from the current page');
+    expect(run.steps()).toBe(4);
+  });
+
+  it('calls off a plan under way when the user sends a message, and keeps it out of the history', async () => {
+    const run = scripted(
+      [plan(false), { id: 'planner', result: { ...plan(false).result!, next_steps: 'STALE PLAN' } }, plan(true, 'ok')],
+      [0, 5, 0],
+    );
+    const signals = withSignals(run);
+    const navigate = (run.executor as unknown as { navigator: { execute: () => Promise<unknown> } }).navigator;
+    const step = navigate.execute;
+    navigate.execute = async () => {
+      if (run.steps() === 3) run.executor.steer('only the docs');
+      return step();
+    };
+    await run.executor.execute();
+    expect(signals[1]?.aborted).toBe(true);
+    expect(run.pagesPlanned).toEqual([0, 3, 4]);
+    const history = run.context.messageManager
+      .getMessages()
+      .map(m => (typeof m.content === 'string' ? m.content : ''))
+      .join('\n');
+    expect(history).not.toContain('STALE PLAN');
+    expect(run.context.finalAnswer).toBe('ok');
+  });
+});
+
 describe('Executor steering', () => {
   const history = (context: AgentContext) =>
     context.messageManager

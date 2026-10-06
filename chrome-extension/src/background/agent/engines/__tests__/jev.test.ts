@@ -9,6 +9,7 @@ import {
   groupCandidates,
   interpretAnswers,
   JevDecisionEngine,
+  searchAlreadySubmitted,
   validateChoice,
 } from '../jev';
 
@@ -315,6 +316,52 @@ describe('JevDecisionEngine', () => {
     });
     await expect(engine.decide(signupPage(), signal)).rejects.toThrow('HTTP 401');
     expect(fetchImpl.mock.calls[0][0]).toBe('https://api.typesafe.ai/v1/systemone');
+  });
+});
+
+describe('Jev on a search results page', () => {
+  /** a results page keeps the query in the box, next to the button that submitted it */
+  function resultsPage(url: string, boxValue: string): BrowserState {
+    const go = el('input', { type: 'submit', id: 'sb_form_go', name: 'go' }, 1);
+    const box = el('input', { type: 'search', id: 'sb_form_q', value: boxValue }, 2);
+    const result = el('a', { href: 'https://example.com/answer' }, 3, [text('Basement dweller meaning')]);
+    return {
+      elementTree: el('body', {}, null, [go, box, result]),
+      selectorMap: new Map([
+        [1, go],
+        [2, box],
+        [3, result],
+      ]),
+      url,
+      title: 'search',
+      tabs: [],
+    } as unknown as BrowserState;
+  }
+  const BING = 'https://cn.bing.com/search?q=basement+dweller+gamer&form=QBRE';
+  const signal = new AbortController().signal;
+  // no dropdown on the page, so no SELECT
+  const ops = OPS.filter(op => op !== 'SELECT');
+  const clickGo = { operation: choice('CLICK', ops), click_target: choice('1', ['1', '2', '3', 'none']) };
+
+  it('leaves submitting a search the address already carries to the LLM', async () => {
+    const { engine } = engineWith(clickGo);
+    const { decision, trace } = await engine.decide(resultsPage(BING, 'basement  dweller Gamer'), signal);
+    expect(decision).toBeNull();
+    expect(trace).toMatchObject({ deferred: 'search already submitted' });
+  });
+
+  it('submits a query that differs from the one shown', async () => {
+    const { engine } = engineWith(clickGo);
+    const { decision } = await engine.decide(resultsPage(BING, 'sweat tryhard meaning'), signal);
+    expect(decision?.action).toEqual([{ click_element: { intent: 'CLICK [1] go', index: 1 } }]);
+  });
+
+  it('only looks at submit controls', () => {
+    const page = resultsPage(BING, 'basement dweller gamer');
+    expect(searchAlreadySubmitted(1, page.selectorMap, page.url)).toBe(true);
+    expect(searchAlreadySubmitted(3, page.selectorMap, page.url)).toBe(false);
+    expect(searchAlreadySubmitted(1, page.selectorMap, 'https://cn.bing.com/')).toBe(false);
+    expect(searchAlreadySubmitted(1, page.selectorMap, 'not a url')).toBe(false);
   });
 });
 

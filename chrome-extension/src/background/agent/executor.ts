@@ -52,6 +52,9 @@ export function withoutIndexes(text: string): string {
 interface BackgroundPlan {
   promise: Promise<AgentOutput<PlannerOutput> | null>;
   settled: boolean;
+  /** called off: the model call is aborted, and the plan resolves to null without joining the history */
+  dropped: boolean;
+  drop: () => void;
 }
 
 /** What an executor knows, as plain JSON: a later executor of the same session goes on from it */
@@ -370,7 +373,7 @@ export class Executor {
         // What the user said since the last step: a plan already under way did not know it
         let replan = false;
         if (this.steers.length > 0) {
-          await backgroundPlan?.promise.catch(() => null);
+          this.dropUnfinishedPlan(backgroundPlan);
           backgroundPlan = null;
           this.takeInSteers();
           navigatorDone = false;
@@ -396,7 +399,7 @@ export class Executor {
 
         if (this.planBeforeNextStep) {
           this.planBeforeNextStep = false;
-          await backgroundPlan?.promise.catch(() => null);
+          this.dropUnfinishedPlan(backgroundPlan);
           backgroundPlan = null;
           replan = true;
         }
@@ -405,10 +408,11 @@ export class Executor {
           // The first plan steers the first steps, and a claimed finish needs checking before going on:
           // both wait for the planner
           navigatorDone = false;
-          // a plan already under way that also finds the task done confirms the finish without a second call
-          const pendingPlan = backgroundPlan ? await backgroundPlan.promise.catch(() => null) : null;
+          // a plan still under way was made on a page from before the navigator's latest step: waiting for it
+          // costs a whole model call and its view is out of date, so a fresh plan replaces it
+          this.dropUnfinishedPlan(backgroundPlan);
           backgroundPlan = null;
-          latestPlanOutput = pendingPlan?.result?.done && !replan ? pendingPlan : await this.runPlanner();
+          latestPlanOutput = await this.runPlanner();
           // a message that came in while the planner was at work is taken in before the task can end
           if (this.steers.length === 0 && this.checkTaskCompletion(latestPlanOutput)) {
             break;
@@ -536,6 +540,13 @@ export class Executor {
     }
   }
 
+  /** A plan still being made is called off rather than waited for: a fresh plan is about to replace it */
+  private dropUnfinishedPlan(plan: BackgroundPlan | null): void {
+    if (!plan || plan.settled) return;
+    logger.info('Calling off a plan made on an older page, a fresh one is due');
+    plan.drop();
+  }
+
   /**
    * Helper method to run planner and store its output
    */
@@ -552,6 +563,7 @@ export class Executor {
     let started = performance.now();
     let observeMs = 0;
     let planning: Promise<AgentOutput<PlannerOutput>>;
+    const callOff = new AbortController();
     try {
       // Add current browser state to memory, on the first step too: a blind first plan
       // misleads the fast engine, and the navigator reuses this same state read
@@ -560,15 +572,21 @@ export class Executor {
       positionForPlan = this.context.messageManager.length() - 1;
       started = performance.now();
       // execute() copies the history synchronously, before the navigator changes it
-      planning = this.planner.execute();
+      planning = this.planner.execute(AbortSignal.any([this.context.controller.signal, callOff.signal]));
     } catch (error) {
       planning = Promise.reject(error);
     }
     const planStep = this.context.nSteps;
     const plan: BackgroundPlan = {
       settled: false,
+      dropped: false,
+      drop: () => {
+        plan.dropped = true;
+        callOff.abort();
+      },
       promise: planning
         .then(planOutput => {
+          if (plan.dropped) return null;
           logger.info(`⏱ planner: observe ${observeMs}ms, plan ${Math.round(performance.now() - started)}ms`);
           if (planOutput.result) {
             // the navigator went on while this plan was made: the indexes in it may point elsewhere by now
@@ -582,7 +600,7 @@ export class Executor {
           }
           return planOutput;
         })
-        .catch(error => this.handlePlannerError(error))
+        .catch(error => (plan.dropped ? null : this.handlePlannerError(error)))
         .finally(() => {
           plan.settled = true;
         }),

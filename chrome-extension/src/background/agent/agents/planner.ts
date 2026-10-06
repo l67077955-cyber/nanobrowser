@@ -68,7 +68,8 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
     super(plannerOutputSchema, options, { ...extraOptions, id: 'planner' });
   }
 
-  async execute(): Promise<AgentOutput<PlannerOutput>> {
+  /** `signal` lets the executor call off a plan it no longer needs, besides stopping with the task */
+  async execute(signal?: AbortSignal): Promise<AgentOutput<PlannerOutput>> {
     try {
       this.context.emitEvent(Actors.PLANNER, ExecutionState.STEP_START, 'Planning...');
       // get all messages from the message manager, state message should be the last one
@@ -96,7 +97,7 @@ export class PlannerAgent extends BaseAgent<typeof plannerOutputSchema, PlannerO
       }
 
       const started = performance.now();
-      const modelOutput = await this.invoke(convertMessagesForPlanner(plannerMessages));
+      const modelOutput = await this.invoke(convertMessagesForPlanner(plannerMessages), signal);
       const latencyMs = Math.round(performance.now() - started);
       if (!modelOutput) {
         throw new Error('Failed to validate planner output');

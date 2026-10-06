@@ -172,6 +172,36 @@ function isTextEditable(node: DOMElementNode): boolean {
   return false;
 }
 
+function isSubmitControl(node: DOMElementNode): boolean {
+  const tag = (node.tagName ?? '').toLowerCase();
+  const type = (node.attributes.type ?? '').toLowerCase();
+  if (tag === 'input') return type === 'submit' || type === 'image';
+  return tag === 'button' && (type === '' || type === 'submit');
+}
+
+const normalizedQuery = (text: string) => text.replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * Clicking `index` would submit a search the page already shows: it is a submit control, and a text field on
+ * the page holds a value the address already carries (e.g. Bing's ?q=). Results pages keep the query in the
+ * box, which reads to Jev as a populated field that still needs submitting.
+ */
+export function searchAlreadySubmitted(index: number, selectorMap: Map<number, DOMElementNode>, url: string): boolean {
+  const node = selectorMap.get(index);
+  if (!node || !isSubmitControl(node)) return false;
+  let params: string[];
+  try {
+    params = [...new URL(url).searchParams.values()].map(normalizedQuery).filter(Boolean);
+  } catch {
+    return false;
+  }
+  if (params.length === 0) return false;
+  return [...selectorMap.values()].some(field => {
+    const value = field.attributes.value;
+    return isTextEditable(field) && !!value && params.includes(normalizedQuery(value));
+  });
+}
+
 function elementLabel(node: DOMElementNode): string {
   const attrs = node.attributes;
   const text = (node.tagName ?? '').toLowerCase() === 'select' ? '' : node.getAllTextTillNextClickableElement();
@@ -685,7 +715,13 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     if (choice.kind === 'group') {
       return { decision: null, trace: { ...trace, deferred: this.unsure(choice) ?? 'unsure which element' } };
     }
-    const deferral = this.deferralReason(choice);
+    const deferral =
+      this.deferralReason(choice) ??
+      (choice.kind === 'action' &&
+      choice.operation === 'CLICK' &&
+      searchAlreadySubmitted(choice.target.index, state.selectorMap, state.url)
+        ? 'search already submitted'
+        : null);
     if (deferral) return { decision: null, trace: { ...trace, deferred: deferral } };
 
     const action = await this.toAction(choice, state, goal, signal);
