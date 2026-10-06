@@ -30,6 +30,8 @@ export default class BrowserContext {
   /** tab the last task ended on */
   private _lastTabId: number | null = null;
   private _attachedPages: Map<number, Page> = new Map();
+  /** tabs the agent opened itself: it may navigate them; every other web page is the user's */
+  private _agentTabIds: Set<number> = new Set();
 
   constructor(config: Partial<BrowserContextConfig>) {
     this._config = { ...DEFAULT_BROWSER_CONTEXT_CONFIG, ...config };
@@ -131,11 +133,15 @@ export default class BrowserContext {
       const tab = await getActiveBrowserTab();
       if (!tab?.id) {
         // open a new tab with blank page
-        const newTab = await chrome.tabs.create({ url: this._config.homePageUrl });
+        const newTab = await chrome.tabs.create({
+          url: this._config.homePageUrl,
+          active: !this._config.workInBackground,
+        });
         if (!newTab.id) {
           // this should rarely happen
           throw new Error('No tab ID available');
         }
+        this._agentTabIds.add(newTab.id);
         activeTab = newTab;
       } else {
         activeTab = tab;
@@ -284,8 +290,11 @@ export default class BrowserContext {
   public async switchTab(tabId: number): Promise<Page> {
     logger.info('switchTab', tabId);
 
-    await chrome.tabs.update(tabId, { active: true });
-    await this.waitForTabEvents(tabId, { waitForUpdate: false });
+    // the agent works on the tab without showing it, so the user keeps the one they are reading
+    if (!this._config.workInBackground) {
+      await chrome.tabs.update(tabId, { active: true });
+      await this.waitForTabEvents(tabId, { waitForUpdate: false });
+    }
     // a tab a click just opened has no address yet: as a blank page it cannot be attached and reads as empty
     let tab = await chrome.tabs.get(tabId);
     if (!/^https?:/i.test(tab.url ?? '') && (tab.pendingUrl || tab.status === 'loading')) {
@@ -308,7 +317,8 @@ export default class BrowserContext {
     void analytics.trackDomainVisit(url);
 
     const page = await this.getCurrentPage();
-    if (!page) {
+    if (!page || (await this.isUserTab(page.tabId))) {
+      if (page) logger.info(`Tab ${page.tabId} is a page the user had open, opening ${url} in a new tab instead`);
       await this.openTab(url);
       return;
     }
@@ -320,8 +330,8 @@ export default class BrowserContext {
     //  Use chrome.tabs.update only if the page is not attached
     const tabId = page.tabId;
     // Update tab and wait for events
-    await chrome.tabs.update(tabId, { url, active: true });
-    await this.waitForTabEvents(tabId);
+    await chrome.tabs.update(tabId, { url, ...(this._config.workInBackground ? {} : { active: true }) });
+    await this.waitForTabEvents(tabId, { waitForActivation: !this._config.workInBackground });
 
     // Reattach the page after navigation completes
     const updatedPage = await this._getOrCreatePage(await chrome.tabs.get(tabId), true);
@@ -338,12 +348,18 @@ export default class BrowserContext {
     const currentTab = this._currentTabId
       ? await chrome.tabs.get(this._currentTabId).catch(() => undefined)
       : await getActiveBrowserTab();
-    const tab = await chrome.tabs.create({ url, active: true, windowId: currentTab?.windowId });
+    const tab = await chrome.tabs.create({
+      url,
+      active: !this._config.workInBackground,
+      windowId: currentTab?.windowId,
+      ...(currentTab?.index !== undefined ? { index: currentTab.index + 1 } : {}),
+    });
     if (!tab.id) {
       throw new Error('No tab ID available');
     }
-    // Wait for tab events
-    await this.waitForTabEvents(tab.id);
+    this._agentTabIds.add(tab.id);
+    // Wait for tab events; a tab opened behind the user's is never activated
+    await this.waitForTabEvents(tab.id, { waitForActivation: !this._config.workInBackground });
 
     // Get updated tab information
     const updatedTab = await chrome.tabs.get(tab.id);
@@ -353,6 +369,28 @@ export default class BrowserContext {
     this._currentTabId = tab.id;
 
     return page;
+  }
+
+  /** the tab in front in the user's browser window */
+  public async frontTabId(): Promise<number | undefined> {
+    return (await getActiveBrowserTab())?.id;
+  }
+
+  /** A tab a click of the agent's opened: the agent's own, and kept behind the one the user is looking at */
+  public async adoptOpenedTab(tabId: number, userTabId: number | undefined): Promise<void> {
+    this._agentTabIds.add(tabId);
+    if (!this._config.workInBackground || userTabId === undefined || userTabId === tabId) return;
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    // links that open a new tab bring it to the front: the user's tab goes back there
+    if (tab?.active) await chrome.tabs.update(userTabId, { active: true }).catch(() => {});
+  }
+
+  /** A web page the agent did not open itself, which it must not navigate away from */
+  private async isUserTab(tabId: number): Promise<boolean> {
+    if (!this._config.protectUserTabs || this._agentTabIds.has(tabId)) return false;
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    // a blank or new tab page holds nothing to lose
+    return /^https?:/i.test(tab?.url ?? '');
   }
 
   public async closeTab(tabId: number): Promise<void> {
@@ -370,6 +408,7 @@ export default class BrowserContext {
    */
   public removeAttachedPage(tabId: number): void {
     this._attachedPages.delete(tabId);
+    this._agentTabIds.delete(tabId);
     // update current tab id if needed
     if (this._currentTabId === tabId) {
       this._currentTabId = null;

@@ -8,6 +8,18 @@ export interface BrowserContextWindowSize {
 
 export interface BrowserContextConfig {
   /**
+   * Tabs the agent opens or switches to stay behind the one the user is looking at
+   * @default true
+   */
+  workInBackground: boolean;
+
+  /**
+   * A web page the user had open is not navigated away from: going to another address opens a new tab
+   * @default true
+   */
+  protectUserTabs: boolean;
+
+  /**
    * Minimum time to wait before getting page state for LLM input
    * @default 0.25
    */
@@ -79,6 +91,8 @@ export interface BrowserContextConfig {
 }
 
 export const DEFAULT_BROWSER_CONTEXT_CONFIG: BrowserContextConfig = {
+  workInBackground: true,
+  protectUserTabs: true,
   minimumWaitPageLoadTime: 0.25,
   waitForNetworkIdlePageLoadTime: 0.5,
   maximumWaitPageLoadTime: 5.0,

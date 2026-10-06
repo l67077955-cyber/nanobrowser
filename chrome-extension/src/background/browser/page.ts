@@ -42,6 +42,8 @@ const CLICK_TIMEOUT = 'Click timeout';
 // while the page is already usable. The DOM is enough; waitForPageAndFramesLoad waits for the rest, with a cap.
 const NAVIGATION_WAIT = { waitUntil: 'domcontentloaded' } as const;
 const PRESSED_FLAG = '__nanobrowserPressed';
+// the longest the model waits for a screenshot: a tab not in front may never be painted
+const SCREENSHOT_TIMEOUT_MS = 5000;
 
 // What sites call their captcha image in its id, class, alt, title or address
 const CAPTCHA_HINT = 'captcha|kaptcha|verif|valid|v_?code|check_?code|auth_?code|img_?code|rand|yzm|验证码';
@@ -534,7 +536,16 @@ export default class Page {
     const page = this._puppeteerPage;
     await page?.evaluate(setAgentMarkVisible, AGENT_MARK_ID, false).catch(() => {});
     try {
-      return await this.takeScreenshot();
+      // a tab behind the one in front may not be painted, and its screenshot may never come: the model then
+      // works from the page's text, rather than the tab being brought to the front over the user's
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<null>(resolve => {
+        timer = setTimeout(() => resolve(null), SCREENSHOT_TIMEOUT_MS);
+      });
+      const screenshot = await Promise.race([this.takeScreenshot().catch(() => null), timedOut]);
+      clearTimeout(timer);
+      if (screenshot === null) logger.warning(`No screenshot of tab ${this._tabId}, going on with the page text`);
+      return screenshot;
     } finally {
       await page?.evaluate(setAgentMarkVisible, AGENT_MARK_ID, true).catch(() => {});
     }

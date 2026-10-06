@@ -386,6 +386,8 @@ export class ActionBuilder {
 
         try {
           const initialTabIds = await this.context.browserContext.getAllTabIds();
+          // the tab the user is looking at, which a link opening a new tab would take the front from
+          const userTabId = await this.context.browserContext.frontTabId();
           let checked: boolean | undefined;
           try {
             checked = await page.clickElementNode(this.context.options.useVision, elementNode);
@@ -416,6 +418,7 @@ export class ActionBuilder {
             // find the tab id that is not in the initial tab ids
             const newTabId = Array.from(currentTabIds).find(id => !initialTabIds.has(id));
             if (newTabId) {
+              await this.context.browserContext.adoptOpenedTab(newTabId, userTabId);
               const newPage = await this.context.browserContext.switchTab(newTabId);
               // which page it is: often the very page the agent was on, opened again by a link
               const newUrl = (await chrome.tabs.get(newTabId).catch(() => null))?.url || newPage.url();
@@ -458,7 +461,9 @@ export class ActionBuilder {
           if (!(error instanceof ElementNotFoundError)) throw error;
           const relocated = await page.relocateElement(elementNode);
           if (!relocated) throw error;
-          logger.info(`Element ${input.index} was re-rendered, typing into it at its new index ${relocated.highlightIndex}`);
+          logger.info(
+            `Element ${input.index} was re-rendered, typing into it at its new index ${relocated.highlightIndex}`,
+          );
           content = await page.inputTextElementNode(this.context.options.useVision, relocated, input.text);
         }
         const msg = t('act_inputText_ok', [input.text, input.index.toString()]);
