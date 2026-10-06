@@ -659,7 +659,6 @@ export class Executor {
         throw error;
       }
       context.consecutiveFailures++;
-      logger.error(`Failed to execute step: ${describeError(error)}`);
       if (context.consecutiveFailures >= context.options.maxFailures) {
         throw new MaxFailuresReachedError(maxFailuresMessage(error));
       }

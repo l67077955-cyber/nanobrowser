@@ -1,5 +1,5 @@
 import { type ProviderConfig, type ModelConfig, ProviderTypeEnum } from '@extension/storage';
-import { ChatOpenAI, AzureChatOpenAI } from '@langchain/openai';
+import { ChatOpenAI, ChatOpenAICompletions, AzureChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatXAI } from '@langchain/xai';
@@ -14,8 +14,17 @@ const maxTokens = 1024 * 4;
 // thinking shares the output budget with the answer
 const adaptiveThinkingMaxTokens = 1024 * 16;
 
-// Custom ChatLlama class to handle Llama API response format
-class ChatLlama extends ChatOpenAI {
+// Response shape returned by the Llama API (differs from OpenAI's chat completion format)
+type LlamaApiResponse = {
+  id?: string;
+  completion_message?: { content?: { text?: string }; stop_reason?: string };
+  metrics?: { metric: string; value: number }[];
+};
+
+// Custom ChatLlama class to handle Llama API response format.
+// Extends ChatOpenAICompletions because, since @langchain/openai 0.6, ChatOpenAI delegates
+// requests to an internal completions client, so overriding completionWithRetry on ChatOpenAI has no effect.
+export class ChatLlama extends ChatOpenAICompletions {
   constructor(args: any) {
     super(args);
   }
@@ -24,7 +33,8 @@ class ChatLlama extends ChatOpenAI {
   async completionWithRetry(request: any, options?: any): Promise<any> {
     try {
       // Make the request using the parent's implementation
-      const response = await super.completionWithRetry(request, options);
+      // Llama API returns its own shape rather than an OpenAI ChatCompletion
+      const response = (await super.completionWithRetry(request, options)) as LlamaApiResponse;
 
       // Check if this is a Llama API response format
       if (response?.completion_message?.content?.text) {

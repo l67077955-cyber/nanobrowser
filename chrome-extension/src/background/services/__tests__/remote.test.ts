@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CLOSE_UNAUTHORIZED, platformOf, RemoteControl, type RemoteHandlers, type RemoteSocket } from '../remote';
+import {
+  CLOSE_UNAUTHORIZED,
+  platformOf,
+  RemoteControl,
+  retryDelay,
+  type RemoteHandlers,
+  type RemoteSocket,
+} from '../remote';
 
 class FakeSocket implements RemoteSocket {
   sent: Record<string, unknown>[] = [];
@@ -145,6 +152,32 @@ describe('RemoteControl', () => {
     expect(sockets).toHaveLength(2);
     sockets[1].onclose?.({ code: 1006 });
     expect(remote.status).toBe('unreachable');
+  });
+
+  it('waits longer after each failed try, up to a minute, and starts over once connected', () => {
+    const { remote, sockets } = setup();
+    remote.apply(CONFIG);
+    const failAndWait = (ms: number) => {
+      sockets[sockets.length - 1].onclose?.({ code: 1006 });
+      const before = sockets.length;
+      vi.advanceTimersByTime(ms - 1);
+      expect(sockets).toHaveLength(before);
+      vi.advanceTimersByTime(1);
+      expect(sockets).toHaveLength(before + 1);
+    };
+    failAndWait(5000);
+    failAndWait(10_000);
+    failAndWait(20_000);
+    failAndWait(40_000);
+    failAndWait(60_000);
+    failAndWait(60_000);
+
+    sockets[sockets.length - 1].receive({ type: 'hello_ack' });
+    failAndWait(5000);
+  });
+
+  it('computes the retry delay from the failures in a row', () => {
+    expect([1, 2, 3, 4, 5, 10].map(retryDelay)).toEqual([5000, 10_000, 20_000, 40_000, 60_000, 60_000]);
   });
 
   it('reconnects to a bridge that went silent', () => {

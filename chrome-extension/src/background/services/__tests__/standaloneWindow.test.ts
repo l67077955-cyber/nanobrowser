@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeAll, describe, it, expect, vi } from 'vitest';
 
 vi.stubGlobal('chrome', { runtime: { getURL: (path: string) => `chrome-extension://id/${path}` } });
 vi.mock('@extension/storage', () => ({ generalSettingsStore: {} }));
 vi.mock('../../log', () => ({ createLogger: () => ({ info: vi.fn(), warning: vi.fn(), error: vi.fn() }) }));
 
-const { fitBounds } = await import('../standaloneWindow');
+// imported once the mocks above are in place
+let fitBounds: typeof import('../standaloneWindow').fitBounds;
+beforeAll(async () => {
+  ({ fitBounds } = await import('../standaloneWindow'));
+});
 
 describe('fitBounds', () => {
   const screen = { left: 0, top: 0, width: 1366, height: 728 };

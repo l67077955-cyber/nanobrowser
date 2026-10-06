@@ -478,6 +478,34 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     this.jsonSchema = convertZodToJsonSchema(this.modelOutputSchema, 'NavigatorAgentOutput', true);
   }
 
+  /**
+   * Some models (seen with DeepSeek) call an action as a tool of its own, e.g. `open_tab({url})`, instead of
+   * sending it inside the AgentOutput tool. Such calls are taken as the step's actions, in order.
+   */
+  protected override parseRawStructuredResponse(raw: BaseMessage | undefined): this['ModelOutput'] | undefined {
+    const recovered = super.parseRawStructuredResponse(raw);
+    if (recovered || !raw) return recovered;
+
+    const toolCalls = (raw as BaseMessage & { tool_calls?: Array<{ name?: string; args?: unknown }> }).tool_calls ?? [];
+    const actions = toolCalls
+      .filter(call => call.name && this.actionRegistry.getAction(call.name))
+      .map(call => ({ [call.name as string]: call.args ?? {} }));
+    if (actions.length === 0 || actions.length !== toolCalls.length) return undefined;
+
+    const firstArgs = toolCalls[0].args as { intent?: unknown } | undefined;
+    const result = this.modelOutputSchema.safeParse({
+      current_state: {
+        evaluation_previous_goal: '',
+        memory: '',
+        next_goal: typeof firstArgs?.intent === 'string' ? firstArgs.intent : '',
+      },
+      action: actions,
+    });
+    if (!result.success) return undefined;
+    logger.warning(`[${this.modelName}] Took bare action tool calls as the step's actions`);
+    return result.data;
+  }
+
   async invoke(
     inputMessages: BaseMessage[],
     signal: AbortSignal = this.context.controller.signal,

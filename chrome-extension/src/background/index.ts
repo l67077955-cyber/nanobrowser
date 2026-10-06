@@ -82,7 +82,7 @@ chrome.tabs.onRemoved.addListener(tabId => {
   browserContext.removeAttachedPage(tabId);
 });
 
-logger.info('background loaded');
+logger.info(`background loaded · build ${import.meta.env.VITE_BUILD_INFO || 'unknown'}`);
 
 // A task can run with no side panel open, and then nothing else may wake the service worker for a while
 // (a model taking long to answer): an extension call now and then keeps it from being stopped as idle

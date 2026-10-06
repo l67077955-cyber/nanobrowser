@@ -13,6 +13,13 @@ const logger = createLogger('remote');
 /** close code the bridge uses for a wrong token */
 export const CLOSE_UNAUTHORIZED = 4401;
 const RETRY_DELAY_MS = 5000;
+/** a bridge that stays down is tried less and less often, at most this far apart */
+const MAX_RETRY_DELAY_MS = 60_000;
+
+/** How long to wait before the next try, after this many failed connections in a row */
+export function retryDelay(failures: number): number {
+  return Math.min(RETRY_DELAY_MS * 2 ** Math.max(0, failures - 1), MAX_RETRY_DELAY_MS);
+}
 /** the bridge pings every 20 s; a connection silent for this long is taken for dead */
 const SILENCE_LIMIT_MS = 60_000;
 
@@ -67,6 +74,8 @@ export class RemoteControl {
   private socket: RemoteSocket | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSeen = 0;
+  /** connections closed in a row without the bridge accepting this browser */
+  private failures = 0;
   private _status: RemoteStatus = 'off';
 
   constructor(
@@ -91,6 +100,7 @@ export class RemoteControl {
     this.config = { ...config };
     if (unchanged && (this.socket || !config.enabled)) return;
     this.disconnect();
+    this.failures = 0;
     if (config.enabled) this.connect();
   }
 
@@ -117,6 +127,9 @@ export class RemoteControl {
       this._status = 'rejected';
       return;
     }
+    // the alarm may connect while a retry is still waiting
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
     let socket: RemoteSocket;
     try {
       socket = this.createSocket(this.config.url);
@@ -154,11 +167,13 @@ export class RemoteControl {
       if (this.socket !== socket) return;
       this.socket = null;
       this._status = event.code === CLOSE_UNAUTHORIZED ? 'rejected' : 'unreachable';
-      logger.info('bridge connection closed', event.code);
+      this.failures++;
+      const delay = retryDelay(this.failures);
+      logger.info(`bridge connection closed ${event.code}, trying again in ${delay / 1000}s`);
       this.retryTimer = setTimeout(() => {
         this.retryTimer = null;
         this.ensureConnected();
-      }, RETRY_DELAY_MS);
+      }, delay);
     };
   }
 
@@ -193,6 +208,7 @@ export class RemoteControl {
     switch (message.type) {
       case 'hello_ack':
         this._status = 'connected';
+        this.failures = 0;
         logger.info('connected to the bridge');
         return;
       case 'ping':
