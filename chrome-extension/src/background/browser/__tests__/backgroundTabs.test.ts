@@ -15,6 +15,8 @@ vi.mock('../page', () => ({
       return true;
     }
     async detachPuppeteer() {}
+    async removeHighlight() {}
+    async clearAgentMark() {}
   },
   build_initial_state: () => ({}),
 }));
@@ -126,6 +128,31 @@ describe('BrowserContext working beside the user', () => {
     const context = new BrowserContext({});
     await context.adoptOpenedTab(2, 1);
     expect(browser.front()).toBe(1);
+  });
+
+  it('goes on with a follow-up in the tab it worked in while the user stayed on their page', async () => {
+    const browser = fakeBrowser([{ id: 1, url: 'https://mail.example.com/inbox', active: true }]);
+    const context = new BrowserContext({});
+    await context.navigateTo('https://a.example.com/');
+    await context.cleanup();
+
+    await context.resumeLastTab();
+    expect(context.currentTabId).toBe(100);
+    expect(browser.front()).toBe(1);
+  });
+
+  it('takes a follow-up to be about the page the user went to after the task', async () => {
+    const browser = fakeBrowser([
+      { id: 1, url: 'https://mail.example.com/inbox', active: true },
+      { id: 2, url: 'https://docs.example.com/', active: false },
+    ]);
+    const context = new BrowserContext({});
+    await context.navigateTo('https://a.example.com/');
+    await context.cleanup();
+    await browser.api.update(2, { active: true });
+
+    await context.resumeLastTab();
+    expect(context.currentTabId).toBeNull();
   });
 
   it('works as before with both settings off', async () => {

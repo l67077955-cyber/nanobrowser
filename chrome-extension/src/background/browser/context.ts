@@ -29,6 +29,8 @@ export default class BrowserContext {
   private _currentTabId: number | null = null;
   /** tab the last task ended on */
   private _lastTabId: number | null = null;
+  /** the tab the user had in front when the last task ended */
+  private _frontAtEnd: number | null = null;
   private _attachedPages: Map<number, Page> = new Map();
   /** tabs the agent opened itself: it may navigate them; every other web page is the user's */
   private _agentTabIds: Set<number> = new Set();
@@ -76,18 +78,22 @@ export default class BrowserContext {
 
   /**
    * A follow-up sent from a page the agent cannot work on (extensions page, new tab, ...) goes on
-   * in the tab the previous task ended on. From a normal web page it is about that page.
+   * in the tab the previous task ended on. From a normal web page it is about that page, unless the agent
+   * works behind the user's tab and the user is still on the page they had in front when the task ended:
+   * the follow-up is then about the agent's tab, which they never left for.
    */
   public async resumeLastTab(): Promise<void> {
     if (this._currentTabId || !this._lastTabId) return;
     const activeTab = await getActiveBrowserTab();
-    if (activeTab?.id === this._lastTabId || /^https?:/i.test(activeTab?.url ?? '')) return;
+    const stillInFront = this._config.workInBackground && activeTab?.id === this._frontAtEnd;
+    if (activeTab?.id === this._lastTabId || (!stillInFront && /^https?:/i.test(activeTab?.url ?? ''))) return;
     const lastTab = await chrome.tabs.get(this._lastTabId).catch(() => null);
     if (lastTab?.id) await this.switchTab(lastTab.id);
   }
 
   public async cleanup(): Promise<void> {
     if (this._currentTabId) this._lastTabId = this._currentTabId;
+    this._frontAtEnd = (await getActiveBrowserTab().catch(() => undefined))?.id ?? null;
     const currentPage = await this.getCurrentPage();
     currentPage?.removeHighlight();
     // the task is over: the agent's mark goes from every page it worked on
