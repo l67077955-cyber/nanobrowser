@@ -115,27 +115,32 @@ export function extractJsonFromModelOutput(content: string): Record<string, unkn
       throw new Error('Python tag structure does not contain valid parameters');
     }
 
-    // If content is wrapped in code blocks, extract just the JSON part
-    if (processedContent.includes('```')) {
-      // Find the JSON content between code blocks
-      const parts = processedContent.split('```');
-      processedContent = parts[1];
+    // Parse the content as it is
+    try {
+      return JSON.parse(processedContent);
+    } catch {
+      // wrapped in a code block or in tags, or surrounded by prose: tried below
+    }
 
-      // Remove language identifier if present (e.g., 'json\n')
-      if (processedContent.startsWith('json')) {
-        processedContent = processedContent.substring(4).trim();
+    // If content is wrapped in a code block, take the JSON from it. Only a block that holds the JSON counts:
+    // a string inside the JSON can hold a code block of its own (a ```bash command in a final answer)
+    if (processedContent.includes('```')) {
+      let block = processedContent.split('```')[1] ?? '';
+      if (block.startsWith('json')) {
+        block = block.substring(4);
+      }
+      try {
+        return JSON.parse(block.trim());
+      } catch {
+        // not the JSON: the outermost object below
       }
     }
 
-    // Parse the cleaned content; if prose or wrapper tags (e.g. <planner_output>) surround it, take the outermost object
-    try {
-      return JSON.parse(processedContent);
-    } catch (parseError) {
-      const start = processedContent.indexOf('{');
-      const end = processedContent.lastIndexOf('}');
-      if (start === -1 || end <= start) throw parseError;
-      return JSON.parse(processedContent.slice(start, end + 1));
-    }
+    // prose or wrapper tags (e.g. <planner_output>, <plan>) around it: take the outermost object
+    const start = processedContent.indexOf('{');
+    const end = processedContent.lastIndexOf('}');
+    if (start === -1 || end <= start) throw new Error('No JSON object in the content');
+    return JSON.parse(processedContent.slice(start, end + 1));
   } catch (e) {
     throw new ResponseParseError(`Could not manually extract JSON from model output`);
   }

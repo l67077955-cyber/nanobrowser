@@ -15,6 +15,19 @@ describe('extractJsonFromModelOutput', () => {
     expect(extractJsonFromModelOutput(content)).toEqual({ observation: 'shop page {open}', done: false });
   });
 
+  it('parses a plan whose final answer holds a code block of its own', () => {
+    const plan = {
+      done: true,
+      final_answer: '先跑:\n```bash\nsource /etc/network_turbo\npip install ultralytics\n```\n用完关机',
+    };
+    expect(extractJsonFromModelOutput(`<plan>${JSON.stringify(plan)}</plan>`)).toEqual(plan);
+    expect(extractJsonFromModelOutput(JSON.stringify(plan))).toEqual(plan);
+  });
+
+  it('parses a code block JSON followed by prose with braces', () => {
+    expect(extractJsonFromModelOutput('```json\n{"done":true}\n```\nnote: {not json}')).toEqual({ done: true });
+  });
+
   it('still fails when there is no JSON', () => {
     expect(() => extractJsonFromModelOutput('<planner_output>no json here</planner_output>')).toThrow();
   });

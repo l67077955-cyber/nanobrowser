@@ -358,6 +358,9 @@ export class Executor {
       let step = 0;
       let latestPlanOutput: AgentOutput<PlannerOutput> | null = null;
       let navigatorDone = false;
+      // the answer the navigator finished with, standing when the planner cannot check it
+      let navigatorAnswer: string | null = null;
+      let finishedOnNavigator = false;
 
       for (step = 0; step < allowedMaxSteps; step++) {
         context.stepInfo = {
@@ -407,6 +410,7 @@ export class Executor {
         if (navigatorDone || finishToConfirm || replan || context.nSteps === 0) {
           // The first plan steers the first steps, and a claimed finish needs checking before going on:
           // both wait for the planner
+          const checkingFinish = navigatorDone;
           navigatorDone = false;
           // a plan still under way was made on a page from before the navigator's latest step: waiting for it
           // costs a whole model call and its view is out of date, so a fresh plan replaces it
@@ -415,6 +419,14 @@ export class Executor {
           latestPlanOutput = await this.runPlanner();
           // a message that came in while the planner was at work is taken in before the task can end
           if (this.steers.length === 0 && this.checkTaskCompletion(latestPlanOutput)) {
+            break;
+          }
+          // No plan came back (its reply could not be read): that is no verdict on the finish. Going on would
+          // only have the navigator claim it again, until that is refused as an action that changes nothing
+          if (this.steers.length === 0 && checkingFinish && !latestPlanOutput?.result && navigatorAnswer !== null) {
+            logger.warning('The planner could not check the finish, the task ends with the navigator’s answer');
+            this.context.finalAnswer = navigatorAnswer;
+            finishedOnNavigator = true;
             break;
           }
           if (this.steers.length > 0) {
@@ -428,6 +440,9 @@ export class Executor {
 
         // Execute navigator
         navigatorDone = await this.navigate();
+        navigatorAnswer = navigatorDone
+          ? ([...this.context.actionResults].reverse().find(result => result.isDone)?.extractedContent ?? null)
+          : null;
 
         // If navigator indicates completion, the next periodic planner run will validate it
         if (navigatorDone) {
@@ -439,7 +454,7 @@ export class Executor {
       this.running = false;
 
       // Determine task completion status
-      const isCompleted = latestPlanOutput?.result?.done === true;
+      const isCompleted = latestPlanOutput?.result?.done === true || finishedOnNavigator;
 
       if (isCompleted) {
         await this.applySchedule(latestPlanOutput?.result ?? null);
