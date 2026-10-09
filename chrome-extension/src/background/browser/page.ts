@@ -111,6 +111,15 @@ export class CachedStateClickableElementsHashes {
   }
 }
 
+/** The page as a click found it, to tell afterwards whether the click did anything */
+interface PageProbe {
+  url: string;
+  sig: string;
+  modals: number;
+  errors: string;
+  inModal: boolean;
+}
+
 export default class Page {
   private _tabId: number;
   private _browser: Browser | null = null;
@@ -1568,36 +1577,43 @@ export default class Page {
       });
 
       // Choose appropriate input method based on element properties
+      let typed = false;
+      let clearField = async () => {};
+      const keyboard = this._puppeteerPage.keyboard;
       if ((isContentEditable || tagName === 'input' || tagName === 'textarea') && !isReadOnly && !isDisabled) {
         // Empty the field the way a user does: select what it contains and delete it. A page that keeps the
         // text in its own state puts it back after a value set from script, and the new text lands behind it.
-        await element.focus();
-        const hasContent = await element.evaluate(el => {
-          if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-            el.select();
-            return el.value !== '';
+        clearField = async () => {
+          await element.focus();
+          const hasContent = await element.evaluate(el => {
+            if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+              el.select();
+              return el.value !== '';
+            }
+            el.ownerDocument.getSelection()?.selectAllChildren(el);
+            return (el.textContent ?? '') !== '';
+          });
+          if (hasContent) {
+            await keyboard.press('Backspace');
           }
-          el.ownerDocument.getSelection()?.selectAllChildren(el);
-          return (el.textContent ?? '') !== '';
-        });
-        if (hasContent) {
-          await this._puppeteerPage.keyboard.press('Backspace');
-        }
-        // What the keys did not remove is cleared directly
-        await element.evaluate(el => {
-          const isField = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
-          const value = isField ? el.value : (el.textContent ?? '');
-          if (value === '') return;
-          if (isField) {
-            el.value = '';
-          } else {
-            el.textContent = '';
-          }
-          // Dispatch events
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        });
+          // What the keys did not remove is cleared directly
+          await element.evaluate(el => {
+            const isField = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+            const value = isField ? el.value : (el.textContent ?? '');
+            if (value === '') return;
+            if (isField) {
+              el.value = '';
+            } else {
+              el.textContent = '';
+            }
+            // Dispatch events
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+        };
+        await clearField();
 
+        typed = true;
         if (tagName === 'textarea') {
           // A textarea takes long, multi-line text: each line is inserted as the keyboard would deliver it, so
           // a page that keeps the text itself takes it over (a value set from script is dropped when the page
@@ -1633,12 +1649,22 @@ export default class Page {
       await this.waitForPageAndFramesLoad();
 
       // Success is what the field holds afterwards, not that the keys were sent
-      const content = await element
-        .evaluate(el =>
-          el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : (el.textContent ?? ''),
-        )
-        // the field is gone: typing moved the page on
-        .catch(() => null);
+      const readField = () =>
+        element
+          .evaluate(el =>
+            el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el.value : (el.textContent ?? ''),
+          )
+          // the field is gone: typing moved the page on
+          .catch(() => null);
+      let content = await readField();
+      // A controlled input can drop typed characters (e.g. spaces trimmed on change): insert the whole text at once
+      const norm = (s: string) => s.replace(/\r\n/g, '\n').trim();
+      if (typed && !isContentEditable && content !== null && text !== '' && norm(content) !== norm(text)) {
+        logger.info('Field does not hold the typed text, inserting it again in one go');
+        await clearField();
+        await this._puppeteerPage.keyboard.sendCharacter(text);
+        content = await readField();
+      }
       if (content !== null && text.trim() !== '' && content.trim() === '') {
         throw new Error('the field is still empty after typing, so it did not take the text');
       }
@@ -1786,6 +1812,83 @@ export default class Page {
    * Click an element. For a checkbox or radio button, resolves to whether it is checked afterwards.
    */
   async clickElementNode(useVision: boolean, elementNode: DOMElementNode): Promise<boolean | undefined> {
+    this.clickHint = null;
+    const probe: { before?: PageProbe } = {};
+    const result = await this.performClick(useVision, elementNode, probe);
+    if (probe.before) this.clickHint = await this.clickOutcomeHint(probe.before);
+    return result;
+  }
+
+  /** What the last click_element left visible: validation errors, or nothing happening. Null when all looks fine. */
+  clickHint: string | null = null;
+
+  /** Read the page cheaply before a click; null when the page cannot be read */
+  private async probePage(element?: ElementHandle): Promise<PageProbe | null> {
+    const page = this._puppeteerPage;
+    if (!page) return null;
+    const read = async () => {
+      const inModal = element
+        ? await element
+            .evaluate(el => !!el.closest('.ant-modal-wrap, .el-dialog__wrapper, .el-overlay, [role=dialog]'))
+            .catch(() => false)
+        : false;
+      const state = await page.evaluate(() => {
+        const text = document.body?.innerText ?? '';
+        let hash = 0;
+        for (let i = 0; i < Math.min(text.length, 20000); i++) hash = (hash * 31 + text.charCodeAt(i)) | 0;
+        const visible = (el: Element) => (el as HTMLElement).getClientRects().length > 0;
+        const modals = Array.from(document.querySelectorAll('.ant-modal-wrap, .el-dialog__wrapper, [role=dialog]'));
+        const errors: string[] = [];
+        const sel =
+          '.ant-form-item-explain-error, .ant-message-error, .ant-message-warning, .el-form-item__error, .el-message--error, .el-message--warning, [aria-invalid=true]';
+        for (const el of Array.from(document.querySelectorAll(sel))) {
+          if (!visible(el)) continue;
+          const t = ((el as HTMLElement).innerText || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+          if (t && !errors.includes(t)) errors.push(t);
+        }
+        return {
+          url: location.href,
+          sig: `${text.length}:${hash}`,
+          modals: modals.filter(visible).length,
+          errors: errors.join('; ').slice(0, 300),
+        };
+      });
+      return { ...state, inModal };
+    };
+    // never let the check hold up or fail the click
+    return Promise.race([read(), new Promise<null>(resolve => setTimeout(() => resolve(null), 1500))]).catch(
+      () => null,
+    );
+  }
+
+  /** Compare the page with its state before a click; null when nothing is worth telling the model */
+  private async clickOutcomeHint(before: PageProbe): Promise<string | null> {
+    try {
+      await new Promise(resolve => setTimeout(resolve, 400));
+      const after = await this.probePage();
+      // unreadable page: it navigated or closed, which counts as a change
+      if (!after || after.url !== before.url) return null;
+      const unchanged = after.sig === before.sig && after.modals === before.modals;
+      const dialogOpen = before.inModal && after.modals > 0;
+      if (after.errors && after.errors !== before.errors) {
+        return `Possible validation errors visible after the click: ${after.errors}${dialogOpen ? ' (the dialog is still open)' : ''}`;
+      }
+      if (unchanged) {
+        return `The page did not visibly change after the click${dialogOpen ? ' and the dialog is still open' : ''}${
+          after.errors ? `; messages visible: ${after.errors}` : ''
+        }`;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async performClick(
+    useVision: boolean,
+    elementNode: DOMElementNode,
+    probe: { before?: PageProbe },
+  ): Promise<boolean | undefined> {
     if (!this._puppeteerPage) {
       throw new Error('Puppeteer is not connected');
     }
@@ -1813,6 +1916,8 @@ export default class Page {
         await this._checkAndHandleNavigation();
         return ticked;
       }
+
+      probe.before = (await this.probePage(element)) ?? undefined;
 
       try {
         // A mouse click lands on whatever is on top at the element's center (a toast, a hover card, a

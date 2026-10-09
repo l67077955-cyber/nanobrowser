@@ -24,6 +24,46 @@ export const DEFAULT_INCLUDE_ATTRIBUTES = [
   'icon',
 ];
 
+/** Attributes that already say what an element is; a fallback hint is only for elements with none of them */
+const LABEL_ATTRIBUTES = ['aria-label', 'title', 'alt', 'placeholder', 'value', 'name', 'icon'];
+const ANCESTOR_LABEL_ATTRIBUTES = ['title', 'aria-label', 'data-tooltip', 'data-title'];
+const ICON_CLASS_PREFIX = /^(?:anticon|el-icon|icon|fa[srbl]?|mdi|bi|glyphicon|ri|ti|lucide)-(.+)$/;
+const ICON_CLASS_MODIFIER = /^(?:fw|lg|sm|xs|spin|pulse|[0-9]+x|outlined|filled|o)$/;
+const HINT_CAP = 40;
+
+/** `logo.3f9a2b1c.png` -> `logo`; a segment that looks like a hash or a bare number is noise */
+function srcHint(src: string): string {
+  if (!src || src.startsWith('data:')) return '';
+  const base = src.split(/[?#]/)[0].split('/').pop() ?? '';
+  const stem = base.replace(/\.[a-z0-9]{2,5}$/i, '');
+  return stem
+    .split(/[._-]/)
+    .filter(seg => seg && !/^[0-9a-f]{6,}$/i.test(seg) && !/^\d+$/.test(seg))
+    .join('-');
+}
+
+function classHint(className: string): string {
+  for (const token of className.split(/\s+/)) {
+    const rest = ICON_CLASS_PREFIX.exec(token)?.[1];
+    if (rest && !ICON_CLASS_MODIFIER.test(rest)) return rest;
+  }
+  return '';
+}
+
+/** What a text-less, unlabelled element is, e.g. `delete` for <i class="anticon-delete">; '' when it already reads fine */
+function fallbackLabel(node: DOMElementNode): string {
+  if (LABEL_ATTRIBUTES.some(key => node.attributes[key]?.trim())) return '';
+  let hint = srcHint(node.attributes.src ?? '') || classHint(node.attributes.class ?? '');
+  if (!hint) {
+    let ancestor = node.parent;
+    for (let depth = 0; ancestor && depth < 3 && !hint; depth++, ancestor = ancestor.parent) {
+      hint = ANCESTOR_LABEL_ATTRIBUTES.map(key => ancestor?.attributes[key]?.trim()).find(Boolean) ?? '';
+    }
+  }
+  hint = hint.replace(/\s+/g, ' ').trim();
+  return hint.length > HINT_CAP ? `${hint.slice(0, HINT_CAP - 1)}…` : hint;
+}
+
 export abstract class DOMBaseNode {
   isVisible: boolean;
   parent: DOMElementNode | null;
@@ -195,7 +235,7 @@ export class DOMElementNode extends DOMBaseNode {
         this.attributes.placeholder,
         this.attributes.name,
         this.attributes.icon,
-      ].find(c => c && c.trim()) ?? '';
+      ].find(c => c && c.trim()) ?? (this.getAllTextTillNextClickableElement(2) ? '' : fallbackLabel(this));
     const flat = label.replace(/\s+/g, ' ').trim();
     return [
       this.highlightIndex !== null ? `[${this.highlightIndex}]` : '',
@@ -261,6 +301,12 @@ export class DOMElementNode extends DOMBaseNode {
               if (includeAttributes.includes(key) && String(value).trim() !== '') {
                 attributesToInclude[key] = String(value).trim();
               }
+            }
+
+            // Icon-only elements: say what they are from src / class / an ancestor's label
+            if (!text) {
+              const hint = fallbackLabel(node);
+              if (hint) attributesToInclude.icon = hint;
             }
 
             // If value of any of the attributes is the same as ANY other value attribute only include the one that appears first in includeAttributes

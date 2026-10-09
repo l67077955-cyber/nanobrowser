@@ -37,6 +37,9 @@ import { JevDecisionEngine } from './engines/jev';
 
 const logger = createLogger('Executor');
 
+/** Refused clicks in a row that only make the plan again; more than this count as failed steps */
+const FREE_REFUSALS = 2;
+
 /** The task gives up after failing several times in a row; the last failure says why */
 function maxFailuresMessage(lastError: unknown): string {
   const reason = lastError instanceof Error ? lastError.message : String(lastError);
@@ -108,6 +111,8 @@ export class Executor {
   /** how many history steps have already been read for things to remember */
   private stepsRemembered = 0;
   private latestNextSteps: string | null = null;
+  /** navigator steps in a row whose click was refused because it already went wrong */
+  private refusedInARow = 0;
   /** step the latest plan was made on: its element indices are only valid on that step */
   private latestPlanStep = 0;
   constructor(
@@ -233,6 +238,9 @@ export class Executor {
     this.latestNextSteps = null;
     this.navigator.resetRepeats();
     this.planBeforeNextStep = false;
+    // failures of the previous task would otherwise stop this one before its first step
+    this.context.consecutiveFailures = 0;
+    this.refusedInARow = 0;
     // the page the planner finished on is read again: the user may be on another tab or page by now
     if (this.context.stateMessageAdded) {
       this.context.messageManager.removeLastStateMessage();
@@ -668,6 +676,13 @@ export class Executor {
       context.nSteps++;
       if (navOutput.error) {
         throw new Error(navOutput.error);
+      }
+      // a click refused because it already went wrong is not a failure of its own: the planner looks again,
+      // and only a model that keeps choosing it after that fails the step
+      this.refusedInARow = navOutput.result?.refused ? this.refusedInARow + 1 : 0;
+      if (navOutput.result?.refused && this.refusedInARow <= FREE_REFUSALS) {
+        this.planBeforeNextStep = true;
+        return false;
       }
       if (navOutput.result?.stuck) {
         // the navigator keeps choosing what it has been told changes nothing: a fresh plan, and the task

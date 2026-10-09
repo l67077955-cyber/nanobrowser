@@ -100,6 +100,20 @@ export function inputMismatchNote(text: string, content: string | null): string 
 }
 
 /**
+ * The field lost part of the text: its spaces, or its end (dropped keys, a trimming controlled input). A field
+ * that reformats the text into something else is not counted here.
+ */
+export function lostCharacters(text: string, content: string): boolean {
+  const squash = (s: string) => s.replace(/\s+/g, '');
+  const held = squash(content);
+  const wanted = squash(text);
+  // the same characters: lost only when it holds fewer gaps between words than it was given
+  const gaps = (s: string) => s.trim().split(/\s+/).length;
+  if (held === wanted) return gaps(content) < gaps(text);
+  return held.length < wanted.length && wanted.startsWith(held);
+}
+
+/**
  * An action is a function that takes an input and returns an ActionResult
  */
 export class Action {
@@ -438,6 +452,8 @@ export class ActionBuilder {
               const newUrl = (await chrome.tabs.get(newTabId).catch(() => null))?.url || newPage.url();
               if (newUrl) msg += ` (${newUrl})`;
             }
+          } else if (page.clickHint) {
+            msg += ` - ${page.clickHint}`;
           }
           this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
           return new ActionResult({ extractedContent: msg, includeInMemory: true });
@@ -480,10 +496,22 @@ export class ActionBuilder {
           );
           content = await page.inputTextElementNode(this.context.options.useVision, relocated, input.text);
         }
+        // the text was inserted again in one go when typing left something else (see page.inputTextElementNode)
+        const note = inputMismatchNote(input.text, content);
+        // a rich text box reads its line breaks back as nothing, so only plain fields are held to this
+        const plainField = ['input', 'textarea'].includes(elementNode.tagName?.toLowerCase() ?? '');
+        if (content !== null && note && plainField && lostCharacters(input.text, content)) {
+          const secret = elementNode.attributes.type === 'password';
+          const held = secret ? '' : ` but the field holds "${content.replace(/\s+/g, ' ').trim().slice(0, 200)}"`;
+          const errorMsg = `input_text into [${input.index}] failed: the field dropped part of ${secret ? 'the text' : `"${input.text}"`}${held}. Try another way to fill it`;
+          this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, errorMsg);
+          return new ActionResult({ error: errorMsg, includeInMemory: true });
+        }
         const msg = t('act_inputText_ok', [input.text, input.index.toString()]);
         this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
         return new ActionResult({
-          extractedContent: msg + inputMismatchNote(input.text, content),
+          // a field that reformats what it is given (a phone mask, a picked option) is told, not failed
+          extractedContent: msg + note,
           includeInMemory: true,
         });
       },

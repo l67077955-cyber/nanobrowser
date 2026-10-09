@@ -84,7 +84,6 @@ export const clickElementActionSchema: ActionSchema = {
   schema: z.object({
     intent: z.string().default('').describe('purpose of this action'),
     index: z.number().int().describe('index of the element'),
-    xpath: z.string().nullable().optional().describe('xpath of the element'),
   }),
 };
 

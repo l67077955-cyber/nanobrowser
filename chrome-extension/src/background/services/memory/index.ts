@@ -1,6 +1,7 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { type MemoryEntry, memoryStore, looksSecret, MAX_MEMORIES } from '@extension/storage';
+import { withModelTimeout } from '../../agent/agents/errors';
 import { askJev, askLLM, curate } from './curator';
 
 const MAX_CONTEXT_CHARS = 2000;
@@ -11,7 +12,6 @@ const MAX_DOCUMENT_CHARS = 12000;
 /** the model is asked for less: an entry slightly over is still kept */
 const MAX_MEMORY_CHARS = 300;
 const MAX_CANDIDATES = 12;
-const TIMEOUT_MS = 120000;
 
 const RULES = `Rules:
 - Only what is clearly true. Never guess, and never read a habit into a single ordinary task.
@@ -138,14 +138,17 @@ export function parseCandidates(reply: string, memories: MemoryEntry[]): string[
 /** Ask the model for candidates, then let the curator decide on each; `asked` is left to the caller */
 async function extractAndStore(system: string, input: object, options: RememberOptions): Promise<MemoryChange> {
   const change: MemoryChange = { added: [], updated: [], removed: [], asked: false };
-  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  // memory is not tied to a task: nothing cancels it, each model call is limited on its own
+  const never = new AbortController().signal;
   const stored = await memoryStore.getAll();
-  const reply = await options.llm.invoke(
-    [
-      new SystemMessage(system),
-      new HumanMessage(JSON.stringify({ stored_memories: stored.map(m => m.content), ...input })),
-    ],
-    { signal, tags: ['memory'] },
+  const reply = await withModelTimeout('The memory model', never, signal =>
+    options.llm.invoke(
+      [
+        new SystemMessage(system),
+        new HumanMessage(JSON.stringify({ stored_memories: stored.map(m => m.content), ...input })),
+      ],
+      { signal, tags: ['memory'] },
+    ),
   );
   const content = typeof reply.content === 'string' ? reply.content : '';
   change.asked = parseReply(content).asked === true;
@@ -156,7 +159,9 @@ async function extractAndStore(system: string, input: object, options: RememberO
   for (const candidate of candidates) {
     // read again: the previous candidate may have changed the list
     const memories = await memoryStore.getAll();
-    const decision = await curate(candidate, memories, memories.length >= MAX_MEMORIES, askers, signal);
+    const decision = await withModelTimeout('The memory model', never, signal =>
+      curate(candidate, memories, memories.length >= MAX_MEMORIES, askers, signal),
+    );
     if (decision.action === 'replace') {
       await memoryStore.update(decision.id, candidate);
       change.updated.push(candidate);

@@ -387,7 +387,8 @@ export function clickTargets(
   let page = url;
   try {
     const parsed = new URL(url);
-    page = parsed.origin + parsed.pathname;
+    // a hash-routed app shows its pages under one path: the hash tells them apart, the query still does not
+    page = parsed.origin + parsed.pathname + parsed.hash;
   } catch {
     // not a full address: as it is
   }
@@ -399,8 +400,10 @@ export function clickTargets(
     const label = String(node);
     const reads = label.replace(/^\[\d+\]\s*/, '');
     const keys = [`${page}|x|${node.xpath}`];
-    // an element with nothing to read is known by its place alone
-    if (reads !== `<${node.tagName}>`) keys.push(`${page}|l|${reads}|${node.attributes.href ?? ''}`);
+    // an element with nothing to read is known by its place alone; one that reads the same is the same element
+    // only where the page has the same shape around it (a list item that moved), not every "OK" in every dialog
+    const shape = (node.xpath ?? '').replace(/\[\d+\]/g, '');
+    if (reads !== `<${node.tagName}>`) keys.push(`${page}|l|${shape}|${reads}|${node.attributes.href ?? ''}`);
     targets.push({ label, keys });
   }
   return targets;
@@ -417,7 +420,12 @@ export class FailedClickTracker {
 
   /** The model's evaluation of the step before: a failure counts against the elements that step clicked */
   judge(evaluation: string | undefined): void {
-    if (evaluation && /^\W*fail/i.test(evaluation.trim())) {
+    // a form that did not pass its checks is no fault of the button that submitted it
+    if (
+      evaluation &&
+      /^\W*fail/i.test(evaluation.trim()) &&
+      !/validation|is required|required field|form error/i.test(evaluation)
+    ) {
       for (const target of this.pending) {
         for (const key of target.keys) this.failures.set(key, (this.failures.get(key) ?? 0) + 1);
       }
@@ -451,6 +459,8 @@ export interface NavigatorResult {
   done: boolean;
   /** the model chose actions it had already repeated too often; they were not taken */
   stuck?: boolean;
+  /** a click was refused because it already went wrong: the plan is made again, it is no failure of its own */
+  refused?: boolean;
   /** a read_page brought the page's text into the history */
   readPage?: boolean;
 }
@@ -753,7 +763,12 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       if (actionResults.length > 0 && actionResults[actionResults.length - 1].isDone) {
         done = true;
       }
-      agentOutput.result = { done, stuck, readPage: actionResults.some(result => result.readPage) };
+      agentOutput.result = {
+        done,
+        stuck,
+        refused: refusal !== null,
+        readPage: actionResults.some(result => result.readPage),
+      };
       return agentOutput;
     } catch (error) {
       this.removeLastStateMessageFromMemory();
