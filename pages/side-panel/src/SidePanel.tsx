@@ -256,7 +256,8 @@ const SidePanel = () => {
               setActivity(null);
               setPendingConfirmation(null);
               setAwaitingReply(false);
-              setIsFollowUpMode(false);
+              // a stopped task stays the chat's context: what is sent next goes on from what the agents knew
+              setIsFollowUpMode(true);
               setInputEnabled(true);
               setShowStopButton(false);
               setIsReplaying(false);
