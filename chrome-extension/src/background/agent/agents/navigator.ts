@@ -478,12 +478,34 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     this.jsonSchema = convertZodToJsonSchema(this.modelOutputSchema, 'NavigatorAgentOutput', true);
   }
 
+  /** page actions the last unparsable answer asked for although this run does not offer them (read-only) */
+  private unofferedActions: string[] = [];
+
   /** Offers the navigator these page actions (PAGE_INPUT_ACTIONS) and no others of them, from its next decision on */
   setPageInputActions(actions: Action[]): void {
     for (const name of PAGE_INPUT_ACTIONS) this.actionRegistry.unregisterAction(name);
     for (const action of actions) this.actionRegistry.registerAction(action);
     this.modelOutputSchema = this.actionRegistry.setupModelOutputSchema();
     this.jsonSchema = convertZodToJsonSchema(this.modelOutputSchema, 'NavigatorAgentOutput', true);
+  }
+
+  /**
+   * The page actions (click_element, input_text, ...) an answer names that the navigator is not offered. A
+   * read-only run leaves them out of the schema, so such an answer fails to parse with a list of every
+   * action: the model is told plainly instead, or it asks for the same click step after step.
+   */
+  private unofferedPageActions(raw: BaseMessage | undefined): string[] {
+    const toolCalls = (raw as (BaseMessage & { tool_calls?: Array<{ name?: string; args?: unknown }> }) | undefined)
+      ?.tool_calls;
+    const named = new Set<string>();
+    for (const call of toolCalls ?? []) {
+      if (call.name) named.add(call.name);
+      const items = (call.args as { action?: unknown } | undefined)?.action;
+      for (const item of Array.isArray(items) ? items : []) {
+        if (item && typeof item === 'object') for (const key of Object.keys(item)) named.add(key);
+      }
+    }
+    return [...named].filter(name => PAGE_INPUT_ACTIONS.has(name) && !this.actionRegistry.getAction(name));
   }
 
   /**
@@ -568,6 +590,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           );
           return recovered;
         }
+        this.unofferedActions = this.unofferedPageActions(response?.raw);
         throw new Error(`Failed to invoke ${this.modelName} with structured output: \n${errorMessage}`);
       }
 
@@ -577,6 +600,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         return recovered;
       }
 
+      this.unofferedActions = this.unofferedPageActions(response?.raw);
       throw new ResponseParseError(
         `Could not parse navigator response (${this.getRawResponseDebugInfo(response?.raw)})`,
       );
@@ -756,6 +780,13 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         throw error;
       }
 
+      // the reason reaches the model with the next page state, as a run-time block would
+      for (const name of this.unofferedActions) {
+        this.context.actionResults.push(
+          new ActionResult({ error: t('act_readonly_blocked', [name]), includeInMemory: true }),
+        );
+      }
+      this.unofferedActions = [];
       const errorString = `Navigation failed: ${errorMessage}`;
       logger.error(`Navigation failed: ${describeError(error)}`);
       this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_FAIL, errorString);

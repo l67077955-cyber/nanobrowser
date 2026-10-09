@@ -46,6 +46,12 @@ declare global {
  */
 const SCRIPT_TIMEOUT_MS = 10000;
 
+/**
+ * Removing old highlights and checking which frames have the script are side work: on a page that does not
+ * answer they cost 20s a step before the real read even started. They give up sooner.
+ */
+const SIDE_SCRIPT_TIMEOUT_MS = 2000;
+
 function inTime<T>(work: Promise<T>, timeoutMs = SCRIPT_TIMEOUT_MS): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<never>((_, reject) => {
@@ -568,6 +574,7 @@ export async function removeHighlights(tabId: number): Promise<void> {
           }
         },
       }),
+      SIDE_SCRIPT_TIMEOUT_MS,
     );
   } catch (error) {
     logger.error('Failed to remove highlights:', error);
@@ -704,6 +711,7 @@ async function scriptInjectedFrames(tabId: number): Promise<Map<number, boolean>
         target: { tabId, allFrames: true },
         func: () => Object.prototype.hasOwnProperty.call(window, 'buildDomTree'),
       }),
+      SIDE_SCRIPT_TIMEOUT_MS,
     );
     return new Map(results.map(result => [result.frameId, result.result || false]));
   } catch (err) {
