@@ -173,6 +173,17 @@ export default class Page {
     return true;
   }
 
+  /**
+   * Chrome freezes a tab that has been hidden for a while: its scripts then never answer, and every read of it
+   * waited out its timeouts, a minute a step, until the tab woke on its own. The agent works in tabs behind the
+   * user's, so each read wakes the tab first.
+   */
+  private async wake(): Promise<void> {
+    await chrome.debugger
+      .sendCommand({ tabId: this._tabId }, 'Page.setWebLifecycleState', { state: 'active' })
+      .catch(error => logger.debug('Could not wake the tab:', error));
+  }
+
   private async _addAntiDetectionScripts(): Promise<void> {
     if (!this._puppeteerPage) {
       return;
@@ -276,6 +287,7 @@ export default class Page {
     if (!this._validWebPage) {
       return { title: '', url: '', text: '' };
     }
+    await this.wake();
     if (loadLazy) {
       // a page that has not loaded everything yet still has some text to give
       await loadLazyContent(this._tabId).catch(error => logger.warning('Could not scroll the page through', error));
@@ -477,6 +489,7 @@ export default class Page {
     }
 
     try {
+      await this.wake();
       await this.removeHighlight();
 
       // Get DOM content (equivalent to dom_service.get_clickable_elements)

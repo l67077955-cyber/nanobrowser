@@ -21,6 +21,7 @@ import { noticeTask, setupTaskNotices } from './services/taskNotice';
 import { Executor, type ExecutorSnapshot } from './agent/executor';
 import { snapshotFromChat } from './agent/resume';
 import { createLogger } from './log';
+import { grantsPageActions } from './utils';
 import { Actors, ExecutionState, type AgentEvent } from './agent/event/types';
 import { createChatModel } from './agent/helper';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
@@ -196,6 +197,14 @@ chrome.runtime.onConnect.addListener(port => {
             if (!message.task) return port.postMessage({ type: 'error', error: t('bg_cmd_followUpTask_noTask') });
             if (!message.taskId) return port.postMessage({ type: 'error', error: t('bg_errors_noTaskId') });
             // a message sent while the task runs is taken in by it, as the next thing to consider
+            if (activeTask?.taskId === message.taskId && currentExecutor) {
+              // "you can click now" in a read-only run switches the mode, which the toggle in the chat box shows
+              const { actionMode } = await generalSettingsStore.getSettings();
+              if (actionMode === 'readonly' && grantsPageActions(message.task)) {
+                currentExecutor.setActionMode('auto');
+                await generalSettingsStore.updateSettings({ actionMode: 'auto' });
+              }
+            }
             if (activeTask?.taskId === message.taskId && currentExecutor?.steer(message.task)) {
               logger.info('steer', message.task);
               break;

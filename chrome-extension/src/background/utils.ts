@@ -157,3 +157,22 @@ export function convertZodToJsonSchema(zodSchema: z.ZodType, name: string, addTi
   // logger.info('Navigator json schema', JSON.stringify(jsonSchema, null, 2));
   return jsonSchema;
 }
+
+/**
+ * Whether a message the user sent during a read-only run lets the agent act on pages ("u can click rn",
+ * "go ahead and fill it in", "可以点了"). Telling the model alone did not do it: the navigator then tried
+ * actions read-only mode does not offer, and the step failed.
+ */
+export function grantsPageActions(text: string): boolean {
+  const said = text.toLowerCase();
+  if (/\b(don'?t|do not|never|can'?t|cannot|not|no)\b|别|不要|不能|不可以|不准|禁止/.test(said)) return false;
+  return (
+    /\b(you|u) (can|may|are allowed to|could)( now)? (go ahead and )?(click|type|press|fill|submit|interact|act)\b/.test(
+      said,
+    ) ||
+    /\b(go ahead|feel free|ok|okay)( and| to)? (click|type|press|fill|submit)\b/.test(said) ||
+    /\b(clicking|typing|clicks) (is |are )?(ok|okay|fine|allowed)\b/.test(said) ||
+    /\b(turn|switch) off read-?only\b/.test(said) ||
+    /(可以|允许|能|随便)(你)?(点|点击|操作|输入|填写?|提交)/.test(said)
+  );
+}

@@ -9,7 +9,7 @@ import { createLogger, describeError } from '@src/background/log';
 import MessageManager, { type StoredManagedMessage } from './messages/service';
 import { filterExternalContent, splitUserTextAndAttachments } from './messages/utils';
 import type BrowserContext from '../browser/context';
-import { ActionBuilder } from './actions/builder';
+import { ActionBuilder, type Action } from './actions/builder';
 import { EventManager } from './event/manager';
 import { Actors, type EventCallback, EventType, ExecutionState } from './event/types';
 import {
@@ -95,6 +95,12 @@ export class Executor {
   private goalStart = 0;
   /** what the user said while the task runs, taken in at the start of the next step */
   private steers: string[] = [];
+  /** The plan the loop is waiting on, called off when the user says something it would not know */
+  private awaitedPlan: BackgroundPlan | null = null;
+  /** the page actions a read-only run leaves out, put back when the user leaves read-only */
+  private readonly pageInputActions: Action[];
+  /** what the agents are told at the next step about an action mode the user switched to */
+  private modeNote: string | null = null;
   /** the step loop is going: a message sent now is taken in by this run */
   private running = false;
   /** the navigator went round in circles or read a page's text: the planner looks again before its next step */
@@ -130,7 +136,9 @@ export class Executor {
     this.plannerPrompt = new PlannerPrompt();
 
     const actionBuilder = new ActionBuilder(context, extractorLLM, extraArgs?.captchaLLM ?? null);
-    const navigatorActionRegistry = new NavigatorActionRegistry(actionBuilder.buildDefaultActions());
+    const defaultActions = actionBuilder.buildDefaultActions();
+    this.pageInputActions = defaultActions.filter(action => PAGE_INPUT_ACTIONS.has(action.name()));
+    const navigatorActionRegistry = new NavigatorActionRegistry(defaultActions);
     // a read-only run is not offered the actions it may not take
     if (context.options.actionMode === 'readonly') {
       for (const name of PAGE_INPUT_ACTIONS) navigatorActionRegistry.unregisterAction(name);
@@ -250,6 +258,7 @@ export class Executor {
     this.steers.push(text);
     // the model may take minutes on a step the message changes: it is not waited for
     this.context.interruptStep();
+    this.dropUnfinishedPlan(this.awaitedPlan);
     return true;
   }
 
@@ -259,6 +268,10 @@ export class Executor {
     if (this.context.stateMessageAdded) {
       this.context.messageManager.removeLastStateMessage();
       this.context.stateMessageAdded = false;
+    }
+    if (this.modeNote) {
+      this.context.messageManager.addUserNote(this.modeNote);
+      this.modeNote = null;
     }
     for (const text of steers) {
       this.context.messageManager.addUserNote(
@@ -372,7 +385,7 @@ export class Executor {
 
         // What the user said since the last step: a plan already under way did not know it
         let replan = false;
-        if (this.steers.length > 0) {
+        if (this.steers.length > 0 || this.modeNote) {
           this.dropUnfinishedPlan(backgroundPlan);
           backgroundPlan = null;
           this.takeInSteers();
@@ -417,7 +430,7 @@ export class Executor {
           if (this.steers.length === 0 && this.checkTaskCompletion(latestPlanOutput)) {
             break;
           }
-          if (this.steers.length > 0) {
+          if (this.steers.length > 0 || this.modeNote) {
             latestPlanOutput = null;
             continue;
           }
@@ -551,7 +564,13 @@ export class Executor {
    * Helper method to run planner and store its output
    */
   private async runPlanner(): Promise<AgentOutput<PlannerOutput> | null> {
-    return (await this.startPlanner()).promise;
+    const plan = await this.startPlanner();
+    this.awaitedPlan = plan;
+    try {
+      return await plan.promise;
+    } finally {
+      this.awaitedPlan = null;
+    }
   }
 
   /**
@@ -738,11 +757,27 @@ export class Executor {
   }
 
   /**
-   * The mode the user switched to while this executor lives. Read-only and manual hold from the next action on;
-   * leaving read-only does not bring back the actions it dropped until a new executor is set up.
+   * The mode the user switched to while this executor lives. It holds from the next action on, and the agents
+   * hear of it at the next step: the navigator is offered the page actions again on leaving read-only, and no
+   * longer on entering it.
    */
   setActionMode(mode: ActionMode): void {
+    const was = this.context.options.actionMode;
     this.context.options.actionMode = mode;
+    if (was === mode || (was !== 'readonly' && mode !== 'readonly')) return;
+    if (mode === 'readonly') {
+      this.navigator.setPageInputActions([]);
+      this.modeNote =
+        'The user switched the action mode to read-only: from now on do not click, type, choose options, press keys or submit anything; those actions are gone. Gather what can be read and tell the user what is left for them to do by hand.';
+    } else {
+      this.navigator.setPageInputActions(this.pageInputActions);
+      this.modeNote =
+        'The user switched off read-only: clicking, typing, choosing options and pressing keys are available from now on, and what was said earlier about read-only mode no longer holds. Do the task, not only report on it.';
+    }
+    if (this.running) {
+      this.context.interruptStep();
+      this.dropUnfinishedPlan(this.awaitedPlan);
+    }
   }
 
   confirmAction(approved: boolean): void {

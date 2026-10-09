@@ -478,6 +478,14 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     this.jsonSchema = convertZodToJsonSchema(this.modelOutputSchema, 'NavigatorAgentOutput', true);
   }
 
+  /** Offers the navigator these page actions (PAGE_INPUT_ACTIONS) and no others of them, from its next decision on */
+  setPageInputActions(actions: Action[]): void {
+    for (const name of PAGE_INPUT_ACTIONS) this.actionRegistry.unregisterAction(name);
+    for (const action of actions) this.actionRegistry.registerAction(action);
+    this.modelOutputSchema = this.actionRegistry.setupModelOutputSchema();
+    this.jsonSchema = convertZodToJsonSchema(this.modelOutputSchema, 'NavigatorAgentOutput', true);
+  }
+
   /**
    * Some models (seen with DeepSeek) call an action as a tool of its own, e.g. `open_tab({url})`, instead of
    * sending it inside the AgentOutput tool. Such calls are taken as the step's actions, in order.
