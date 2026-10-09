@@ -115,27 +115,23 @@ export function extractJsonFromModelOutput(content: string): Record<string, unkn
       throw new Error('Python tag structure does not contain valid parameters');
     }
 
-    // If content is wrapped in code blocks, extract just the JSON part
+    // Try the content as is, then the outermost object (prose or wrapper tags like <plan> around it), then a code block.
+    // The code block comes last: a fenced example inside a string field (a markdown final_answer) is not the output.
+    const candidates = [processedContent];
+    const start = processedContent.indexOf('{');
+    const end = processedContent.lastIndexOf('}');
+    if (start !== -1 && end > start) candidates.push(processedContent.slice(start, end + 1));
     if (processedContent.includes('```')) {
-      // Find the JSON content between code blocks
-      const parts = processedContent.split('```');
-      processedContent = parts[1];
-
-      // Remove language identifier if present (e.g., 'json\n')
-      if (processedContent.startsWith('json')) {
-        processedContent = processedContent.substring(4).trim();
+      candidates.push(processedContent.split('```')[1].replace(/^json/, '').trim());
+    }
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate);
+      } catch {
+        // next candidate
       }
     }
-
-    // Parse the cleaned content; if prose or wrapper tags (e.g. <planner_output>) surround it, take the outermost object
-    try {
-      return JSON.parse(processedContent);
-    } catch (parseError) {
-      const start = processedContent.indexOf('{');
-      const end = processedContent.lastIndexOf('}');
-      if (start === -1 || end <= start) throw parseError;
-      return JSON.parse(processedContent.slice(start, end + 1));
-    }
+    throw new Error('no JSON object found');
   } catch (e) {
     throw new ResponseParseError(`Could not manually extract JSON from model output`);
   }

@@ -15,6 +15,11 @@ describe('extractJsonFromModelOutput', () => {
     expect(extractJsonFromModelOutput(content)).toEqual({ observation: 'shop page {open}', done: false });
   });
 
+  it('parses a plan whose final answer holds a code block', () => {
+    const plan = { done: true, final_answer: '# 验签\n```python\nverify(key, {"sig": sig})\n```\n完成' };
+    expect(extractJsonFromModelOutput(`<plan>${JSON.stringify(plan)}</plan>`)).toEqual(plan);
+  });
+
   it('still fails when there is no JSON', () => {
     expect(() => extractJsonFromModelOutput('<planner_output>no json here</planner_output>')).toThrow();
   });

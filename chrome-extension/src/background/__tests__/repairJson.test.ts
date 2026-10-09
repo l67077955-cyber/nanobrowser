@@ -13,6 +13,15 @@ describe('repairJsonString', () => {
     });
   });
 
+  it('drops the extra brace when the model wrapped the action key in an object', () => {
+    const broken =
+      '{"current_state": {"next_goal": "Open {Keys}"}, {"action": [{"click_element": {"intent": "Open Keys view", "index": 3}}]}]}';
+    expect(JSON.parse(repairJsonString(broken))).toEqual({
+      current_state: { next_goal: 'Open {Keys}' },
+      action: [{ click_element: { intent: 'Open Keys view', index: 3 } }],
+    });
+  });
+
   it('leaves well-formed output alone', () => {
     const fine = '{"current_state": {"memory": "m"}, "action": [{"done": {"text": "ok"}}]}';
     expect(withActionKey(fine)).toBe(fine);

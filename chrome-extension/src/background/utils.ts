@@ -46,6 +46,7 @@ export function repairJsonString(actionString: string): string {
 /**
  * Put back the "action" key a model left out of navigator output, which jsonrepair cannot guess:
  * {"current_state": {...}, {"click_element": {...}}]} becomes {"current_state": {...}, "action": [{"click_element": {...}}]}
+ * and {"current_state": {...}, {"action": [...]}]} loses the brace before "action"
  */
 export function withActionKey(json: string): string {
   const start = json.match(/^\{\s*"current_state"\s*:\s*\{/);
@@ -63,6 +64,9 @@ export function withActionKey(json: string): string {
     else if (c === '}' && --depth === 0) {
       const rest = json.slice(i + 1).match(/^\s*,\s*([{[])/);
       if (!rest) return json;
+      // {"current_state": {...}, {"action": [...]}]}: the key is there, only the brace before it is extra
+      const wrapped = json.slice(i + 1).match(/^\s*,\s*\{(?=\s*"action"\s*:)/);
+      if (wrapped) return `${json.slice(0, i + 1)}, ${json.slice(i + 1 + wrapped[0].length)}`;
       const insert = rest[1] === '{' ? '"action": [' : '"action": ';
       const at = i + 1 + rest[0].length - 1;
       return `${json.slice(0, at)}${insert}${json.slice(at)}`;
