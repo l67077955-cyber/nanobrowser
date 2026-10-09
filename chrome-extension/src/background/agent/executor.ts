@@ -566,6 +566,8 @@ export class Executor {
   private async runPlanner(): Promise<AgentOutput<PlannerOutput> | null> {
     const plan = await this.startPlanner();
     this.awaitedPlan = plan;
+    // a message that arrived while the page was being read cancels this plan, as it would any other
+    if (this.steers.length > 0 || this.modeNote) this.dropUnfinishedPlan(plan);
     try {
       return await plan.promise;
     } finally {

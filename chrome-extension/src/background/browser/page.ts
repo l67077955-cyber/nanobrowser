@@ -179,9 +179,23 @@ export default class Page {
    * user's, so each read wakes the tab first.
    */
   private async wake(): Promise<void> {
-    await chrome.debugger
-      .sendCommand({ tabId: this._tabId }, 'Page.setWebLifecycleState', { state: 'active' })
-      .catch(error => logger.debug('Could not wake the tab:', error));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<void>(resolve => {
+      timer = setTimeout(() => {
+        logger.debug('Waking the tab timed out');
+        resolve();
+      }, 2000);
+    });
+    try {
+      await Promise.race([
+        chrome.debugger
+          .sendCommand({ tabId: this._tabId }, 'Page.setWebLifecycleState', { state: 'active' })
+          .catch(error => logger.debug('Could not wake the tab:', error)),
+        timeout,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async _addAntiDetectionScripts(): Promise<void> {
