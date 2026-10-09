@@ -198,7 +198,21 @@ export function buildDynamicActionSchema(actions: Action[]): z.ZodType {
       [action.name()]: actionSchema.nullable().optional().describe(action.schema.description),
     });
   }
-  return schema;
+  // Every key is optional and unknown keys are stripped, so {} or {"action": [...]} would pass and only fail when run.
+  // Each item must name exactly one registered action; the nulls some models fill the other keys with are dropped.
+  return schema
+    .superRefine((item, ctx) => {
+      const named = Object.keys(item).filter(key => item[key as keyof typeof item] != null);
+      if (named.length !== 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: named.length
+            ? `one action per item, got ${named.join(', ')}`
+            : `no known action in item; use one of ${actions.map(a => a.name()).join(', ')}`,
+        });
+      }
+    })
+    .transform(item => Object.fromEntries(Object.entries(item).filter(([, args]) => args != null)));
 }
 
 export class ActionBuilder {
