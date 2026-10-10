@@ -20,6 +20,8 @@ export interface JevTrace {
   target?: string; // "[83] More · post: …"
   confidence: number;
   targetConfidence?: number;
+  operationFloor?: number; // the floors the step was held to; the target floor eases on pages with many elements
+  targetFloor?: number;
   margin?: number; // top-1 minus top-2 target probability
   alternatives: DecisionAlternative[];
   operations?: DecisionAlternative[]; // the operations Jev weighed, most likely first

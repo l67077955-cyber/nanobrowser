@@ -638,6 +638,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       // add the browser state message
       const observeStarted = performance.now();
       await this.addStateMessageToMemory();
+      // long tasks and their follow-ups pile up steps: the oldest go once the model's context is full
+      messageManager.trimToBudget();
       const currentState = await this.context.browserContext.getCachedState();
       const observeMs = Math.round(performance.now() - observeStarted);
       browserStateHistory = new BrowserStateHistory(currentState);

@@ -18,6 +18,10 @@ import {
 
 const logger = createLogger('MessageManager');
 
+// Setup messages, the user's follow-ups and the note left where steps were dropped: never trimmed
+const KEPT_TYPES = new Set<string | null>(['init', 'context', 'task', 'trimmed']);
+const TRIMMED_NOTE = '[Earlier steps were left out here so the history fits in the model context]';
+
 export class MessageManagerSettings {
   maxInputTokens = 128000;
   estimatedCharactersPerToken = 3;
@@ -234,7 +238,7 @@ export default class MessageManager {
     }
 
     const msg = new HumanMessage({ content: finalContent });
-    this.addMessageWithTokens(msg);
+    this.addMessageWithTokens(msg, 'task');
   }
 
   /**
@@ -478,6 +482,41 @@ export default class MessageManager {
     logger.debug(
       `Added message with ${finalMsg.metadata.tokens} tokens - total tokens now: ${this.history.totalTokens}/${this.settings.maxInputTokens} - total messages: ${this.history.messages.length}`,
     );
+  }
+
+  /**
+   * Drops the oldest steps until the history fits in maxInputTokens. Setup messages, the history start marker,
+   * the user's follow-ups and the newest message (the page as it is now) stay; a tool call goes together with
+   * the tool messages answering it. A note marks where steps were dropped.
+   * @returns how many messages were dropped
+   */
+  public trimToBudget(): number {
+    const messages = this.history.messages;
+    // the history start marker is the first message that is not part of the setup
+    const start = messages.findIndex(m => !KEPT_TYPES.has(m.metadata.message_type)) + 1;
+    if (start === 0) return 0;
+    let dropped = 0;
+    while (this.history.totalTokens > this.settings.maxInputTokens) {
+      let i = start;
+      while (i < messages.length - 1 && KEPT_TYPES.has(messages[i].metadata.message_type)) i++;
+      if (i >= messages.length - 1) break;
+      const first = messages[i].message;
+      let count = 1;
+      if (first instanceof AIMessage && (first.tool_calls?.length ?? 0) > 0) {
+        while (i + count < messages.length - 1 && messages[i + count].message instanceof ToolMessage) count++;
+      }
+      for (let k = 0; k < count; k++) this.history.removeMessage(i);
+      dropped += count;
+      if (messages[start]?.metadata.message_type !== 'trimmed') {
+        this.addMessageWithTokens(new HumanMessage({ content: TRIMMED_NOTE }), 'trimmed', start);
+      }
+    }
+    if (dropped > 0) {
+      logger.info(
+        `Dropped ${dropped} old messages - total tokens now: ${this.history.totalTokens}/${this.settings.maxInputTokens}`,
+      );
+    }
+    return dropped;
   }
 
   /**

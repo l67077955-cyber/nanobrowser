@@ -306,4 +306,43 @@ describe('Jev shortlist loop', () => {
       expect(trace?.deferred).toBe('unsure which element');
     });
   });
+
+  describe('look-alike rival', () => {
+    it('asks again when the next likeliest element holds more than half the pick', async () => {
+      // 0.45 clears the eased floor, but [21] at 0.3 is too close behind
+      const close = { ...SPREAD, '7': 0.45, '21': 0.3 };
+      const { engine, fetchImpl, questions } = engineFor([
+        { operation: operation(), click_target: weighed(close, ids(FORTY), 0.45) },
+        { click_target: weighed({ '7': 1 }, ids(SHORTLIST), 0.9) },
+      ]);
+      const { decision, trace } = await engine.decide(pageOf(40), signal);
+      expect(decision?.action).toEqual([{ click_element: { intent: 'CLICK [7] Button 7', index: 7 } }]);
+      expect(trace?.path).toEqual(['likeliest 8 of 40']);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(Object.keys(questions(1).click_target.criteria)).toContain('21');
+    });
+
+    it('defers a confident pick on a small page when a look-alike is close behind', async () => {
+      const spread = { '1': 0.02, '2': 0.62, '3': 0.33, '4': 0.01, '5': 0.01, none: 0.01 };
+      const { engine } = engineFor([{ operation: operation(), click_target: weighed(spread, ids(range(5)), 0.62) }]);
+      const { decision, trace } = await engine.decide(pageOf(5), signal);
+      expect(decision).toBeNull();
+      expect(trace?.deferred).toBe('unsure which element');
+    });
+
+    it('does not count weight on none as a rival', async () => {
+      const spread = { '1': 0.02, '2': 0.62, '3': 0.02, '4': 0.01, '5': 0.01, none: 0.32 };
+      const { engine } = engineFor([{ operation: operation(), click_target: weighed(spread, ids(range(5)), 0.62) }]);
+      expect((await engine.decide(pageOf(5), signal)).decision).not.toBeNull();
+    });
+  });
+
+  it('records the floors the step was held to', async () => {
+    const { engine } = engineFor([
+      { operation: operation(), click_target: weighed({ ...SPREAD, '7': 0.45 }, ids(FORTY), 0.45) },
+    ]);
+    const { trace } = await engine.decide(pageOf(40), signal);
+    expect(trace?.operationFloor).toBe(0.5);
+    expect(trace?.targetFloor).toBeCloseTo(0.6 ** (Math.log(41) / Math.log(10)), 6);
+  });
 });

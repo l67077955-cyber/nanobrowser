@@ -19,6 +19,9 @@ const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_MIN_OPERATION_CONFIDENCE = 0.5;
 // Wrong picks seen in practice scored ~0.5 on the target head; correct ones 0.67+
 const DEFAULT_MIN_TARGET_CONFIDENCE = 0.6;
+// The picked element must hold at least twice the weight of the next likeliest element: two look-alikes
+// splitting the weight is how wrong clicks happen, whatever the floor. 'none' is not a rival element.
+const MIN_HEAD_TO_HEAD = 2 / 3;
 // The target floor holds as set up to this many options; past it the floor eases with the option count
 const FLOOR_ANCHOR_OPTIONS = 10;
 // Offered with every target question so Jev is never forced to pick an element
@@ -509,6 +512,8 @@ interface TargetPick {
   targetConfidence: number;
   /** how many options the target question offered, none included: the target floor eases as this grows */
   targetOptions: number;
+  /** the pick's weight against itself plus the next likeliest element (or group), 1 when nothing rivals it */
+  headToHead: number;
   /** probability per offered option, and the label each one is shown with in the side panel */
   targetProbabilities: Record<string, number>;
   offered: Record<string, string>;
@@ -550,11 +555,19 @@ export function interpretTarget(
         ]),
       )
     : Object.fromEntries(Object.entries(candidates).map(([key, t]) => [key, targetLabel(t)]));
+  const top = picked.probabilities[picked.choice];
+  const rival = Math.max(
+    0,
+    ...Object.entries(picked.probabilities)
+      .filter(([key]) => key !== picked.choice && key !== NO_TARGET)
+      .map(([, p]) => p),
+  );
   const pick = {
     operation,
     confidence,
     targetConfidence: picked.confidence,
     targetOptions: ids.length,
+    headToHead: top + rival > 0 ? top / (top + rival) : 1,
     targetProbabilities: picked.probabilities,
     offered,
   };
@@ -741,7 +754,7 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     while (choice.kind !== 'control' && offered && choice.confidence >= this.minOperationConfidence) {
       const { operation, confidence } = choice;
       let next: TargetCandidates | null;
-      if (choice.targetConfidence >= this.targetFloor(choice)) {
+      if (!this.unsureOfTarget(choice)) {
         if (choice.kind !== 'group') break;
         next = choice.candidates;
         path.push(choice.label);
@@ -758,9 +771,12 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
       choice = interpretTarget(answer, operation, next, confidence, maxOptions);
       offered = next;
     }
+    const pick = choice.kind === 'control' ? choice.declined : choice;
     const trace: JevTrace = {
       ...traceChoice(choice, this.model, Math.round(performance.now() - started), path),
       operations: operationAlternatives(response.answers?.operation),
+      operationFloor: this.minOperationConfidence,
+      ...(pick ? { targetFloor: this.targetFloor(pick) } : {}),
     };
     logger.info(`Jev chose ${trace.target ? `${trace.operation} ${trace.target}` : trace.operation}`, {
       confidence: trace.confidence,
@@ -829,10 +845,15 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     return targetFloor(this.options.minTargetConfidence ?? DEFAULT_MIN_TARGET_CONFIDENCE, pick.targetOptions);
   }
 
+  /** Below the target floor, or too close to the next likeliest element */
+  private unsureOfTarget(pick: TargetPick) {
+    return pick.targetConfidence < this.targetFloor(pick) || pick.headToHead < MIN_HEAD_TO_HEAD;
+  }
+
   /** Which confidence floor this choice misses, or null when it clears both */
   private unsure(choice: JevChoice): string | null {
     if (choice.confidence < this.minOperationConfidence) return 'unsure which operation';
-    if (choice.kind !== 'control' && choice.targetConfidence < this.targetFloor(choice)) return 'unsure which element';
+    if (choice.kind !== 'control' && this.unsureOfTarget(choice)) return 'unsure which element';
     return null;
   }
 

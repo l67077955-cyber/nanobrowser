@@ -817,11 +817,11 @@ function JevDetail({ trace, deferred }: { trace: JevTrace; deferred: boolean }) 
     <>
       <div className="nb-kv">
         <span>{t('chat_steps_detail_operation')}</span>
-        <Bar value={trace.confidence} floor={floors.operation} />
+        <Bar value={trace.confidence} floor={trace.operationFloor ?? floors.operation} />
         {trace.targetConfidence !== undefined && (
           <>
             <span>{t('chat_steps_detail_target')}</span>
-            <Bar value={trace.targetConfidence} floor={floors.target} />
+            <Bar value={trace.targetConfidence} floor={trace.targetFloor ?? floors.target} />
           </>
         )}
         {trace.margin !== undefined && (
