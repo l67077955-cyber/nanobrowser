@@ -21,6 +21,9 @@ describe('grantsPageActions', () => {
       '不要点',
       'find the branch first',
       'can you click it?',
+      '可以点吗?',
+      '你能点一下吗',
+      '可以点吗？',
     ])
       expect(grantsPageActions(text), text).toBe(false);
   });

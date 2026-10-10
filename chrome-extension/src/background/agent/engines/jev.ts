@@ -943,7 +943,11 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     return null;
   }
 
-  private post(body: unknown, taskSignal: AbortSignal): Promise<{ answers?: Record<string, unknown> }> {
-    return postJev(this.url, this.options.apiKey, body, taskSignal, this.options.fetchImpl);
+  private async post(body: unknown, taskSignal: AbortSignal): Promise<{ answers?: Record<string, unknown> }> {
+    const response = await postJev(this.url, this.options.apiKey, body, taskSignal, this.options.fetchImpl);
+    // the whole answer as text, every question's choice, probabilities and confidence with the id, model and
+    // usage around them: the logger cuts objects short, strings it leaves whole
+    logger.info('Jev answered', JSON.stringify(response, null, 2));
+    return response;
   }
 }

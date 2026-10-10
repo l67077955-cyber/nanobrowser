@@ -78,7 +78,8 @@ interface MessageListProps {
   activity: Activity | null;
   /** show who decided each step, how sure and how fast */
   detailed: boolean;
-  onRetry?: (task: string) => void;
+  /** `continues`: the task only asks to carry on with the goal the run stopped short of */
+  onRetry?: (task: string, displayText?: string, continues?: boolean) => void;
 }
 
 // Long chats hold hundreds of rows; render the latest turns and fold the rest
@@ -204,7 +205,8 @@ interface TurnViewProps {
   running: boolean;
   activity: Activity | null;
   detailed: boolean;
-  onRetry?: (task: string) => void;
+  /** `continues`: the task only asks to carry on with the goal the run stopped short of */
+  onRetry?: (task: string, displayText?: string, continues?: boolean) => void;
 }
 
 function TurnView({ turn, running, activity, detailed, onRetry }: TurnViewProps) {
@@ -247,7 +249,7 @@ function TurnView({ turn, running, activity, detailed, onRetry }: TurnViewProps)
                 key={key}
                 message={segment.entry.message}
                 onRetry={onRetry && task ? () => onRetry(task) : undefined}
-                onContinue={onRetry ? () => onRetry(t('chat_fail_continue_message')) : undefined}
+                onContinue={onRetry ? () => onRetry(t('chat_fail_continue_message'), undefined, true) : undefined}
               />
             );
           default:

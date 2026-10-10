@@ -37,7 +37,8 @@ function describeInput(messages: BaseMessage[]) {
 }
 
 /**
- * Logs every call of one chat model: who made it, what went in, how long it took, the tokens it used, how it
+ * Logs every call of one chat model: who made it, what went in, how long it took, the tokens it used (and how many
+ * of the prompt's were read from or written to the provider's prefix cache), how it
  * ended and what came back, or the error with its HTTP status. Agents name themselves through a run tag.
  */
 export class ModelCallLogger extends BaseCallbackHandler {
@@ -69,13 +70,20 @@ export class ModelCallLogger extends BaseCallbackHandler {
       | undefined;
     const message = generation?.message as
       | (BaseMessage & {
-          usage_metadata?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+          usage_metadata?: {
+            input_tokens?: number;
+            output_tokens?: number;
+            total_tokens?: number;
+            input_token_details?: { cache_read?: number; cache_creation?: number };
+          };
           tool_calls?: Array<{ name?: string }>;
           response_metadata?: Record<string, unknown>;
         })
       | undefined;
     const usage = message?.usage_metadata;
     const tokenUsage = output.llmOutput?.tokenUsage as { promptTokens?: number; completionTokens?: number } | undefined;
+    // DeepSeek's own API reports its prefix cache hits outside the OpenAI field LangChain reads
+    const rawUsage = message?.response_metadata?.usage as { prompt_cache_hit_tokens?: number } | undefined;
     const finish =
       generation?.generationInfo?.finish_reason ??
       message?.response_metadata?.finish_reason ??
@@ -85,6 +93,8 @@ export class ModelCallLogger extends BaseCallbackHandler {
     logger.info(`✓ ${call.who} · ${this.model} · ${call.ms}ms`, {
       tokensIn: usage?.input_tokens ?? tokenUsage?.promptTokens,
       tokensOut: usage?.output_tokens ?? tokenUsage?.completionTokens,
+      cacheRead: usage?.input_token_details?.cache_read ?? rawUsage?.prompt_cache_hit_tokens,
+      cacheWrite: usage?.input_token_details?.cache_creation,
       finish,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       reply: text ? preview(text) : '(no text)',

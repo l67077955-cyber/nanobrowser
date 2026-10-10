@@ -32,6 +32,10 @@ export default class BrowserContext {
   /** the tab the user had in front when the last task ended */
   private _frontAtEnd: number | null = null;
   private _attachedPages: Map<number, Page> = new Map();
+  /** attaches under way, so that two callers asking for the same tab share one attach */
+  private _attaching: Map<number, Promise<Page>> = new Map();
+  /** bumped by cleanup(), so that an attach started before it does not register its page afterwards */
+  private _generation = 0;
   /** tabs the agent opened itself: it may navigate them; every other web page is the user's */
   private _agentTabIds: Set<number> = new Set();
 
@@ -77,6 +81,42 @@ export default class BrowserContext {
   }
 
   /**
+   * Attach a tab, once at a time: callers asking for a tab that is being attached wait for that attach, as two
+   * debuggers cannot be attached to a tab. A tab the browser discarded is reloaded first, as it has nothing to attach to.
+   */
+  private _attachTab(tab: chrome.tabs.Tab): Promise<Page> {
+    const tabId = tab.id;
+    if (!tabId) return Promise.reject(new Error('Tab ID is not available'));
+    const attaching = this._attaching.get(tabId);
+    if (attaching) return attaching;
+    const attach = (async () => {
+      let current = tab;
+      if (current.discarded) {
+        logger.info('tab', tabId, 'was discarded, reloading it');
+        await chrome.tabs.reload(tabId);
+        await this.waitForTabEvents(tabId, { waitForActivation: false });
+        current = await chrome.tabs.get(tabId);
+      }
+      const generation = this._generation;
+      const page = await this._getOrCreatePage(current);
+      await this.attachPage(page);
+      if (generation !== this._generation) {
+        // cleanup() ran meanwhile and the task is over: nothing may stay attached
+        await page.detachPuppeteer().catch(error => logger.warning(`Could not detach tab ${tabId}:`, error));
+        this._attachedPages.delete(tabId);
+        throw new Error(`Tab ${tabId} was released while it was being attached`);
+      }
+      return page;
+    })();
+    this._attaching.set(tabId, attach);
+    const forget = () => {
+      if (this._attaching.get(tabId) === attach) this._attaching.delete(tabId);
+    };
+    attach.then(forget, forget);
+    return attach;
+  }
+
+  /**
    * A follow-up sent from a page the agent cannot work on (extensions page, new tab, ...) goes on
    * in the tab the previous task ended on. From a normal web page it is about that page, unless the agent
    * works behind the user's tab and the user is still on the page they had in front when the task ended:
@@ -92,15 +132,25 @@ export default class BrowserContext {
   }
 
   public async cleanup(): Promise<void> {
+    this._generation++;
     if (this._currentTabId) this._lastTabId = this._currentTabId;
     this._frontAtEnd = (await getActiveBrowserTab().catch(() => undefined))?.id ?? null;
-    const currentPage = await this.getCurrentPage();
-    currentPage?.removeHighlight();
+    // only a page that is attached already: attaching the user's tab just to remove highlights would leak
+    const currentPage = this._currentTabId ? this._attachedPages.get(this._currentTabId) : undefined;
+    await currentPage?.removeHighlight().catch(error => logger.warning('Could not remove highlights:', error));
     // the task is over: the agent's mark goes from every page it worked on
-    await Promise.all([...this._attachedPages.values()].map(page => page.clearAgentMark()));
-    // detach all pages
+    await Promise.all(
+      [...this._attachedPages.values()].map(page =>
+        page.clearAgentMark().catch(error => logger.warning(`Could not clear the mark on tab ${page.tabId}:`, error)),
+      ),
+    );
+    // detach all pages, whatever happens to any of them
     for (const page of this._attachedPages.values()) {
-      await page.detachPuppeteer();
+      try {
+        await page.detachPuppeteer();
+      } catch (error) {
+        logger.warning(`Could not detach tab ${page.tabId}:`, error);
+      }
     }
     this._attachedPages.clear();
     this._currentTabId = null;
@@ -126,9 +176,12 @@ export default class BrowserContext {
     // detach page
     const page = this._attachedPages.get(tabId);
     if (page) {
-      await page.detachPuppeteer();
-      // remove page from managed pages
-      this._attachedPages.delete(tabId);
+      try {
+        await page.detachPuppeteer();
+      } finally {
+        // remove page from managed pages
+        this._attachedPages.delete(tabId);
+      }
     }
   }
 
@@ -153,8 +206,7 @@ export default class BrowserContext {
         activeTab = tab;
       }
       logger.info('active tab', activeTab.id, activeTab.url, activeTab.title);
-      const page = await this._getOrCreatePage(activeTab);
-      await this.attachPage(page);
+      const page = await this._attachTab(activeTab);
       this._currentTabId = activeTab.id || null;
       return page;
     }
@@ -163,10 +215,7 @@ export default class BrowserContext {
     const existingPage = this._attachedPages.get(this._currentTabId);
     if (!existingPage) {
       const tab = await chrome.tabs.get(this._currentTabId);
-      const page = await this._getOrCreatePage(tab);
-      // set current tab id to null if the page is not attached successfully
-      await this.attachPage(page);
-      return page;
+      return await this._attachTab(tab);
     }
 
     // 3. Return existing page from attachedPages
@@ -308,8 +357,8 @@ export default class BrowserContext {
       tab = await chrome.tabs.get(tabId);
     }
 
-    const page = await this._getOrCreatePage(tab);
-    await this.attachPage(page);
+    // _currentTabId changes only once the tab is attached: when it is not, the agent stays on the tab it had
+    const page = await this._attachTab(tab);
     this._currentTabId = tabId;
     return page;
   }
@@ -412,6 +461,14 @@ export default class BrowserContext {
    * Remove a tab from the attached pages map. This will not run detachPuppeteer.
    * @param tabId - The ID of the tab to remove.
    */
+  /** The debugger of the tab is gone (tab closed, devtools opened, ...): forget the page without detaching it */
+  public forgetAttachedPage(tabId: number): void {
+    const page = this._attachedPages.get(tabId);
+    if (!page) return;
+    page.forgetPuppeteer();
+    this._attachedPages.delete(tabId);
+  }
+
   public removeAttachedPage(tabId: number): void {
     this._attachedPages.delete(tabId);
     this._agentTabIds.delete(tabId);

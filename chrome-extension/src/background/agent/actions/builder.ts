@@ -271,6 +271,7 @@ export class ActionBuilder {
       this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, input.text);
       return new ActionResult({
         isDone: true,
+        success: input.success,
         extractedContent: input.text,
       });
     }, doneActionSchema);
@@ -448,10 +449,17 @@ export class ActionBuilder {
             const newTabId = Array.from(currentTabIds).find(id => !initialTabIds.has(id));
             if (newTabId) {
               await this.context.browserContext.adoptOpenedTab(newTabId, userTabId);
-              const newPage = await this.context.browserContext.switchTab(newTabId);
-              // which page it is: often the very page the agent was on, opened again by a link
-              const newUrl = (await chrome.tabs.get(newTabId).catch(() => null))?.url || newPage.url();
-              if (newUrl) msg += ` (${newUrl})`;
+              // the click worked either way: a tab that cannot be attached is no reason to click again
+              try {
+                const newPage = await this.context.browserContext.switchTab(newTabId);
+                // which page it is: often the very page the agent was on, opened again by a link
+                const newUrl = (await chrome.tabs.get(newTabId).catch(() => null))?.url || newPage.url();
+                if (newUrl) msg += ` (${newUrl})`;
+              } catch (switchError) {
+                const reason = switchError instanceof Error ? switchError.message : String(switchError);
+                logger.warning(`Could not attach the tab the click opened: ${reason}`);
+                msg += ` - new tab opened but could not be attached: ${reason}`;
+              }
             }
           } else if (page.clickHint) {
             msg += ` - ${page.clickHint}`;

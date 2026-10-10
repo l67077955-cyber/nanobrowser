@@ -69,6 +69,8 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 // if canceled_by_user, remove the tab from the browser context
 chrome.debugger.onDetach.addListener(async (source, reason) => {
   logger.info('Debugger detached:', source, reason);
+  // whatever the reason, the page of that tab has no debugger any more
+  if (source.tabId) browserContext.forgetAttachedPage(source.tabId);
   if (reason === 'canceled_by_user') {
     if (source.tabId) {
       currentExecutor?.cancel();
@@ -210,12 +212,15 @@ chrome.runtime.onConnect.addListener(port => {
 
             if (!message.taskId) return port.postMessage({ type: 'error', error: t('bg_errors_noTaskId') });
 
-            logger.info('follow_up_task', message.tabId, message.task);
+            // "keep going" after the run ran out of steps: the goal stays the one it was working on
+            const continues = message.continues === true;
+            logger.info('follow_up_task', message.tabId, message.task, continues ? '(continues)' : '');
 
             await browserContext.resumeLastTab().catch(error => logger.warning('resumeLastTab failed', error));
             const sameSession = currentExecutor && (await currentExecutor.getCurrentTaskId()) === message.taskId;
             if (currentExecutor && sameSession && !currentExecutor.stopped && !settingsChanged) {
-              currentExecutor.addFollowUpTask(message.task);
+              if (continues) currentExecutor.continueTask(message.task);
+              else currentExecutor.addFollowUpTask(message.task);
             } else {
               // The executor of this session is gone (side panel closed, service worker restarted, another
               // session ran since), was cancelled, or was set up before the settings changed: a new one,
@@ -226,7 +231,9 @@ chrome.runtime.onConnect.addListener(port => {
                   : await loadSessionSnapshot(message.taskId, message.sentAt);
               logger.info('follow_up_task: reloading the session context', snapshot?.messages.length ?? 0);
               await currentExecutor?.cancel();
-              currentExecutor = await setupExecutor(message.taskId, message.task, browserContext, snapshot);
+              currentExecutor = await setupExecutor(message.taskId, message.task, browserContext, snapshot, {
+                continues,
+              });
             }
             // Re-subscribe to events in case the previous subscription was cleaned up
             subscribeToExecutorEvents(currentExecutor);
@@ -734,7 +741,7 @@ async function setupExecutor(
   task: string,
   browserContext: BrowserContext,
   snapshot: ExecutorSnapshot | null = null,
-  { scheduled = false } = {},
+  { scheduled = false, continues = false } = {},
 ) {
   const providers = await llmProviderStore.getAllProviders();
   // if no providers, need to display the options page
@@ -832,6 +839,7 @@ async function setupExecutor(
     memoryContext,
     snapshot: snapshot ?? undefined,
     allowScheduling: !scheduled,
+    continues,
     agentOptions: {
       maxSteps: generalSettings.maxSteps,
       maxFailures: generalSettings.maxFailures,
@@ -891,6 +899,9 @@ async function subscribeToExecutorEvents(executor: Executor) {
 
   // Subscribe to new events
   executor.subscribeExecutionEvents(async event => {
+    // An executor that was taken over winds down on its own time: its late "stopped" must not land in the chat
+    // of the task that replaced it, nor its cleanup detach the pages that task now works on
+    if (executor !== currentExecutor) return;
     const panelTask = activeTask?.source === 'panel' ? activeTask : null;
     if (panelTask && (event.state === ExecutionState.ACT_CONFIRM || event.state === ExecutionState.ACT_ASK)) {
       waitingFor = { state: event.state, details: event.data.details, meta: event.data.meta };

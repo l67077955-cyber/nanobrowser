@@ -48,6 +48,8 @@ const NAVIGATION_WAIT = { waitUntil: 'domcontentloaded' } as const;
 const PRESSED_FLAG = '__nanobrowserPressed';
 // the longest the model waits for a screenshot: a tab not in front may never be painted
 const SCREENSHOT_TIMEOUT_MS = 5000;
+/** How long a command to the page may take before the attach or read fails, instead of the default 180 s */
+const PROTOCOL_TIMEOUT_MS = 30_000;
 
 // What sites call their captcha image in its id, class, alt, title or address
 const CAPTCHA_HINT = 'captcha|kaptcha|verif|valid|v_?code|check_?code|auth_?code|img_?code|rand|yzm|验证码';
@@ -170,19 +172,35 @@ export default class Page {
     }
 
     logger.info('attaching puppeteer', this._tabId);
-    const browser = await connect({
-      transport: await ExtensionTransport.connectTab(this._tabId),
-      defaultViewport: null,
-      protocol: 'cdp' as ProtocolType,
-    });
-    this._browser = browser;
+    const transport = await ExtensionTransport.connectTab(this._tabId);
+    try {
+      // a hidden tab may be frozen, and then the setup below never gets an answer
+      await this.wake();
+      const browser = await connect({
+        transport,
+        defaultViewport: null,
+        protocol: 'cdp' as ProtocolType,
+        protocolTimeout: PROTOCOL_TIMEOUT_MS,
+      });
+      this._browser = browser;
+      const [page] = await browser.pages();
+      this._puppeteerPage = page;
 
-    const [page] = await browser.pages();
-    this._puppeteerPage = page;
-
-    // Add anti-detection scripts
-    await this._addAntiDetectionScripts();
-    await this.watchNotices(page);
+      // Add anti-detection scripts: the tab may die right after the connect, and this is part of the attach
+      await this._addAntiDetectionScripts();
+      await this.watchNotices(page);
+    } catch (error) {
+      // the debugger is attached to the tab by now, and no one else would ever detach it: every later try
+      // would fail with "Another debugger is already attached"
+      logger.error('Failed to attach puppeteer:', error);
+      const browser = this._browser;
+      this._browser = null;
+      this._puppeteerPage = null;
+      await Promise.resolve(browser ? browser.disconnect() : transport.close()).catch(() => {});
+      throw new Error(
+        `Tab ${this._tabId} could not be attached (${error instanceof Error ? error.message : String(error)}). The tab does not answer, so trying the same action again will not help: use another tab or URL.`,
+      );
+    }
 
     return true;
   }
@@ -305,12 +323,22 @@ export default class Page {
 
   async detachPuppeteer(): Promise<void> {
     if (this._browser) {
-      await this._browser.disconnect();
-      this._browser = null;
-      this._puppeteerPage = null;
-      // reset the state
-      this._state = build_initial_state(this._tabId);
+      try {
+        await this._browser.disconnect();
+      } finally {
+        this._browser = null;
+        this._puppeteerPage = null;
+        // reset the state
+        this._state = build_initial_state(this._tabId);
+      }
     }
+  }
+
+  /** The debugger is gone already (tab closed, devtools opened, ...): drop what is left of it, nothing to detach */
+  forgetPuppeteer(): void {
+    this._browser = null;
+    this._puppeteerPage = null;
+    this._state = build_initial_state(this._tabId);
   }
 
   async removeHighlight(): Promise<void> {
@@ -634,7 +662,16 @@ export default class Page {
       });
       const screenshot = await Promise.race([this.takeScreenshot().catch(() => null), timedOut]);
       clearTimeout(timer);
-      if (screenshot === null) logger.warning(`No screenshot of tab ${this._tabId}, going on with the page text`);
+      if (screenshot === null) {
+        logger.warning(`No screenshot of tab ${this._tabId}, going on with the page text`);
+        // the model is told through the notices of the page, which every step shows it
+        this._dialogNotices.push({
+          t: Date.now(),
+          text: 'No screenshot of the page could be taken (the tab is in the background); rely on the page text.',
+        });
+        // the screenshot may still be pending: the page must not stay as takeScreenshot left it
+        void this.removeAnimationsOff();
+      }
       return screenshot;
     } finally {
       await page?.evaluate(setAgentMarkVisible, AGENT_MARK_ID, true).catch(() => {});
@@ -671,19 +708,21 @@ export default class Page {
         quality: 80, // Good balance between quality and file size
       });
 
-      // Clean up the style element
-      await this._puppeteerPage.evaluate(() => {
-        const style = document.getElementById('puppeteer-disable-animations');
-        if (style) {
-          style.remove();
-        }
-      });
-
       return screenshot as string;
     } catch (error) {
       logger.error('Failed to take screenshot:', error);
       throw error;
+    } finally {
+      // also when the screenshot failed or never came: the user's page keeps its animations
+      await this.removeAnimationsOff();
     }
+  }
+
+  /** Remove the style takeScreenshot puts on the page; never throws */
+  private async removeAnimationsOff(): Promise<void> {
+    await this._puppeteerPage
+      ?.evaluate(() => document.getElementById('puppeteer-disable-animations')?.remove())
+      .catch(() => {});
   }
 
   url(): string {
@@ -1924,8 +1963,21 @@ export default class Page {
    * model clicks it again.
    */
   private async clickOutcomeHint(before: PageProbe): Promise<string | null> {
-    try {
+    const deadline = Date.now() + CLICK_SETTLE_MS;
+    for (;;) {
       await new Promise(resolve => setTimeout(resolve, 400));
+      const hint = await this.clickOutcomeNow(before);
+      if (hint === undefined) {
+        if (Date.now() < deadline) continue;
+        return this.unchangedHint(before);
+      }
+      return hint;
+    }
+  }
+
+  /** The click's outcome as clickOutcomeHint tells it; undefined while the page shows no change at all */
+  private async clickOutcomeNow(before: PageProbe): Promise<string | null | undefined> {
+    try {
       const after = await this.probePage();
       // unreadable page: it navigated or closed, which counts as a change
       if (!after || after.url !== before.url) return null;
@@ -1951,6 +2003,15 @@ export default class Page {
     }
   }
 
+  private async unchangedHint(before: PageProbe): Promise<string | null> {
+    const after = await this.probePage();
+    if (!after || after.url !== before.url) return null;
+    const dialogOpen = before.inModal && after.modals > 0;
+    return `The page did not visibly change after the click${dialogOpen ? ' and the dialog is still open' : ''}${
+      after.errors ? `; messages visible: ${after.errors}` : ''
+    }`;
+  }
+
   private async performClick(
     useVision: boolean,
     elementNode: DOMElementNode,
@@ -1960,19 +2021,6 @@ export default class Page {
       throw new Error('Puppeteer is not connected');
     }
 
-    const deadline = Date.now() + CLICK_SETTLE_MS;
-    for (;;) {
-      const hint = await this.clickOutcomeNow(before);
-      if (hint === undefined) {
-        if (Date.now() < deadline) continue;
-        return this.unchangedHint(before);
-      }
-      return hint;
-    }
-  }
-
-  /** The click's outcome as clickOutcomeHint tells it; undefined while the page shows no change at all */
-  private async clickOutcomeNow(before: PageProbe): Promise<string | null | undefined> {
     try {
       // Highlight before clicking
       // if (elementNode.highlightIndex !== null) {
@@ -2003,15 +2051,6 @@ export default class Page {
         await Promise.race([
           this._puppeteerPage.evaluate(probeControls, CONTROLS_KEY, 'snapshot', 0).catch(() => null),
           new Promise(resolve => setTimeout(resolve, 1000)),
-  private async unchangedHint(before: PageProbe): Promise<string | null> {
-    const after = await this.probePage();
-    if (!after || after.url !== before.url) return null;
-    const dialogOpen = before.inModal && after.modals > 0;
-    return `The page did not visibly change after the click${dialogOpen ? ' and the dialog is still open' : ''}${
-      after.errors ? `; messages visible: ${after.errors}` : ''
-    }`;
-  }
-
         ]);
       }
 

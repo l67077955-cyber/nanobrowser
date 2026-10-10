@@ -258,6 +258,17 @@ export default class MessageManager {
   }
 
   /**
+   * The user asks to carry on after the run stopped short (out of steps): the goal stays what it was. It is
+   * named again, since "keep going" alone was read as going back to the first task of the session.
+   */
+  public addContinueTask(text: string, goal: string): void {
+    const said = filterExternalContent(splitUserTextAndAttachments(text).userText);
+    const task = filterExternalContent(splitUserTextAndAttachments(goal).userText);
+    const content = `The user asked you to go on: """${said}""". You stopped before finishing, because the run reached its step limit. Your ultimate task is still the one you were working on: """${task}""". Continue it from where you stopped, on the page as it is now; do not start it over and do not go back to any earlier task of this conversation.`;
+    this.addMessageWithTokens(new HumanMessage({ content: wrapUserRequest(content, false) }), 'task');
+  }
+
+  /**
    * Something the user said while the task was running: a reply to a question asked, or a remark that
    * changes or adds to the task. It stays in the history, unlike the action results of a single step.
    */

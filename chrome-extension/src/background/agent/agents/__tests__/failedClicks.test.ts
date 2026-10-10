@@ -14,7 +14,8 @@ const click = (index: number) => [{ click_element: { intent: 'like', index } }];
 describe('FailedClickTracker', () => {
   it('refuses the element clicked in two failed steps, though its index changed', () => {
     const tracker = new FailedClickTracker();
-    const follow = (index: number) => clickTargets(click(index), new Map([[index, node(index, '/div[3]/div[2]', '关注')]]), URL_A);
+    const follow = (index: number) =>
+      clickTargets(click(index), new Map([[index, node(index, '/div[3]/div[2]', '关注')]]), URL_A);
 
     tracker.judge(undefined);
     expect(tracker.refusal(follow(125))).toBeNull();

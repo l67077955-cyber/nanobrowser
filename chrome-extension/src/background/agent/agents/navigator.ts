@@ -463,6 +463,9 @@ export interface NavigatorResult {
   refused?: boolean;
   /** a read_page brought the page's text into the history */
   readPage?: boolean;
+  /** with done: whether the navigator says the task succeeded, and what it wrote about it */
+  success?: boolean;
+  doneText?: string;
 }
 
 export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
@@ -764,12 +767,13 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           selectorMap: currentState.selectorMap,
         }),
       );
-      let done = false;
-      if (actionResults.length > 0 && actionResults[actionResults.length - 1].isDone) {
-        done = true;
-      }
+      // doMultiAction stops at a done, but a note added after it must not hide it
+      const doneResult = actionResults.find(result => result.isDone);
+      const done = doneResult !== undefined;
       agentOutput.result = {
         done,
+        success: doneResult?.success,
+        doneText: doneResult?.extractedContent ?? undefined,
         stuck,
         refused: refusal !== null,
         readPage: actionResults.some(result => result.readPage),
@@ -1104,6 +1108,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         }
         // actions planned before the user's reply may no longer be what they want
         if (actionName === 'ask_user') break;
+        // nothing runs after the navigator says it is finished
+        if (result.isDone) break;
         // the rest was planned on this one working (typing then sending): don't send an empty box
         if (result.error && i < actions.length - 1) {
           this.cutShort = skippedAfterFailure(i, actions.length);

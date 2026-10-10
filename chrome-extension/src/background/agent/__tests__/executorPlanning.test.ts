@@ -51,7 +51,7 @@ function scripted(plans: AgentOutput<PlannerOutput>[], stepsDuringPlan: number[]
     // let a plan that is due settle before the loop looks at it again
     for (const w of waiting.filter(w => w.atStep <= navigated)) w.release();
     await new Promise(resolve => setTimeout(resolve, 0));
-    return { id: 'navigator', result: { done: navigated === navigatorDoneAt } };
+    return { id: 'navigator', result: { done: navigated === navigatorDoneAt, success: true, doneText: 'done' } };
   };
   internals.planner.execute = () => {
     const call = pagesPlanned.length;

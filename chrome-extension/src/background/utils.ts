@@ -162,8 +162,12 @@ export function convertZodToJsonSchema(zodSchema: z.ZodType, name: string, addTi
  * Whether a message the user sent during a read-only run lets the agent act on pages ("u can click rn",
  * "go ahead and fill it in", "可以点了"). Telling the model alone did not do it: the navigator then tried
  * actions read-only mode does not offer, and the step failed.
+ *
+ * A question ("can you click it?", "可以点吗?", "你能点一下吗") is not a go-ahead, so text that looks like one
+ * (contains '?', '？', '吗' or '么') returns false.
  */
 export function grantsPageActions(text: string): boolean {
+  if (/[?？]|吗|么/.test(text)) return false;
   const said = text.toLowerCase();
   if (/\b(don'?t|do not|never|can'?t|cannot|not|no)\b|别|不要|不能|不可以|不准|禁止/.test(said)) return false;
   return (

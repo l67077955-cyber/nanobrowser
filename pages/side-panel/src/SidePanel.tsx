@@ -727,7 +727,7 @@ const SidePanel = () => {
     }
   };
 
-  const handleSendMessage = async (text: string, displayText?: string) => {
+  const handleSendMessage = async (text: string, displayText?: string, continues = false) => {
     console.log('handleSendMessage', text);
 
     // Trim the input text first
@@ -815,6 +815,7 @@ const SidePanel = () => {
           tabId,
           // when the background has to rebuild the session from the chat, this message is not part of it
           sentAt: userMessage.timestamp,
+          continues,
         });
         console.log('follow_up_task sent', text, tabId, sessionIdRef.current);
       } else {

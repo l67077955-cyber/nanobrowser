@@ -66,4 +66,40 @@ describe('Executor snapshot', () => {
     expect(said.earlier).toEqual(['this is my resume']);
     expect(said.attachments).toContain('Studied at TU Berlin');
   });
+
+  // a remote task's chat, then a task of the user's in it that ran out of steps, then "keep going"
+  const remote = 'Remote agent: find the book Sapiens on books.toscrape.com';
+  const ownTask = 'test the branch pipeline on srdcloud';
+  const keepGoing = 'Keep going from where you left off.';
+
+  function goalOf(executor: Executor): string {
+    return (executor as unknown as { decisionGoal(): string }).decisionGoal();
+  }
+
+  it('keeps working on the task that ran out of steps when told to keep going', () => {
+    const executor = new Executor(remote, 'session-1', browserContext, llm);
+    executor.addFollowUpTask(ownTask);
+    executor.continueTask(keepGoing);
+
+    expect(goalOf(executor)).toBe(`${ownTask}\nThe user added: ${keepGoing}`);
+    const last = contents(executor).at(-1);
+    expect(last).toContain(`Your ultimate task is still the one you were working on: """${ownTask}"""`);
+    expect(last).not.toContain('Sapiens');
+  });
+
+  it('remembers which task was worked on when a new executor carries on from the snapshot', () => {
+    const first = new Executor(remote, 'session-1', browserContext, llm);
+    first.addFollowUpTask(ownTask);
+    const snapshot = JSON.parse(JSON.stringify(first.snapshot()));
+
+    const second = new Executor(keepGoing, 'session-1', browserContext, llm, { snapshot, continues: true });
+    expect(goalOf(second)).toBe(`${ownTask}\nThe user added: ${keepGoing}`);
+    expect(contents(second).at(-1)).toContain(`"""${ownTask}"""`);
+    expect(second.snapshot().goalStart).toBe(1);
+
+    // a snapshot from before goalStart was kept: the latest task is the one carried on
+    delete snapshot.goalStart;
+    const third = new Executor(keepGoing, 'session-1', browserContext, llm, { snapshot, continues: true });
+    expect(goalOf(third)).toBe(`${ownTask}\nThe user added: ${keepGoing}`);
+  });
 });

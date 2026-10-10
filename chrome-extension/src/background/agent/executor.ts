@@ -39,6 +39,8 @@ const logger = createLogger('Executor');
 
 /** Refused clicks in a row that only make the plan again; more than this count as failed steps */
 const FREE_REFUSALS = 2;
+/** the planner refusing the navigator's claimed success this many times in a row ends the run with the navigator's word */
+const MAX_REJECTED_CLAIMS = 2;
 
 /** The task gives up after failing several times in a row; the last failure says why */
 function maxFailuresMessage(lastError: unknown): string {
@@ -63,6 +65,8 @@ interface BackgroundPlan {
 /** What an executor knows, as plain JSON: a later executor of the same session goes on from it */
 export interface ExecutorSnapshot {
   tasks: string[];
+  /** which of the tasks was being worked on; older snapshots lack it, and the latest task is taken */
+  goalStart?: number;
   messages: StoredManagedMessage[];
   /** results the navigator has not written into the messages yet */
   actionResults: Pick<ActionResult, 'extractedContent' | 'error'>[];
@@ -81,6 +85,8 @@ export interface ExecutorExtraArgs {
   snapshot?: ExecutorSnapshot;
   /** a run of a scheduled task does not set up more of them */
   allowScheduling?: boolean;
+  /** the task of a restored snapshot only asks to carry on with what it was working on (see continueTask) */
+  continues?: boolean;
 }
 
 export class Executor {
@@ -113,6 +119,10 @@ export class Executor {
   private latestNextSteps: string | null = null;
   /** navigator steps in a row whose click was refused because it already went wrong */
   private refusedInARow = 0;
+  /** what the navigator's latest done said; the planner checks a success, a failure ends the run */
+  private navigatorClaim: { success: boolean; text: string } | null = null;
+  /** claims of success in a row that the planner did not confirm */
+  private rejectedClaims = 0;
   /** step the latest plan was made on: its element indices are only valid on that step */
   private latestPlanStep = 0;
   constructor(
@@ -184,6 +194,7 @@ export class Executor {
     if (snapshot) {
       this.tasks = [...snapshot.tasks];
       this.tasksRemembered = this.tasks.length;
+      this.goalStart = Math.min(snapshot.goalStart ?? this.tasks.length - 1, this.tasks.length - 1);
       context.messageManager.restoreMessages(
         this.navigatorPrompt.getSystemMessage(),
         snapshot.messages,
@@ -192,7 +203,8 @@ export class Executor {
       context.actionResults = snapshot.actionResults.map(
         result => new ActionResult({ ...result, includeInMemory: true }),
       );
-      this.addFollowUpTask(task);
+      if (extraArgs?.continues && this.tasks.length > 0) this.continueTask(task);
+      else this.addFollowUpTask(task);
       return;
     }
     this.tasks.push(task);
@@ -210,6 +222,7 @@ export class Executor {
     if (this.context.stateMessageAdded) messages.pop();
     return {
       tasks: [...this.tasks],
+      goalStart: this.goalStart,
       messages,
       actionResults: this.context.actionResults
         .filter(result => result.includeInMemory)
@@ -241,6 +254,8 @@ export class Executor {
     // failures of the previous task would otherwise stop this one before its first step
     this.context.consecutiveFailures = 0;
     this.refusedInARow = 0;
+    this.navigatorClaim = null;
+    this.rejectedClaims = 0;
     // the page the planner finished on is read again: the user may be on another tab or page by now
     if (this.context.stateMessageAdded) {
       this.context.messageManager.removeLastStateMessage();
@@ -249,6 +264,29 @@ export class Executor {
     this.context.messageManager.addNewTask(task);
 
     // need to reset previous action results that are not included in memory
+    this.context.actionResults = this.context.actionResults.filter(result => result.includeInMemory);
+  }
+
+  /**
+   * The user asks to go on after the run stopped short of its goal (out of steps). Unlike a follow-up, the
+   * message is not a goal of its own: the goal stays the task being worked on, and the agents are told so.
+   */
+  continueTask(text: string): void {
+    const goal = this.tasks[this.goalStart];
+    if (goal === undefined) return this.addFollowUpTask(text);
+    this.tasks.push(text);
+    this.latestNextSteps = null;
+    this.navigator.resetRepeats();
+    this.planBeforeNextStep = false;
+    this.context.consecutiveFailures = 0;
+    this.refusedInARow = 0;
+    this.navigatorClaim = null;
+    this.rejectedClaims = 0;
+    if (this.context.stateMessageAdded) {
+      this.context.messageManager.removeLastStateMessage();
+      this.context.stateMessageAdded = false;
+    }
+    this.context.messageManager.addContinueTask(text, goal);
     this.context.actionResults = this.context.actionResults.filter(result => result.includeInMemory);
   }
 
@@ -289,6 +327,8 @@ export class Executor {
     this.latestNextSteps = null;
     this.navigator.resetRepeats();
     this.planBeforeNextStep = false;
+    this.navigatorClaim = null;
+    this.rejectedClaims = 0;
   }
 
   /**
@@ -379,6 +419,8 @@ export class Executor {
       let step = 0;
       let latestPlanOutput: AgentOutput<PlannerOutput> | null = null;
       let navigatorDone = false;
+      // how the run ended when the navigator's own done decided it
+      let navigatorEnd: 'failed' | 'accepted' | null = null;
 
       for (step = 0; step < allowedMaxSteps; step++) {
         context.stepInfo = {
@@ -428,6 +470,7 @@ export class Executor {
         if (navigatorDone || finishToConfirm || replan || context.nSteps === 0) {
           // The first plan steers the first steps, and a claimed finish needs checking before going on:
           // both wait for the planner
+          const claimed = navigatorDone && this.navigatorClaim?.success === true;
           navigatorDone = false;
           // a plan still under way was made on a page from before the navigator's latest step: waiting for it
           // costs a whole model call and its view is out of date, so a fresh plan replaces it
@@ -442,6 +485,16 @@ export class Executor {
             latestPlanOutput = null;
             continue;
           }
+          // a planner that keeps refusing a finish the navigator claims would otherwise loop to the step limit
+          if (claimed && this.navigatorClaim) {
+            this.rejectedClaims++;
+            if (this.rejectedClaims >= MAX_REJECTED_CLAIMS) {
+              logger.warning(`Planner refused the navigator's finish ${this.rejectedClaims} times, taking its word`);
+              this.context.finalAnswer = this.navigatorClaim.text;
+              navigatorEnd = 'accepted';
+              break;
+            }
+          }
         } else if (context.nSteps % context.options.planningInterval === 0 && !backgroundPlan) {
           // Periodic re-planning runs alongside navigation instead of pausing it for a whole LLM call
           backgroundPlan = await this.startPlanner();
@@ -450,7 +503,14 @@ export class Executor {
         // Execute navigator
         navigatorDone = await this.navigate();
 
-        // If navigator indicates completion, the next periodic planner run will validate it
+        if (navigatorDone && this.navigatorClaim && !this.navigatorClaim.success && this.steers.length === 0) {
+          // the navigator gives up: the planner would only say "not done" and send it back to try again
+          logger.info('Navigator gave up, ending the run');
+          this.context.finalAnswer = this.navigatorClaim.text;
+          navigatorEnd = 'failed';
+          break;
+        }
+        // A claimed success is checked by the planner at the start of the next step
         if (navigatorDone) {
           logger.info('🔄 Navigator indicates completion - will be validated by next planner run');
         }
@@ -460,9 +520,14 @@ export class Executor {
       this.running = false;
 
       // Determine task completion status
-      const isCompleted = latestPlanOutput?.result?.done === true;
+      const isCompleted =
+        navigatorEnd === 'accepted' || (navigatorEnd === null && latestPlanOutput?.result?.done === true);
 
-      if (isCompleted) {
+      if (navigatorEnd === 'failed') {
+        outcome = 'failed: navigator gave up';
+        this.context.emitEvent(Actors.SYSTEM, ExecutionState.TASK_FAIL, this.context.finalAnswer ?? '');
+        void analytics.trackTaskFailed(this.context.taskId, analytics.categorizeError('navigator gave up'));
+      } else if (isCompleted) {
         await this.applySchedule(latestPlanOutput?.result ?? null);
         // Emit final answer if available, otherwise use task ID
         const finalMessage = this.context.finalAnswer || this.context.taskId;
@@ -672,6 +737,7 @@ export class Executor {
       if (context.paused || context.stopped) {
         return false;
       }
+      this.navigatorClaim = null;
       const navOutput = await this.navigator.execute();
       // check if the task is paused or stopped
       if (context.paused || context.stopped) {
@@ -696,6 +762,7 @@ export class Executor {
       }
       context.consecutiveFailures = 0;
       if (navOutput.result?.done) {
+        this.navigatorClaim = { success: navOutput.result.success === true, text: navOutput.result.doneText ?? '' };
         return true;
       }
       if (navOutput.result?.readPage) {
