@@ -215,8 +215,21 @@ export function searchAlreadySubmitted(index: number, selectorMap: Map<number, D
 
 function elementLabel(node: DOMElementNode): string {
   const attrs = node.attributes;
-  const text = (node.tagName ?? '').toLowerCase() === 'select' ? '' : node.getAllTextTillNextClickableElement();
-  const candidates = [attrs['aria-label'], text, attrs.placeholder, attrs.title, attrs.alt, attrs.name, attrs.id];
+  const tag = (node.tagName ?? '').toLowerCase();
+  const text = tag === 'select' ? '' : node.getAllTextTillNextClickableElement();
+  // a button made of an input shows its value as its text: <input type="submit" value="Register">
+  const buttonText =
+    tag === 'input' && ['submit', 'button', 'reset'].includes((attrs.type ?? '').toLowerCase()) ? attrs.value : '';
+  const candidates = [
+    attrs['aria-label'],
+    text,
+    buttonText,
+    attrs.placeholder,
+    attrs.title,
+    attrs.alt,
+    attrs.name,
+    attrs.id,
+  ];
   const label = candidates.find(c => c && c.trim().length > 0) ?? '';
   return collapse(label, MAX_LABEL_LENGTH);
 }

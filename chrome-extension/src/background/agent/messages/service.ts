@@ -15,6 +15,7 @@ import {
   splitUserTextAndAttachments,
   wrapAttachments,
   pairToolResponses,
+  userRequestText,
 } from '@src/background/agent/messages/utils';
 
 const logger = createLogger('MessageManager');
@@ -194,7 +195,7 @@ export default class MessageManager {
     const { userText, attachmentsInner } = splitUserTextAndAttachments(task);
 
     // Filter and wrap user text
-    const cleanedTask = filterExternalContent(userText);
+    const cleanedTask = userRequestText(userText);
     const content = `Your ultimate task is: """${cleanedTask}""". If you achieved your ultimate task, stop everything and use the done action in the next step to complete the task. If not, continue as usual.`;
     const wrappedUser = wrapUserRequest(content, false);
 
@@ -228,7 +229,7 @@ export default class MessageManager {
     const { userText, attachmentsInner } = splitUserTextAndAttachments(newTask);
 
     // Filter and wrap user text
-    const cleanedTask = filterExternalContent(userText);
+    const cleanedTask = userRequestText(userText);
     // a follow-up is often only an answer to a question the planner asked, and means nothing on its own
     const content = `The user sent a follow-up message: """${cleanedTask}""". Read it together with the previous tasks and your previous answers. If it answers a question you asked, confirms something (for example that they have signed in) or corrects the previous task, your ultimate task is the previous task continued with this information. Otherwise the message is your new ultimate task. Take all of the previous context into account and finish your ultimate task.`;
     const wrappedUser = wrapUserRequest(content, false);
@@ -249,7 +250,7 @@ export default class MessageManager {
    * changes or adds to the task. It stays in the history, unlike the action results of a single step.
    */
   public addUserNote(note: string): void {
-    this.addMessageWithTokens(new HumanMessage({ content: wrapUserRequest(filterExternalContent(note), false) }));
+    this.addMessageWithTokens(new HumanMessage({ content: wrapUserRequest(userRequestText(note), false) }));
   }
 
   /**

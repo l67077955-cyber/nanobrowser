@@ -306,6 +306,16 @@ export function stripBoundaryTags(text: string | undefined): string {
   return (text ?? '').replace(/<\/?\s*nano_[a-z_]+\s*>/gi, '');
 }
 
+/**
+ * What the user wrote, as the agent is to read it. The user is the one it works for, not a page that may
+ * be lying: their email, phone or ID number is the data to fill in, so nothing is redacted or rewritten as
+ * page text is (redacted, "Sign up with a@b.com" became "Sign up with [EMAIL]" and the agent typed that).
+ * Only fake trust-boundary tags go, so the text cannot close its own wrapper.
+ */
+export function userRequestText(text: string | undefined): string {
+  return stripBoundaryTags(text).trim();
+}
+
 export function filterExternalContentWithReport(rawContent: string | undefined, strict: boolean = true) {
   if (!rawContent || rawContent.trim() === '') {
     return { sanitized: '', threats: [], modified: false };

@@ -93,6 +93,14 @@ describe('Jev action space', () => {
     expect(space.targets.SELECT!['2:2'].optionText).toBe('France');
   });
 
+  it('names an input button by its value, so it is offered beside a link with the same text', () => {
+    const link = el('a', { href: 'register.htm' }, 1, [text('Register')]);
+    const submit = el('input', { type: 'submit', value: 'Register', class: 'button' }, 2);
+    const space = buildActionSpace(new Map([[1, link], [2, submit]]));
+    expect(Object.keys(space.targets.CLICK!)).toEqual(['1', '2']);
+    expect(space.targets.CLICK!['2'].label).toBe('Register');
+  });
+
   it('skips unlabeled clickables but keeps unlabeled text fields', () => {
     const wrapper = el('div', {}, 0);
     const field = el('input', { type: 'text' }, 5);
