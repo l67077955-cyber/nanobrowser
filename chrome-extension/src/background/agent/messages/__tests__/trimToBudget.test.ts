@@ -36,7 +36,7 @@ describe('MessageManager.trimToBudget', () => {
 
     expect(manager.trimToBudget()).toBeGreaterThan(0);
     const after = texts(manager);
-    expect(manager.tokenUsage().tokens).toBeLessThanOrEqual(1500);
+    expect(manager.tokenUsage().tokens).toBeLessThanOrEqual(1500 * 0.75);
     expect(after.slice(0, 6)).toEqual(setup);
     expect(after[6]).toContain('left out here');
     expect(after.some(t => t.includes('result 1 '))).toBe(false);
@@ -66,6 +66,22 @@ describe('MessageManager.trimToBudget', () => {
     manager.addStateMessage(new HumanMessage(big('current page')));
     manager.trimToBudget();
     expect(texts(manager).filter(t => t.includes('left out here'))).toHaveLength(1);
+  });
+
+  it('cuts with room to spare, so the next steps keep the start of the history (and the prompt cache) unchanged', () => {
+    const manager = managerWithSteps(20, 1500);
+    manager.trimToBudget();
+    expect(manager.tokenUsage().tokens).toBeLessThanOrEqual(1500 * 0.75);
+    const step = (i: number) => {
+      manager.removeLastStateMessage();
+      manager.addModelOutput({ current_state: { next_goal: `step ${i}` } });
+      manager.addMessageWithTokens(new HumanMessage(`Action result: ${big(`result ${i}`)}`));
+      manager.addStateMessage(new HumanMessage(big('current page')));
+    };
+    const prefix = texts(manager).slice(0, -1);
+    step(21);
+    expect(manager.trimToBudget()).toBe(0);
+    expect(texts(manager).slice(0, prefix.length)).toEqual(prefix);
   });
 
   it('stops when only kept messages are left', () => {

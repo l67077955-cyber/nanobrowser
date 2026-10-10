@@ -23,6 +23,13 @@ const logger = createLogger('MessageManager');
 // Setup messages, the user's follow-ups and the note left where steps were dropped: never trimmed
 const KEPT_TYPES = new Set<string | null>(['init', 'context', 'task', 'trimmed']);
 const TRIMMED_NOTE = '[Earlier steps were left out here so the history fits in the model context]';
+/**
+ * Once over budget, the history is cut down to this share of it, not just under it. Dropping only the oldest step
+ * each time changes the start of the history on every step once it is full, and the provider's prompt cache,
+ * which matches requests by their start, then misses on nearly the whole prompt at every step. Cut with room to
+ * spare, the next steps only add to the end and hit the cache until the history is full again.
+ */
+const TRIM_TO_SHARE = 0.75;
 
 export class MessageManagerSettings {
   maxInputTokens = 128000;
@@ -503,7 +510,7 @@ export default class MessageManager {
   }
 
   /**
-   * Drops the oldest steps until the history fits in maxInputTokens. Setup messages, the history start marker,
+   * Once the history outgrows maxInputTokens, drops the oldest steps until it is down to TRIM_TO_SHARE of it. Setup messages, the history start marker,
    * the user's follow-ups and the newest message (the page as it is now) stay; a tool call goes together with
    * the tool messages answering it. A note marks where steps were dropped.
    * @returns how many messages were dropped
@@ -514,7 +521,7 @@ export default class MessageManager {
     const start = messages.findIndex(m => !KEPT_TYPES.has(m.metadata.message_type)) + 1;
     if (start === 0) return 0;
     let dropped = 0;
-    while (this.history.totalTokens > this.settings.maxInputTokens) {
+    while (this.history.totalTokens > target) {
       let i = start;
       while (i < messages.length - 1 && KEPT_TYPES.has(messages[i].metadata.message_type)) i++;
       if (i >= messages.length - 1) break;
@@ -524,6 +531,8 @@ export default class MessageManager {
         while (i + count < messages.length - 1 && messages[i + count].message instanceof ToolMessage) count++;
       }
       for (let k = 0; k < count; k++) this.history.removeMessage(i);
+    if (this.history.totalTokens <= this.settings.maxInputTokens) return 0;
+    const target = Math.floor(this.settings.maxInputTokens * TRIM_TO_SHARE);
       dropped += count;
       this.dropped += count;
       if (messages[start]?.metadata.message_type !== 'trimmed') {
