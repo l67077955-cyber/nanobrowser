@@ -33,6 +33,7 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { wrapUntrustedContent } from '../messages/utils';
 import type { DOMElementNode } from '@src/background/browser/dom/views';
 import { ElementChangedError, ElementNotFoundError } from '@src/background/browser/views';
+import { pageShowed } from '@src/background/browser/notices';
 import { CaptchaUnreadableError, readCaptcha } from '@src/background/services/captcha';
 import { isAbortedError } from '../agents/errors';
 import type { AskFieldKind } from '@extension/storage';
@@ -455,6 +456,8 @@ export class ActionBuilder {
           } else if (page.clickHint) {
             msg += ` - ${page.clickHint}`;
           }
+          const notices = await page.takeNotices();
+          if (notices) msg += ` - ${pageShowed(notices)}`;
           this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
           return new ActionResult({ extractedContent: msg, includeInMemory: true });
         } catch (error) {
@@ -509,9 +512,11 @@ export class ActionBuilder {
         }
         const msg = t('act_inputText_ok', [input.text, input.index.toString()]);
         this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
+        // a hint the field brings up as it is typed in ("at least 8 characters")
+        const notices = await page.takeNotices();
         return new ActionResult({
           // a field that reformats what it is given (a phone mask, a picked option) is told, not failed
-          extractedContent: msg + note,
+          extractedContent: msg + note + (notices ? ` - ${pageShowed(notices)}` : ''),
           includeInMemory: true,
         });
       },
@@ -894,7 +899,11 @@ export class ActionBuilder {
       await page.sendKeys(input.keys);
       const msg = t('act_sendKeys_ok', [input.keys]);
       this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
-      return new ActionResult({ extractedContent: msg, includeInMemory: true });
+      const notices = await page.takeNotices();
+      return new ActionResult({
+        extractedContent: notices ? `${msg} - ${pageShowed(notices)}` : msg,
+        includeInMemory: true,
+      });
     }, sendKeysActionSchema);
     actions.push(sendKeys);
 

@@ -50,6 +50,11 @@ abstract class BasePrompt {
    */
   async buildBrowserStateUserMessage(context: AgentContext): Promise<HumanMessage> {
     const browserState = await context.browserContext.getState(context.options.useVision);
+    // toasts and field hints that came and went since the last action, which the page no longer shows
+    const notices = await context.browserContext
+      .getCurrentPage()
+      .then(page => page.takeNotices())
+      .catch(() => null);
     const rawElementsText = browserState.elementTree.clickableElementsToString(context.options.includeAttributes);
 
     let formattedElementsText = '';
@@ -100,7 +105,7 @@ Other available tabs:
   ${otherTabs.join('\n')}
 Interactive elements from top layer of the current page inside the viewport:
 ${formattedElementsText}
-${stepInfoDescription}
+${notices ? `Messages the page showed briefly since the last action (they may be gone now): ${wrapUntrustedContent(notices)}\n` : ''}${stepInfoDescription}
 ${actionResultsDescription}
 `;
 

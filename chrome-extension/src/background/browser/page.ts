@@ -20,6 +20,7 @@ import {
 } from './dom/service';
 import { findThroughShadowRoots } from './dom/shadowPath';
 import { AGENT_MARK_ID, drawAgentMark, removeAgentMark, setAgentMarkVisible } from './agentMark';
+import { describeNotices, NOTICES_KEY, type PageNotice, watchPageNotices } from './notices';
 import { DOMElementNode, type DOMState } from './dom/views';
 import {
   type BrowserContextConfig,
@@ -178,8 +179,58 @@ export default class Page {
 
     // Add anti-detection scripts
     await this._addAntiDetectionScripts();
+    await this.watchNotices(page);
 
     return true;
+  }
+
+  /** When the agent was last told what the page showed */
+  private _noticesReadAt = Date.now();
+  /** Messages of the page's alert/confirm boxes, which are not in the document */
+  private _dialogNotices: PageNotice[] = [];
+
+  /** Write down the messages the page shows only for a moment (see notices.ts), in every document from now on */
+  private async watchNotices(page: PuppeteerPage): Promise<void> {
+    try {
+      await page.evaluateOnNewDocument(watchPageNotices, NOTICES_KEY);
+      await Promise.all(page.frames().map(frame => frame.evaluate(watchPageNotices, NOTICES_KEY).catch(() => {})));
+    } catch (error) {
+      logger.debug('Could not watch the page for notices:', error);
+    }
+    page.on('dialog', dialog => {
+      this._dialogNotices.push({ t: Date.now(), text: `${dialog.type()} box: ${dialog.message()}` });
+      // an alert only says something: close it, or the page stays stuck behind it; a confirm is left to answer
+      if (dialog.type() === 'alert') dialog.accept().catch(() => {});
+    });
+  }
+
+  /**
+   * What the page showed since the agent was last told, oldest first, as a phrase for the model; null when
+   * nothing. Each message is told once.
+   */
+  async takeNotices(): Promise<string | null> {
+    const page = this._puppeteerPage;
+    if (!page) return null;
+    const since = this._noticesReadAt;
+    const read = Promise.all(
+      page
+        .frames()
+        .map(frame =>
+          frame
+            .evaluate(
+              (key, since) =>
+                ((window as unknown as Record<string, PageNotice[] | undefined>)[key] ?? []).filter(n => n.t > since),
+              NOTICES_KEY,
+              since,
+            )
+            .catch(() => [] as PageNotice[]),
+        ),
+    );
+    const timeout = new Promise<PageNotice[][]>(resolve => setTimeout(() => resolve([]), 1000));
+    const notices = [...(await Promise.race([read, timeout])).flat(), ...this._dialogNotices.filter(n => n.t > since)];
+    this._noticesReadAt = Date.now();
+    this._dialogNotices = this._dialogNotices.filter(n => n.t > this._noticesReadAt);
+    return describeNotices(notices.sort((a, b) => a.t - b.t).map(n => n.text));
   }
 
   /**
