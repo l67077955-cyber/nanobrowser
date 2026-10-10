@@ -139,6 +139,13 @@ export function probeControls(key: string, mode: string, max = 8): string[] | nu
   }
   if (removed) changes.push(`${removed} control${removed > 1 ? 's' : ''} went away`);
   const focus = document.activeElement;
-  if (focus && focus !== saved.focus && focus !== document.body) changes.push(`focus moved to ${name(focus)}`);
+  // a clicked link or button takes the focus itself: that says nothing about whether the click did anything
+  const pressable =
+    focus instanceof HTMLAnchorElement ||
+    focus instanceof HTMLButtonElement ||
+    (focus instanceof HTMLInputElement && ['button', 'submit', 'reset', 'image'].includes(focus.type)) ||
+    ['button', 'link', 'tab', 'menuitem'].includes(focus?.getAttribute('role') ?? '');
+  if (focus && focus !== saved.focus && focus !== document.body && !pressable)
+    changes.push(`focus moved to ${name(focus)}`);
   return changes.slice(0, max);
 }

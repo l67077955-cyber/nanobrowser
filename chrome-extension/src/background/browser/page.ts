@@ -40,6 +40,8 @@ const logger = createLogger('Page');
 // Attributes that say what an element is; if one differs at action time, the locator found a different element.
 // ids are left out because many sites regenerate them on every render.
 const CLICK_TIMEOUT = 'Click timeout';
+/** How long a click that changed nothing yet is watched for a late change before it is reported as doing nothing */
+const CLICK_SETTLE_MS = 2500;
 // The default waits for the load event, which one stalled image or script holds back for the full 30 s
 // while the page is already usable. The DOM is enough; waitForPageAndFramesLoad waits for the rest, with a cap.
 const NAVIGATION_WAIT = { waitUntil: 'domcontentloaded' } as const;
@@ -1915,7 +1917,12 @@ export default class Page {
     );
   }
 
-  /** Compare the page with its state before a click; null when nothing is worth telling the model */
+  /**
+   * Compare the page with its state before a click; null when nothing is worth telling the model. A page that
+   * has not changed yet is looked at again for a while: a link of a single-page app (GitHub's tabs) or a button
+   * that loads something first fetches, and judged too early such a click reads as having done nothing, so the
+   * model clicks it again.
+   */
   private async clickOutcomeHint(before: PageProbe): Promise<string | null> {
     try {
       await new Promise(resolve => setTimeout(resolve, 400));
@@ -1937,11 +1944,7 @@ export default class Page {
         return `Possible validation errors visible after the click: ${after.errors}${dialogOpen ? ' (the dialog is still open)' : ''}${changed ? `; ${changed}` : ''}`;
       }
       if (changed) return `The click took effect: ${changed}`;
-      if (unchanged) {
-        return `The page did not visibly change after the click${dialogOpen ? ' and the dialog is still open' : ''}${
-          after.errors ? `; messages visible: ${after.errors}` : ''
-        }`;
-      }
+      if (unchanged) return undefined;
       return null;
     } catch {
       return null;
@@ -1957,6 +1960,19 @@ export default class Page {
       throw new Error('Puppeteer is not connected');
     }
 
+    const deadline = Date.now() + CLICK_SETTLE_MS;
+    for (;;) {
+      const hint = await this.clickOutcomeNow(before);
+      if (hint === undefined) {
+        if (Date.now() < deadline) continue;
+        return this.unchangedHint(before);
+      }
+      return hint;
+    }
+  }
+
+  /** The click's outcome as clickOutcomeHint tells it; undefined while the page shows no change at all */
+  private async clickOutcomeNow(before: PageProbe): Promise<string | null | undefined> {
     try {
       // Highlight before clicking
       // if (elementNode.highlightIndex !== null) {
@@ -1987,6 +2003,15 @@ export default class Page {
         await Promise.race([
           this._puppeteerPage.evaluate(probeControls, CONTROLS_KEY, 'snapshot', 0).catch(() => null),
           new Promise(resolve => setTimeout(resolve, 1000)),
+  private async unchangedHint(before: PageProbe): Promise<string | null> {
+    const after = await this.probePage();
+    if (!after || after.url !== before.url) return null;
+    const dialogOpen = before.inModal && after.modals > 0;
+    return `The page did not visibly change after the click${dialogOpen ? ' and the dialog is still open' : ''}${
+      after.errors ? `; messages visible: ${after.errors}` : ''
+    }`;
+  }
+
         ]);
       }
 
