@@ -124,6 +124,23 @@ interface PageProbe {
   modals: number;
   errors: string;
   inModal: boolean;
+  /** the frame the clicked element is in, when it is not the top page: a cookie banner in an iframe */
+  frame?: FrameProbe;
+}
+
+/** A frame as a click found it: its text, and whether the iframe showing it is on screen */
+interface FrameProbe {
+  frame: Frame;
+  sig: string | null;
+  shown: boolean;
+}
+
+/** In a frame: a cheap signature of its document's text. Passed to evaluate, so it uses nothing outside itself */
+function frameTextSignature(): string {
+  const text = document.body?.innerText ?? '';
+  let hash = 0;
+  for (let i = 0; i < Math.min(text.length, 20000); i++) hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  return `${text.length}:${hash}`;
 }
 
 export default class Page {
@@ -1948,12 +1965,48 @@ export default class Page {
           errors: errors.join('; ').slice(0, 300),
         };
       });
-      return { ...state, inModal };
+      const frame = element?.frame;
+      const inFrame = frame && frame !== page.mainFrame() ? { frame: await this.probeFrame(frame) } : {};
+      return { ...state, inModal, ...inFrame };
     };
     // never let the check hold up or fail the click
     return Promise.race([read(), new Promise<null>(resolve => setTimeout(() => resolve(null), 1500))]).catch(
       () => null,
     );
+  }
+
+  /**
+   * Read a frame other than the top page. The top page's text does not hold a frame's: a banner in an iframe
+   * that closes after a click leaves it the same, and the click would read as having done nothing.
+   */
+  private async probeFrame(frame: Frame): Promise<FrameProbe> {
+    if (frame.detached) return { frame, sig: null, shown: false };
+    const owner = await frame.frameElement().catch(() => null);
+    const shown = owner
+      ? await owner
+          .evaluate(el => {
+            if (!el.isConnected || el.getClientRects().length === 0) return false;
+            const style = getComputedStyle(el);
+            return style.visibility !== 'hidden' && style.opacity !== '0';
+          })
+          .catch(() => false)
+      : false;
+    await owner?.dispose().catch(() => {});
+    const sig = shown ? await frame.evaluate(frameTextSignature).catch(() => null) : null;
+    return { frame, sig, shown };
+  }
+
+  /** probeControls in the top page and, when the click was inside one, in the clicked element's frame */
+  private async controlsIn(before: PageProbe, mode: 'snapshot' | 'diff', max: number): Promise<string[] | null> {
+    const page = this._puppeteerPage;
+    if (!page) return null;
+    const frames = [page.mainFrame(), ...(before.frame && !before.frame.frame.detached ? [before.frame.frame] : [])];
+    const results = await Promise.race([
+      Promise.all(frames.map(frame => frame.evaluate(probeControls, CONTROLS_KEY, mode, max).catch(() => null))),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 1000)),
+    ]);
+    if (!results || results.every(r => r === null)) return null;
+    return results.flatMap(r => r ?? []).slice(0, max);
   }
 
   /**
@@ -1981,16 +2034,16 @@ export default class Page {
       const after = await this.probePage();
       // unreadable page: it navigated or closed, which counts as a change
       if (!after || after.url !== before.url) return null;
-      const page = this._puppeteerPage;
       // null when unknown (no snapshot, or the page did not answer): then only the text decides
-      const controls = page
-        ? await Promise.race([
-            page.evaluate(probeControls, CONTROLS_KEY, 'diff', 8).catch(() => null),
-            new Promise<null>(resolve => setTimeout(() => resolve(null), 1000)),
-          ])
-        : null;
+      const controls = await this.controlsIn(before, 'diff', 8);
+      const frameAfter = before.frame ? await this.probeFrame(before.frame.frame) : null;
+      // the frame the element was in went away: a banner or a dialog in an iframe that the click closed
+      if (before.frame?.shown && frameAfter && !frameAfter.shown) {
+        return 'The click took effect: the embedded frame it was in (such as a cookie banner) closed';
+      }
+      const frameSame = !before.frame || !frameAfter || frameAfter.sig === before.frame.sig;
       const changed = controls && controls.length > 0 ? `it changed ${controls.join('; ')}` : null;
-      const unchanged = after.sig === before.sig && after.modals === before.modals && !changed;
+      const unchanged = after.sig === before.sig && after.modals === before.modals && frameSame && !changed;
       const dialogOpen = before.inModal && after.modals > 0;
       if (after.errors && after.errors !== before.errors) {
         return `Possible validation errors visible after the click: ${after.errors}${dialogOpen ? ' (the dialog is still open)' : ''}${changed ? `; ${changed}` : ''}`;
@@ -2046,13 +2099,9 @@ export default class Page {
       }
 
       probe.before = (await this.probePage(element)) ?? undefined;
-      // the controls' state as well: a tick, a choice or an opened menu does not show in the page text
-      if (probe.before) {
-        await Promise.race([
-          this._puppeteerPage.evaluate(probeControls, CONTROLS_KEY, 'snapshot', 0).catch(() => null),
-          new Promise(resolve => setTimeout(resolve, 1000)),
-        ]);
-      }
+      // the controls' state as well, in the element's frame too: a tick, a choice or an opened menu does not
+      // show in the page text
+      if (probe.before) await this.controlsIn(probe.before, 'snapshot', 0);
 
       try {
         // A mouse click lands on whatever is on top at the element's center (a toast, a hover card, a

@@ -4,19 +4,18 @@ import { RepeatedActionTracker, withoutTicking } from '../navigator';
 const click = (intent: string) => [{ click_element: { intent, index: 1 } }];
 
 describe('RepeatedActionTracker', () => {
-  it('warns on the third identical action on an unchanged page, however the intent is worded', () => {
+  it('warns on the second identical action on an unchanged page, however the intent is worded', () => {
     const tracker = new RepeatedActionTracker();
     expect(tracker.record(click('Focus the search box'), 'page A')).toBeNull();
-    expect(tracker.record(click('Click search'), 'page A')).toBeNull();
+    expect(tracker.record(click('Click search'), 'page A')).toContain('2 times');
     expect(tracker.record(click('Open the search box'), 'page A')).toContain('3 times');
-    expect(tracker.record(click('Again'), 'page A')).toContain('4 times');
   });
 
   it('counts a page that flips between two states', () => {
     const tracker = new RepeatedActionTracker();
-    const notes = ['open', 'closed', 'open', 'closed', 'open'].map(page => tracker.record(click('toggle'), page));
-    expect(notes.slice(0, 4)).toEqual([null, null, null, null]);
-    expect(notes[4]).not.toBeNull();
+    const notes = ['open', 'closed', 'open'].map(page => tracker.record(click('toggle'), page));
+    expect(notes.slice(0, 2)).toEqual([null, null]);
+    expect(notes[2]).not.toBeNull();
   });
 
   it('stays quiet when the page changes between identical actions', () => {
@@ -27,10 +26,10 @@ describe('RepeatedActionTracker', () => {
 
   it('does not tell an element marked new apart from the same element unmarked', () => {
     const tracker = new RepeatedActionTracker();
-    const notes = ['*[39]<div>Display Mode', '[39]<div>Display Mode', '*[39]<div>Display Mode'].map(page =>
+    const notes = ['*[39]<div>Display Mode', '[39]<div>Display Mode'].map(page =>
       tracker.record(click('toggle'), page),
     );
-    expect(notes[2]).toContain('3 times');
+    expect(notes[1]).toContain('2 times');
   });
 
   it('counts without recording', () => {
@@ -53,10 +52,10 @@ describe('RepeatedActionTracker', () => {
   it('takes a page with a countdown ticking for the same page', () => {
     const tracker = new RepeatedActionTracker();
     const type = [{ input_text: { index: 8, text: 'V2xjMTEdkBXs' } }];
-    const notes = ['56s', '52s', '48s'].map(left =>
+    const notes = ['56s', '52s'].map(left =>
       tracker.record(type, withoutTicking(`[8]<input>V2xj\n[10]<input value="Resend in ${left}">`)),
     );
-    expect(notes[2]).toContain('3 times');
+    expect(notes[1]).toContain('2 times');
     expect(withoutTicking('[10]<b>12 left')).toBe('[10]<b># left');
   });
 });

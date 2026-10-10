@@ -327,9 +327,9 @@ export async function decideWithEngineOrLLM<T>(
 }
 
 /** How often the same actions may run on the same page before the model is told they change nothing */
-const REPEAT_LIMIT = 3;
+const REPEAT_LIMIT = 2;
 /** How often they may run at all: beyond this they are refused and the plan is made again */
-export const STUCK_LIMIT = 5;
+export const STUCK_LIMIT = 3;
 
 /** Page text without the numbers outside element indices: a countdown ticking on it does not make it another page */
 export function withoutTicking(text: string): string {
