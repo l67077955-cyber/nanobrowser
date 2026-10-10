@@ -589,6 +589,7 @@ export class Executor {
    */
   private async startPlanner(): Promise<BackgroundPlan> {
     let positionForPlan = 0;
+    let droppedBefore = 0;
     let started = performance.now();
     let observeMs = 0;
     let planning: Promise<AgentOutput<PlannerOutput>>;
@@ -599,6 +600,7 @@ export class Executor {
       await this.navigator.addStateMessageToMemory();
       observeMs = Math.round(performance.now() - started);
       positionForPlan = this.context.messageManager.length() - 1;
+      droppedBefore = this.context.messageManager.droppedCount();
       started = performance.now();
       // execute() copies the history synchronously, before the navigator changes it
       planning = this.planner.execute(AbortSignal.any([this.context.controller.signal, callOff.signal]));
@@ -620,9 +622,11 @@ export class Executor {
           if (planOutput.result) {
             // the navigator went on while this plan was made: the indexes in it may point elsewhere by now
             const planText = JSON.stringify(planOutput.result);
-            this.context.messageManager.addPlan(
+            // old steps the navigator trimmed meanwhile moved the position back
+            const { messageManager } = this.context;
+            messageManager.addPlan(
               this.context.nSteps > planStep ? withoutIndexes(planText) : planText,
-              positionForPlan,
+              positionForPlan - (messageManager.droppedCount() - droppedBefore),
             );
             this.latestNextSteps = planOutput.result.next_steps || null;
             this.latestPlanStep = planStep;

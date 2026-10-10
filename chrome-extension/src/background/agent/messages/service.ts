@@ -14,6 +14,7 @@ import {
   wrapUserRequest,
   splitUserTextAndAttachments,
   wrapAttachments,
+  pairToolResponses,
 } from '@src/background/agent/messages/utils';
 
 const logger = createLogger('MessageManager');
@@ -62,6 +63,8 @@ export interface StoredManagedMessage {
 export default class MessageManager {
   private history: MessageHistory;
   private toolId: number;
+  /** net messages trimToBudget has removed so far: a position taken before a trim is this much further back after it */
+  private dropped = 0;
   private settings: MessageManagerSettings;
 
   constructor(settings: MessageManagerSettings = new MessageManagerSettings()) {
@@ -258,8 +261,22 @@ export default class MessageManager {
     if (plan) {
       const cleanedPlan = filterExternalContent(plan, false);
       const msg = new AIMessage({ content: `<plan>${cleanedPlan}</plan>` });
-      this.addMessageWithTokens(msg, null, position);
+      this.addMessageWithTokens(msg, null, position === undefined ? undefined : this.safePosition(position));
     }
+  }
+
+  /** How many messages trimming has dropped so far; pass it back with a position taken now */
+  public droppedCount(): number {
+    return this.dropped;
+  }
+
+  /** A position never lands between a tool call and its response, or before the start of the history */
+  private safePosition(position: number): number {
+    const messages = this.history.messages;
+    const start = messages.findIndex(m => !KEPT_TYPES.has(m.metadata.message_type)) + 1;
+    let p = Math.min(Math.max(position, start), messages.length);
+    while (p > start && p < messages.length && messages[p].message instanceof ToolMessage) p--;
+    return p;
   }
 
   /**
@@ -328,7 +345,7 @@ export default class MessageManager {
     }
 
     logger.debug(`Total input tokens: ${totalInputTokens}`);
-    return messages;
+    return pairToolResponses(messages);
   }
 
   /**
@@ -507,8 +524,11 @@ export default class MessageManager {
       }
       for (let k = 0; k < count; k++) this.history.removeMessage(i);
       dropped += count;
+      this.dropped += count;
       if (messages[start]?.metadata.message_type !== 'trimmed') {
         this.addMessageWithTokens(new HumanMessage({ content: TRIMMED_NOTE }), 'trimmed', start);
+        // the note takes a place in front of every later position
+        this.dropped -= 1;
       }
     }
     if (dropped > 0) {

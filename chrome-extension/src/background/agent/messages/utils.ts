@@ -161,6 +161,35 @@ export function convertInputMessages(inputMessages: BaseMessage[], modelName: st
  * imitate the history and answer with an AgentOutput call instead of the planner schema.
  * The navigator uses it too for thinking Claude models, which reject tool calls replayed without thinking blocks.
  */
+/**
+ * Puts each tool response right after the tool call it answers, as the model APIs require: a message that ended up
+ * between a call and its response (e.g. a plan inserted at a stale position) moves behind the response, and a
+ * response whose call is gone is dropped. Histories saved before this was enforced are repaired on the way out.
+ */
+export function pairToolResponses(messages: BaseMessage[]): BaseMessage[] {
+  const responses = new Map<string, ToolMessage>();
+  messages.forEach(m => {
+    if (m instanceof ToolMessage && !responses.has(m.tool_call_id)) responses.set(m.tool_call_id, m);
+  });
+  const placed = new Set<ToolMessage>();
+  const out: BaseMessage[] = [];
+  for (const m of messages) {
+    if (m instanceof ToolMessage) continue;
+    out.push(m);
+    if (!(m instanceof AIMessage)) continue;
+    for (const call of m.tool_calls ?? []) {
+      const response = call.id ? responses.get(call.id) : undefined;
+      if (response && !placed.has(response)) {
+        out.push(response);
+        placed.add(response);
+      } else if (call.id) {
+        out.push(new ToolMessage({ content: 'tool call response', tool_call_id: call.id }));
+      }
+    }
+  }
+  return out;
+}
+
 export function convertMessagesForPlanner(inputMessages: BaseMessage[]): BaseMessage[] {
   const outputMessages: BaseMessage[] = [];
   for (const message of inputMessages) {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
 import MessageManager, { MessageManagerSettings } from '../service';
+import { pairToolResponses } from '../utils';
 
 /** 3 characters make a token, so 'x'.repeat(300) is 100 tokens */
 const big = (tag: string) => `${tag} ${'x'.repeat(300)}`;
@@ -72,5 +73,59 @@ describe('MessageManager.trimToBudget', () => {
     manager.trimToBudget();
     expect(texts(manager).at(-1)).toContain('current page');
     expect(texts(manager).some(t => t.includes('Action result'))).toBe(false);
+  });
+
+  it('places a plan made during a trim where it was meant to go, never inside a tool call', () => {
+    const manager = managerWithSteps(20, 1500);
+    // the planner takes its position, then the navigator goes on and trims
+    const position = manager.length() - 1;
+    const droppedBefore = manager.droppedCount();
+    manager.removeLastStateMessage();
+    manager.addModelOutput({ current_state: { next_goal: 'step 21' } });
+    manager.addStateMessage(new HumanMessage(big('current page')));
+    manager.trimToBudget();
+    manager.addPlan('the plan', position - (manager.droppedCount() - droppedBefore));
+
+    const messages = manager.getMessages();
+    const plan = messages.findIndex(m => String(m.content).includes('the plan'));
+    expect(String(messages[plan - 1].content)).toContain('result 20');
+    expect(messages[plan + 1]).toBeInstanceOf(AIMessage);
+    expect(messages[plan + 2]).toBeInstanceOf(ToolMessage);
+  });
+
+  it('never splits a tool call from its response, even given a position between them', () => {
+    const manager = managerWithSteps(2, 128000);
+    const all = manager.getMessages();
+    const response = all.findLastIndex(m => m instanceof ToolMessage);
+    manager.addPlan('the plan', response);
+    const messages = manager.getMessages();
+    const plan = messages.findIndex(m => String(m.content).includes('the plan'));
+    expect(messages[plan + 1]).toBeInstanceOf(AIMessage);
+  });
+});
+
+describe('pairToolResponses', () => {
+  const call = (id: string) =>
+    new AIMessage({ content: 'tool call', tool_calls: [{ name: 'AgentOutput', args: {}, id }] });
+  const response = (id: string) => new ToolMessage({ content: 'tool call response', tool_call_id: id });
+
+  it('moves a message stuck between a tool call and its response behind the response', () => {
+    const plan = new AIMessage('<plan>x</plan>');
+    const out = pairToolResponses([new HumanMessage('a'), call('5'), plan, response('5'), new HumanMessage('b')]);
+    expect(out.map(m => m.constructor.name)).toEqual([
+      'HumanMessage',
+      'AIMessage',
+      'ToolMessage',
+      'AIMessage',
+      'HumanMessage',
+    ]);
+    expect(out[3]).toBe(plan);
+  });
+
+  it('drops responses whose call is gone and answers calls left without one', () => {
+    const out = pairToolResponses([response('1'), call('2'), new HumanMessage('page')]);
+    expect(out).toHaveLength(3);
+    expect(out[0]).toBeInstanceOf(AIMessage);
+    expect((out[1] as ToolMessage).tool_call_id).toBe('2');
   });
 });
