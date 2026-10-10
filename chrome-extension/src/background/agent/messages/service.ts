@@ -30,6 +30,8 @@ const TRIMMED_NOTE = '[Earlier steps were left out here so the history fits in t
  * spare, the next steps only add to the end and hit the cache until the history is full again.
  */
 const TRIM_TO_SHARE = 0.75;
+/** The dropped steps the note lists one by one; older ones are only counted */
+const TRIMMED_STEPS_TOLD = 40;
 
 export class MessageManagerSettings {
   maxInputTokens = 128000;
@@ -73,6 +75,9 @@ export default class MessageManager {
   private toolId: number;
   /** net messages trimToBudget has removed so far: a position taken before a trim is this much further back after it */
   private dropped = 0;
+  /** what the steps trimToBudget dropped did, oldest first, and the findings they cached: the note in their place tells it */
+  private trimmedSteps: string[] = [];
+  private trimmedFindings: string[] = [];
   private settings: MessageManagerSettings;
 
   constructor(settings: MessageManagerSettings = new MessageManagerSettings()) {
@@ -257,7 +262,8 @@ export default class MessageManager {
    * changes or adds to the task. It stays in the history, unlike the action results of a single step.
    */
   public addUserNote(note: string): void {
-    this.addMessageWithTokens(new HumanMessage({ content: wrapUserRequest(userRequestText(note), false) }));
+    // kept like a task: dropped with old steps, a correction would be undone without anyone saying so
+    this.addMessageWithTokens(new HumanMessage({ content: wrapUserRequest(userRequestText(note), false) }), 'task');
   }
 
   /**
@@ -510,9 +516,10 @@ export default class MessageManager {
   }
 
   /**
-   * Once the history outgrows maxInputTokens, drops the oldest steps until it is down to TRIM_TO_SHARE of it. Setup messages, the history start marker,
-   * the user's follow-ups and the newest message (the page as it is now) stay; a tool call goes together with
-   * the tool messages answering it. A note marks where steps were dropped.
+   * Once the history outgrows maxInputTokens, drops the oldest steps until it is down to TRIM_TO_SHARE of it. Setup
+   * messages, the user's tasks and remarks and the newest message (the page as it is now) stay; a tool call goes
+   * together with the tool messages answering it. A note in their place says what the dropped steps did and keeps
+   * the findings they cached, so the agent neither redoes them nor loses what it gathered.
    * @returns how many messages were dropped
    */
   public trimToBudget(): number {
@@ -520,8 +527,19 @@ export default class MessageManager {
     // the history start marker is the first message that is not part of the setup
     const start = messages.findIndex(m => !KEPT_TYPES.has(m.metadata.message_type)) + 1;
     if (start === 0) return 0;
+    if (this.history.totalTokens <= this.settings.maxInputTokens) return 0;
+    const target = Math.floor(this.settings.maxInputTokens * TRIM_TO_SHARE);
+    const hasNote = messages[start]?.metadata.message_type === 'trimmed';
+    const oldNote = hasNote ? messages[start].metadata.tokens : 0;
+    // a note restored with a saved session: what it told is carried over, since the lists behind it are not saved
+    if (hasNote && !this.trimmedSteps.length && !this.trimmedFindings.length) {
+      const told = String(messages[start].message.content).slice(TRIMMED_NOTE.length).trim();
+      if (told) this.trimmedFindings.push(told);
+    }
+    // the note grows with every step dropped: room is kept for it
+    const fits = () => this.history.totalTokens - oldNote + this._countTextTokens(this.trimmedNote()) <= target;
     let dropped = 0;
-    while (this.history.totalTokens > target) {
+    while (!fits()) {
       let i = start;
       while (i < messages.length - 1 && KEPT_TYPES.has(messages[i].metadata.message_type)) i++;
       if (i >= messages.length - 1) break;
@@ -530,23 +548,56 @@ export default class MessageManager {
       if (first instanceof AIMessage && (first.tool_calls?.length ?? 0) > 0) {
         while (i + count < messages.length - 1 && messages[i + count].message instanceof ToolMessage) count++;
       }
-      for (let k = 0; k < count; k++) this.history.removeMessage(i);
-    if (this.history.totalTokens <= this.settings.maxInputTokens) return 0;
-    const target = Math.floor(this.settings.maxInputTokens * TRIM_TO_SHARE);
+      for (let k = 0; k < count; k++) {
+        this.recordDropped(messages[i].message);
+        this.history.removeMessage(i);
+      }
       dropped += count;
       this.dropped += count;
-      if (messages[start]?.metadata.message_type !== 'trimmed') {
-        this.addMessageWithTokens(new HumanMessage({ content: TRIMMED_NOTE }), 'trimmed', start);
-        // the note takes a place in front of every later position
-        this.dropped -= 1;
-      }
     }
-    if (dropped > 0) {
-      logger.info(
-        `Dropped ${dropped} old messages - total tokens now: ${this.history.totalTokens}/${this.settings.maxInputTokens}`,
+    if (dropped === 0) return 0;
+    // the note is written once per trim, not per step: until the next trim the history keeps its start
+    if (hasNote) this.history.removeMessage(start);
+    else this.dropped -= 1; // the note takes a place in front of every later position
+    this.addMessageWithTokens(new HumanMessage({ content: this.trimmedNote() }), 'trimmed', start);
+    logger.info(
+      `Dropped ${dropped} old messages - total tokens now: ${this.history.totalTokens}/${this.settings.maxInputTokens}`,
+    );
+    return dropped;
+  }
+
+  /** Keeps from a message being dropped what the note in its place tells: the step's goal, a page read, a finding */
+  private recordDropped(message: BaseMessage): void {
+    if (message instanceof AIMessage) {
+      const output = message.tool_calls?.find(call => call.name === 'AgentOutput')?.args as
+        | { current_state?: { next_goal?: unknown } }
+        | undefined;
+      const goal = output?.current_state?.next_goal;
+      if (typeof goal === 'string' && goal.trim()) this.trimmedSteps.push(goal.trim().slice(0, 200));
+      return;
+    }
+    if (!(message instanceof HumanMessage) || typeof message.content !== 'string') return;
+    const text = message.content;
+    if (text.startsWith('Action result: ') && text.includes('Cached findings:')) {
+      this.trimmedFindings.push(text.slice('Action result: '.length));
+      return;
+    }
+    const read = /^Action result: Text of "(.*?)" \((\S+)\), characters (\d+-\d+) of (\d+)/.exec(text);
+    if (read) this.trimmedSteps.push(`read the text of "${read[1]}" (${read[2]}), characters ${read[3]} of ${read[4]}`);
+    else if (text.startsWith('Action error: ')) this.trimmedSteps.push(text.slice(0, 200));
+  }
+
+  private trimmedNote(): string {
+    const parts = [TRIMMED_NOTE];
+    if (this.trimmedFindings.length) parts.push(`Findings cached in those steps:\n${this.trimmedFindings.join('\n')}`);
+    const steps = this.trimmedSteps.slice(-TRIMMED_STEPS_TOLD);
+    const untold = this.trimmedSteps.length - steps.length;
+    if (steps.length) {
+      parts.push(
+        `What those steps did, oldest first:\n${untold ? `- (${untold} steps before these)\n` : ''}${steps.map(step => `- ${step}`).join('\n')}`,
       );
     }
-    return dropped;
+    return parts.join('\n');
   }
 
   /**

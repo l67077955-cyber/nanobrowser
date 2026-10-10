@@ -84,6 +84,44 @@ describe('MessageManager.trimToBudget', () => {
     expect(texts(manager).slice(0, prefix.length)).toEqual(prefix);
   });
 
+  it('says in the note what the dropped steps did and keeps the findings they cached', () => {
+    const manager = new MessageManager(new MessageManagerSettings({ maxInputTokens: 1500 }));
+    manager.initTaskMessages(new SystemMessage('system'), 'compare three laptops');
+    manager.addModelOutput({ current_state: { next_goal: 'Open the first laptop' } });
+    manager.addMessageWithTokens(new HumanMessage('Action result: Cached findings: Laptop A costs 999'));
+    manager.addModelOutput({ current_state: { next_goal: 'Read the review' } });
+    manager.addMessageWithTokens(
+      new HumanMessage(
+        `Action result: Text of "Review" (https://a.example/r), characters 0-300 of 300:\n${big('review')}`,
+      ),
+    );
+    for (let i = 1; i <= 20; i++) {
+      manager.addModelOutput({ current_state: { next_goal: `step ${i}` } });
+      manager.addMessageWithTokens(new HumanMessage(`Action result: ${big(`result ${i}`)}`));
+    }
+    manager.addStateMessage(new HumanMessage(big('current page')));
+    manager.trimToBudget();
+    const note = texts(manager).find(t => t.includes('left out here')) ?? '';
+    expect(note).toContain('Laptop A costs 999');
+    expect(note).toContain('- Open the first laptop');
+    expect(note).toContain('read the text of "Review" (https://a.example/r)');
+    expect(note).not.toContain('xxxxxxxxxx');
+    expect(manager.tokenUsage().tokens).toBeLessThanOrEqual(1500 * 0.75);
+  });
+
+  it('never drops what the user said while the task ran', () => {
+    const manager = managerWithSteps(3, 1500);
+    manager.removeLastStateMessage();
+    manager.addUserNote('use the Canadian address, not the US one');
+    for (let i = 4; i <= 20; i++) {
+      manager.addModelOutput({ current_state: { next_goal: `step ${i}` } });
+      manager.addMessageWithTokens(new HumanMessage(`Action result: ${big(`result ${i}`)}`));
+    }
+    manager.addStateMessage(new HumanMessage(big('current page')));
+    expect(manager.trimToBudget()).toBeGreaterThan(0);
+    expect(texts(manager).some(t => t.includes('Canadian address'))).toBe(true);
+  });
+
   it('stops when only kept messages are left', () => {
     const manager = managerWithSteps(2, 10);
     manager.trimToBudget();
