@@ -19,6 +19,8 @@ const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_MIN_OPERATION_CONFIDENCE = 0.5;
 // Wrong picks seen in practice scored ~0.5 on the target head; correct ones 0.67+
 const DEFAULT_MIN_TARGET_CONFIDENCE = 0.6;
+// The target floor holds as set up to this many options; past it the floor eases with the option count
+const FLOOR_ANCHOR_OPTIONS = 10;
 // Offered with every target question so Jev is never forced to pick an element
 const NO_TARGET = 'none';
 // A choice question takes up to 255 options (docs.typesafe.ai/primitives/choice); NO_TARGET is one of them.
@@ -28,6 +30,9 @@ const MAX_ELEMENTS = 1000;
 const MAX_LABEL_LENGTH = 100;
 // Groups list every member, so labels are cut short to keep the request inside Jev's 32k-token context
 const MAX_GROUP_LABEL_LENGTH = 40;
+// Over many options Jev spreads its weight thin, so even a clear favourite can sit under the target floor.
+// The likeliest few are then offered again on their own, where the weight gathers on fewer options.
+const SHORTLIST_SIZE = 8;
 const MAX_PAGE_TEXT = 4000;
 const HISTORY_SIZE = 10;
 
@@ -355,6 +360,40 @@ export function groupCandidates(candidates: TargetCandidates, maxOptions: number
   return groups;
 }
 
+/**
+ * The target floor for a question offering `options` choices. Jev's weight on a clear favourite thins out as
+ * options grow, so a fixed floor reads more options as less sure. Up to FLOOR_ANCHOR_OPTIONS the floor is
+ * `min`; past it, a pick has to sit as far from chance in log terms as `min` does at the anchor:
+ * log(p·N)/log(N) stays fixed, i.e. p ≥ min^(ln N / ln anchor). With min 0.6: 0.6 at 10 options, 0.36 at 100,
+ * 0.29 at 255.
+ */
+export function targetFloor(min: number, options: number): number {
+  if (options <= FLOOR_ANCHOR_OPTIONS || min <= 0 || min >= 1) return min;
+  return min ** (Math.log(options) / Math.log(FLOOR_ANCHOR_OPTIONS));
+}
+
+/**
+ * The candidates behind the likeliest options Jev weighed (all members of a likely group), in page order.
+ * Null when that would leave as many candidates as were offered, or just the one Jev already picked:
+ * asking again could not help.
+ */
+export function shortlistCandidates(
+  candidates: TargetCandidates,
+  probabilities: Record<string, number>,
+  maxOptions: number,
+  size = SHORTLIST_SIZE,
+): TargetCandidates | null {
+  const groups = groupCandidates(candidates, maxOptions);
+  const likely = Object.entries(probabilities)
+    .filter(([key, p]) => key !== NO_TARGET && p > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, size)
+    .map(([key]) => key);
+  const keep = new Set(groups ? likely.flatMap(key => Object.keys(groups[key]?.candidates ?? {})) : likely);
+  const kept = Object.entries(candidates).filter(([key]) => keep.has(key));
+  return kept.length > 1 && kept.length < Object.keys(candidates).length ? Object.fromEntries(kept) : null;
+}
+
 const groupMembers = (group: TargetGroup) =>
   Object.values(group.candidates).map(t => collapse(t.label || t.role, MAX_GROUP_LABEL_LENGTH));
 
@@ -468,6 +507,8 @@ interface TargetPick {
   operation: Operation;
   confidence: number;
   targetConfidence: number;
+  /** how many options the target question offered, none included: the target floor eases as this grows */
+  targetOptions: number;
   /** probability per offered option, and the label each one is shown with in the side panel */
   targetProbabilities: Record<string, number>;
   offered: Record<string, string>;
@@ -499,7 +540,8 @@ export function interpretTarget(
   maxOptions = MAX_CHOICE_OPTIONS,
 ): JevChoice {
   const groups = groupCandidates(candidates, maxOptions);
-  const picked = validateChoice(answer, [...Object.keys(groups ?? candidates), NO_TARGET]);
+  const ids = [...Object.keys(groups ?? candidates), NO_TARGET];
+  const picked = validateChoice(answer, ids);
   const offered = groups
     ? Object.fromEntries(
         Object.entries(groups).map(([key, g]) => [
@@ -512,6 +554,7 @@ export function interpretTarget(
     operation,
     confidence,
     targetConfidence: picked.confidence,
+    targetOptions: ids.length,
     targetProbabilities: picked.probabilities,
     offered,
   };
@@ -643,7 +686,10 @@ export interface JevEngineOptions {
   apiKey: string;
   textLLM: BaseChatModel;
   getGoal: () => string;
-  /** below these, a pick goes to the LLM navigator instead of being executed */
+  /**
+   * below these, a pick goes to the LLM navigator instead of being executed;
+   * the target floor eases on questions with many options (see targetFloor)
+   */
   minOperationConfidence?: number;
   minTargetConfidence?: number;
   /** options one choice question may hold; more targets than this are narrowed group by group */
@@ -688,17 +734,29 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     const maxOptions = this.options.maxChoiceOptions ?? MAX_CHOICE_OPTIONS;
     const response = await this.post(buildJevRequest(state, space, goal, this.history, this.model, maxOptions), signal);
     let choice = interpretAnswers(response.answers ?? {}, space, maxOptions);
-    // Jev picked a group: ask again inside it until an element is left. An unsure pick stops here and defers.
+    // Ask again inside a picked group until an element is left; when unsure of the target, ask again over
+    // the likeliest few. Each request offers fewer candidates than the last, so this ends.
     const path: string[] = [];
-    while (choice.kind === 'group' && !this.unsure(choice)) {
-      const { operation, candidates, confidence } = choice;
-      path.push(choice.label);
+    let offered = choice.kind === 'control' ? null : space.targets[choice.operation]!;
+    while (choice.kind !== 'control' && offered && choice.confidence >= this.minOperationConfidence) {
+      const { operation, confidence } = choice;
+      let next: TargetCandidates | null;
+      if (choice.targetConfidence >= this.targetFloor(choice)) {
+        if (choice.kind !== 'group') break;
+        next = choice.candidates;
+        path.push(choice.label);
+      } else {
+        next = shortlistCandidates(offered, choice.targetProbabilities, maxOptions);
+        if (!next) break;
+        path.push(`likeliest ${Object.keys(next).length} of ${Object.keys(offered).length}`);
+      }
       const narrowed = await this.post(
-        buildNarrowRequest(state, space, operation, candidates, goal, this.history, this.model, maxOptions),
+        buildNarrowRequest(state, space, operation, next, goal, this.history, this.model, maxOptions),
         signal,
       );
       const answer = narrowed.answers?.[targetQuestionId(operation)];
-      choice = interpretTarget(answer, operation, candidates, confidence, maxOptions);
+      choice = interpretTarget(answer, operation, next, confidence, maxOptions);
+      offered = next;
     }
     const trace: JevTrace = {
       ...traceChoice(choice, this.model, Math.round(performance.now() - started), path),
@@ -711,7 +769,7 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
       latencyMs: trace.latencyMs,
     });
 
-    // Still a group: the loop stopped on a pick below the confidence floors
+    // Still a group: the loop stopped on a pick below the confidence floors it could not shortlist
     if (choice.kind === 'group') {
       return { decision: null, trace: { ...trace, deferred: this.unsure(choice) ?? 'unsure which element' } };
     }
@@ -763,12 +821,18 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     return null;
   }
 
+  private get minOperationConfidence() {
+    return this.options.minOperationConfidence ?? DEFAULT_MIN_OPERATION_CONFIDENCE;
+  }
+
+  private targetFloor(pick: TargetPick) {
+    return targetFloor(this.options.minTargetConfidence ?? DEFAULT_MIN_TARGET_CONFIDENCE, pick.targetOptions);
+  }
+
   /** Which confidence floor this choice misses, or null when it clears both */
   private unsure(choice: JevChoice): string | null {
-    const minOperation = this.options.minOperationConfidence ?? DEFAULT_MIN_OPERATION_CONFIDENCE;
-    const minTarget = this.options.minTargetConfidence ?? DEFAULT_MIN_TARGET_CONFIDENCE;
-    if (choice.confidence < minOperation) return 'unsure which operation';
-    if (choice.kind !== 'control' && choice.targetConfidence < minTarget) return 'unsure which element';
+    if (choice.confidence < this.minOperationConfidence) return 'unsure which operation';
+    if (choice.kind !== 'control' && choice.targetConfidence < this.targetFloor(choice)) return 'unsure which element';
     return null;
   }
 

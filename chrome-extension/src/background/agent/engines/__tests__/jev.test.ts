@@ -10,6 +10,8 @@ import {
   interpretAnswers,
   JevDecisionEngine,
   searchAlreadySubmitted,
+  shortlistCandidates,
+  targetFloor,
   validateChoice,
 } from '../jev';
 
@@ -449,19 +451,69 @@ describe('Jev target narrowing', () => {
     expect(Object.keys(questions(1).click_target.criteria)).toEqual(GROUPS);
   });
 
-  it('defers without a second request when unsure of the group', async () => {
-    const { engine, fetchImpl } = narrowingEngine({
-      operation: choice('CLICK', CLICK_OPS),
-      click_target: choice('g2', GROUPS, 0.4),
+  it('asks again inside the likeliest groups when unsure of the group', async () => {
+    const weighed = (picked: Record<string, number>, ids: string[], confidence: number) => ({
+      choice: Object.entries(picked).sort((a, b) => b[1] - a[1])[0][0],
+      probabilities: Object.fromEntries(ids.map(id => [id, picked[id] ?? 0])),
+      confidence,
     });
+    const { engine, fetchImpl, questions } = narrowingEngine(
+      { operation: choice('CLICK', CLICK_OPS), click_target: weighed({ g2: 0.45, g4: 0.4, none: 0.15 }, GROUPS, 0.45) },
+      { click_target: choice('g2', GROUPS) },
+      { click_target: choice('9', ['8', '9', 'none']) },
+    );
+    const { decision, trace } = await engine.decide(busyPage(), signal);
+    expect(decision?.action).toEqual([{ click_element: { intent: 'CLICK [9] Repost', index: 9 } }]);
+    // [6-10] and [16-20] come back as five groups of two
+    expect(trace?.path).toEqual(['likeliest 10 of 25', '[8-9]']);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(questions(1).click_target.criteria.g2).toEqual({ range: '[8-9]', elements: ['Like 8', 'Repost'] });
+  });
+
+  it('defers when unsure and the likeliest options are all that was offered', async () => {
+    const { engine, fetchImpl } = narrowingEngine(
+      { operation: choice('CLICK', CLICK_OPS), click_target: choice('g2', GROUPS) },
+      { click_target: choice('9', ['6', '7', '8', '9', '10', 'none'], 0.4) },
+    );
     const { decision, trace } = await engine.decide(busyPage(), signal);
     expect(decision).toBeNull();
-    expect(trace).toMatchObject({
-      deferred: 'unsure which element',
-      target: '[6-10] Like 6 · Like 7 · Like 8 · Repost · Like 10',
+    expect(trace).toMatchObject({ deferred: 'unsure which element', target: '[9] Repost', path: ['[6-10]'] });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the set floor on small questions and eases it as options grow', () => {
+    expect(targetFloor(0.6, 3)).toBe(0.6);
+    expect(targetFloor(0.6, 10)).toBe(0.6);
+    expect(targetFloor(0.6, 100)).toBeCloseTo(0.36, 2);
+    expect(targetFloor(0.6, 255)).toBeCloseTo(0.29, 2);
+  });
+
+  it('takes a 0.4 pick among 100 buttons that a fixed 0.6 floor would defer', async () => {
+    const state = busyPage();
+    for (let i = 26; i <= 99; i++) state.selectorMap.set(i, el('button', {}, i, [text(`Like ${i}`)]));
+    const ids = [...state.selectorMap.keys()].map(String).concat('none');
+    const engine = new JevDecisionEngine({
+      apiKey: 'sk-or-test',
+      textLLM: {} as BaseChatModel,
+      getGoal: () => 'Repost the post',
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({ answers: { operation: choice('CLICK', CLICK_OPS), click_target: choice('9', ids, 0.4) } }),
+          { status: 200 },
+        ),
     });
-    expect(trace?.path).toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect((await engine.decide(state, signal)).decision?.action).toEqual([
+      { click_element: { intent: 'CLICK [9] Repost', index: 9 } },
+    ]);
+  });
+
+  it('shortlists the likeliest candidates in page order', () => {
+    const space = buildActionSpace(busyPage().selectorMap);
+    const probabilities = { '20': 0.3, '3': 0.25, '9': 0.2, none: 0.25 };
+    expect(Object.keys(shortlistCandidates(space.targets.CLICK!, probabilities, 255, 2)!)).toEqual(['3', '20']);
+    expect(shortlistCandidates(space.targets.CLICK!, { '3': 1 }, 255, 30)).toBeNull();
+    const all = Object.fromEntries(Object.keys(space.targets.CLICK!).map(k => [k, 1 / 25]));
+    expect(shortlistCandidates(space.targets.CLICK!, all, 255, 30)).toBeNull();
   });
 
   it('defers when no group or no element in the group matches', async () => {
