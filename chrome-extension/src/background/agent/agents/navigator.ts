@@ -474,6 +474,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   private readonly failedClicks = new FailedClickTracker();
   /** Set when a step left its remaining actions out because the page changed under them */
   private cutShort: ActionResult | null = null;
+  /** the last step's model call ran out of time: a second timeout in a row ends the task */
+  private timedOutLastStep = false;
 
   constructor(
     actionRegistry: NavigatorActionRegistry,
@@ -668,6 +670,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       const decisionStarted = performance.now();
       decisionSignal = this.context.interruptibleSignal();
       const { engineResult, modelOutput } = await this.decide(currentState, inputMessages, decisionSignal);
+      this.timedOutLastStep = false;
       const decisionMs = Math.round(performance.now() - decisionStarted);
 
       // check if the task is paused or stopped
@@ -781,8 +784,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         return agentOutput;
       }
       // Check if this is an authentication error
-      if (error instanceof ModelTimeoutError) {
+      // one stalled call among many is the provider's hiccup and the step is tried again; two in a row end the task
+      if (error instanceof ModelTimeoutError && this.timedOutLastStep) {
         throw error;
+      } else if (error instanceof ModelTimeoutError) {
+        this.timedOutLastStep = true;
       } else if (isAuthenticationError(error)) {
         throw new ChatModelAuthError(errorMessage, error);
       } else if (isBadRequestError(error)) {

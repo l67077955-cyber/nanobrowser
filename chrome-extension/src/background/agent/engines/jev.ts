@@ -22,6 +22,9 @@ const DEFAULT_MIN_TARGET_CONFIDENCE = 0.6;
 // The picked element must hold at least twice the weight of the next likeliest element: two look-alikes
 // splitting the weight is how wrong clicks happen, whatever the floor. 'none' is not a rival element.
 const MIN_HEAD_TO_HEAD = 2 / 3;
+// Scrolling and waiting have no target to check them by: below this a guessed scroll goes to the LLM.
+// Wandering scrolls up and down in practice scored 0.42-0.63; a scroll the page clearly needs scores 0.8+
+const MIN_CONTROL_CONFIDENCE = 0.75;
 // The target floor holds as set up to this many options; past it the floor eases with the option count
 const FLOOR_ANCHOR_OPTIONS = 10;
 // Offered with every target question so Jev is never forced to pick an element
@@ -823,6 +826,9 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     }
     const unsure = this.unsure(choice);
     if (unsure) return unsure;
+    if (choice.kind === 'control' && choice.confidence < MIN_CONTROL_CONFIDENCE) {
+      return `unsure whether to ${choice.operation.toLowerCase().replace('_', ' ')}`;
+    }
 
     // Same decision three times in a row means the page is not responding to it; let the LLM look.
     const key = choice.kind === 'action' ? `${choice.operation}:${choice.target.index}` : choice.operation;

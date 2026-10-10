@@ -200,6 +200,14 @@ describe('JevDecisionEngine', () => {
     expect((await engineWith(lowTarget).engine.decide(signupPage(), signal)).decision).toBeNull();
   });
 
+  it('leaves a scroll it is not sure of to the LLM', async () => {
+    const unsure = await engineWith({ operation: choice('SCROLL_DOWN', OPS, 0.6) }).engine.decide(signupPage(), signal);
+    expect(unsure.decision).toBeNull();
+    expect(unsure.trace?.deferred).toBe('unsure whether to scroll down');
+    const sure = await engineWith({ operation: choice('SCROLL_DOWN', OPS, 0.85) }).engine.decide(signupPage(), signal);
+    expect(sure.decision?.action).toEqual([{ next_page: { intent: 'scroll_down' } }]);
+  });
+
   it('records why a step was deferred', async () => {
     const done = await engineWith({ operation: choice('DONE', OPS) }).engine.decide(signupPage(), signal);
     expect(done.trace).toMatchObject({ operation: 'DONE', deferred: 'task looks done' });

@@ -1717,6 +1717,8 @@ export default class Page {
         content = await readField();
       }
       if (content !== null && text.trim() !== '' && content.trim() === '') {
+        const focused = await element.evaluate(el => el.ownerDocument.activeElement === el).catch(() => null);
+        logger.info('Typed field reads empty', { tagName, isContentEditable, isReadOnly, isDisabled, typed, focused });
         throw new Error('the field is still empty after typing, so it did not take the text');
       }
       return content;

@@ -965,6 +965,19 @@ window.buildDomTree = (
    * @returns {boolean} Whether the element is an interactive candidate.
    */
   /**
+   * A rating drawn as icons, so no text says it: "Five" for <p class="star-rating Five">, or the label of a
+   * role="img" rating ("Rated 4.5 out of 5 stars"). Empty for anything else.
+   */
+  function ratingHint(element) {
+    const label = element.getAttribute('aria-label') || element.getAttribute('title') || '';
+    if (/\b(star|rating|rated)\b/i.test(label) && /\d/.test(label)) return label.slice(0, 60);
+    const tokens = (typeof element.className === 'string' ? element.className : '').split(/\s+/);
+    if (!tokens.some(t => /rating|stars?$/i.test(t))) return '';
+    const score = tokens.find(t => /^(zero|one|two|three|four|five|\d(\.\d)?|\d-\d)$/i.test(t));
+    return score ? `${score} stars` : '';
+  }
+
+  /**
    * Words naming an element that shows no text and has no label: class names of it and of what it holds,
    * the symbol an svg <use> draws, an image's alt. Generated class names (css-1x2y3z, _a8F3k) are left out.
    */
@@ -1415,6 +1428,11 @@ window.buildDomTree = (
       // An icon-only button reads as a bare <div />: its class names and icon say what it is (like, share, close)
       const hint = iconHint(node);
       if (hint && !('icon' in nodeData.attributes)) nodeData.attributes['icon'] = hint;
+    }
+    // a rating drawn with icons is read from its class or label, whether or not it can be clicked
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const rating = ratingHint(node);
+      if (rating) nodeData.attributes['data-nb-rating'] = rating;
     }
 
     let nodeWasHighlighted = false;

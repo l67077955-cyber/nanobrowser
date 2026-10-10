@@ -392,6 +392,10 @@ export class DOMElementNode extends DOMBaseNode {
           formattedText.push(line);
         }
 
+        // A rating drawn as icons has no text of its own: say it, so the model need not dig for it
+        const rating = node.attributes['data-nb-rating'];
+        if (rating && node.isVisible) formattedText.push(`${depthStr}(rating: ${rating})`);
+
         // Process children regardless
         for (const child of node.children) {
           processNode(child, nextDepth);
