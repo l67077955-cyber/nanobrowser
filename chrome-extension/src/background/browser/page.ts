@@ -21,6 +21,7 @@ import {
 import { findThroughShadowRoots } from './dom/shadowPath';
 import { AGENT_MARK_ID, drawAgentMark, removeAgentMark, setAgentMarkVisible } from './agentMark';
 import { describeNotices, NOTICES_KEY, type PageNotice, watchPageNotices } from './notices';
+import { CONTROLS_KEY, probeControls } from './controlState';
 import { DOMElementNode, type DOMState } from './dom/views';
 import {
   type BrowserContextConfig,
@@ -1921,11 +1922,21 @@ export default class Page {
       const after = await this.probePage();
       // unreadable page: it navigated or closed, which counts as a change
       if (!after || after.url !== before.url) return null;
-      const unchanged = after.sig === before.sig && after.modals === before.modals;
+      const page = this._puppeteerPage;
+      // null when unknown (no snapshot, or the page did not answer): then only the text decides
+      const controls = page
+        ? await Promise.race([
+            page.evaluate(probeControls, CONTROLS_KEY, 'diff', 8).catch(() => null),
+            new Promise<null>(resolve => setTimeout(() => resolve(null), 1000)),
+          ])
+        : null;
+      const changed = controls && controls.length > 0 ? `it changed ${controls.join('; ')}` : null;
+      const unchanged = after.sig === before.sig && after.modals === before.modals && !changed;
       const dialogOpen = before.inModal && after.modals > 0;
       if (after.errors && after.errors !== before.errors) {
-        return `Possible validation errors visible after the click: ${after.errors}${dialogOpen ? ' (the dialog is still open)' : ''}`;
+        return `Possible validation errors visible after the click: ${after.errors}${dialogOpen ? ' (the dialog is still open)' : ''}${changed ? `; ${changed}` : ''}`;
       }
+      if (changed) return `The click took effect: ${changed}`;
       if (unchanged) {
         return `The page did not visibly change after the click${dialogOpen ? ' and the dialog is still open' : ''}${
           after.errors ? `; messages visible: ${after.errors}` : ''
@@ -1971,6 +1982,13 @@ export default class Page {
       }
 
       probe.before = (await this.probePage(element)) ?? undefined;
+      // the controls' state as well: a tick, a choice or an opened menu does not show in the page text
+      if (probe.before) {
+        await Promise.race([
+          this._puppeteerPage.evaluate(probeControls, CONTROLS_KEY, 'snapshot', 0).catch(() => null),
+          new Promise(resolve => setTimeout(resolve, 1000)),
+        ]);
+      }
 
       try {
         // A mouse click lands on whatever is on top at the element's center (a toast, a hover card, a

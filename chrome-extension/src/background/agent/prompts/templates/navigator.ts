@@ -60,6 +60,8 @@ Common action sequences:
 - Only use indexes of the interactive elements
 - Indexes change whenever the page changes (a field appears or goes, a popup opens): take every index from the current element list, never from your memory, the plan or an earlier step. Before clicking, make sure the element at that index is the one you mean (a checkbox is an input of type checkbox, not the link beside it)
 - A checkbox or radio button shows checked=true or checked=false: that is its real state, trust it over the screenshot. Click one only when it is not yet in the state you want, since a click toggles it
+- state= says how an element looks now: selected (the chosen day, tab or option), active or current (the item in use), open, disabled (it cannot be used yet), focused (where typed keys go), invalid. aria-selected, aria-current and aria-expanded say the same in the page's own words
+- After a click the result says what it changed ("The click took effect: the radio "Male": unchecked → checked"). Take that as done; click again only when it says nothing changed
 
 4. NAVIGATION & ERROR HANDLING:
 

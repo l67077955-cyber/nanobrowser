@@ -1425,6 +1425,19 @@ window.buildDomTree = (
       if (fieldTag === 'input' && (node.type === 'checkbox' || node.type === 'radio')) {
         nodeData.attributes['checked'] = node.checked ? 'true' : 'false';
       }
+      // What a person sees of its state: the chosen day or tab, the open menu, a greyed-out button, the field
+      // with the cursor. Pages often show it only through a class (react-datepicker__day--selected, is-active)
+      const stateWords = new Set();
+      const STATE_CLASS = /^(?:is-|has-)?(active|selected|current|checked|open|opened|expanded|highlighted)$|[-_](active|selected|current|checked|open|opened|expanded|highlighted)$/i;
+      for (const c of (typeof node.className === 'string' ? node.className : '').split(/\s+/)) {
+        const m = STATE_CLASS.exec(c);
+        if (m) stateWords.add((m[1] || m[2]).toLowerCase().replace(/^opened$/, 'open'));
+      }
+      if (node.disabled || node.getAttribute('aria-disabled') === 'true') stateWords.add('disabled');
+      if (node.readOnly) stateWords.add('readonly');
+      if (node.getAttribute('aria-invalid') === 'true') stateWords.add('invalid');
+      if (node.ownerDocument.activeElement === node) stateWords.add('focused');
+      if (stateWords.size) nodeData.attributes['state'] = [...stateWords].join(' ');
       // An icon-only button reads as a bare <div />: its class names and icon say what it is (like, share, close)
       const hint = iconHint(node);
       if (hint && !('icon' in nodeData.attributes)) nodeData.attributes['icon'] = hint;

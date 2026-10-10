@@ -3,7 +3,7 @@ import { HistoryTreeProcessor } from './history/service';
 import { capTextLength } from '../util';
 
 /** Attributes shown longer than the usual 15 characters: a link cut short gets opened as a broken URL */
-const ATTRIBUTE_CAPS: Record<string, number> = { icon: 60, href: 150 };
+const ATTRIBUTE_CAPS: Record<string, number> = { icon: 60, href: 150, state: 40 };
 
 export const DEFAULT_INCLUDE_ATTRIBUTES = [
   'title',
@@ -19,6 +19,11 @@ export const DEFAULT_INCLUDE_ATTRIBUTES = [
   'aria-checked',
   'aria-label',
   'aria-expanded',
+  'aria-selected',
+  'aria-current',
+  'aria-pressed',
+  // what a person sees of its state: selected, active, open, disabled, focused (buildDomTree)
+  'state',
   'href',
   // what an icon-only element shows, worked out when the page was read (buildDomTree iconHint)
   'icon',
