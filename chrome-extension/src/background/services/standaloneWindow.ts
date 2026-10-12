@@ -35,15 +35,20 @@ export async function findStandaloneWindowId(): Promise<number | undefined> {
   return tabs.find(tab => tab.url === PANEL_URL)?.windowId;
 }
 
-/** Opens Nanobrowser in a window of its own, where it was left the last time; an open one comes to the front */
+/** How far each further window is moved from the one before, so that it does not hide it */
+const CASCADE_STEP = 28;
+
+/**
+ * Opens Nanobrowser in a new window of its own, where it was left the last time. Each window is an agent of its
+ * own, so the ones already open stay as they are and a new one opens a little below and to the right of them.
+ */
 export async function openStandaloneWindow(): Promise<void> {
-  const openWindowId = await findStandaloneWindowId();
-  if (openWindowId !== undefined) {
-    await chrome.windows.update(openWindowId, { focused: true });
-    return;
-  }
   const stored = await chrome.storage.local.get(BOUNDS_KEY);
   let bounds: Bounds = { ...DEFAULT_SIZE, ...stored[BOUNDS_KEY] };
+  const open = (await chrome.tabs.query({ windowType: 'popup' })).filter(tab => tab.url === PANEL_URL).length;
+  if (open && bounds.left !== undefined && bounds.top !== undefined) {
+    bounds = { ...bounds, left: bounds.left + open * CASCADE_STEP, top: bounds.top + open * CASCADE_STEP };
+  }
   const browser = await chrome.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => undefined);
   if (browser) bounds = fitBounds(bounds, browser);
   try {
@@ -79,7 +84,8 @@ export function setupStandaloneWindow(): void {
 
   chrome.windows.onBoundsChanged.addListener(async win => {
     if (win.type !== 'popup' || win.state !== 'normal') return;
-    if (win.id !== (await findStandaloneWindowId())) return;
+    const tabs = await chrome.tabs.query({ windowId: win.id });
+    if (!tabs.some(tab => tab.url === PANEL_URL)) return;
     const { left, top, width, height } = win;
     await chrome.storage.local.set({ [BOUNDS_KEY]: { left, top, width, height } });
   });

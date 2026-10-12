@@ -109,7 +109,7 @@ An MCP client that only speaks stdio (such as Claude Desktop's config file) can 
 | `get_task`    | State, result and latest steps of a task; waits up to `wait_seconds` for it to end. A task waiting for the user says what it asks (`question`, `fields`) and brings a screenshot of the page once, as an image. |
 | `answer_task` | Pass the user's reply to a waiting task (`answer`, or `approve` for an approval).            |
 | `cancel_task` | Stop a running task.                                                                       |
-| `status`      | The browsers connected (name, id, platform, busy) and the default one.                     |
+| `status`      | The browsers connected (name, id, platform, how many tasks run, busy when no more can start) and the default one. |
 
 A task is `running`, `waiting_user`, `waiting_confirmation`, `completed`, `failed` or `cancelled`.
 
@@ -124,8 +124,9 @@ computer, else to the browser that connected last.
 
 ## What a remote agent can and cannot do
 
-- One task at a time in each browser. While the user runs a task of their own, `run_task` is refused; a
-  task the user starts in the side panel takes over from a remote one.
+- Up to 4 tasks run at once in each browser, the user's own included, and `run_task` is refused while that
+  many run. Each works in tabs of its own: one that would work in a window another task works in gets a new
+  window, opened on the same page. A task the user starts does not stop a remote one.
 - When a task needs the user (a code sent to their phone, a captcha, a QR code, approval of a sensitive
   action), it waits. The agent can pass on the question and the page and give back the user's reply with
   `answer_task`; the user can also answer in the side panel, which a notification opens, or on Telegram

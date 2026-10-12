@@ -10,6 +10,10 @@ type Handoff = { sessionId: string; at: number; from: string };
 
 // tells this page's own handoff apart from one meant for it: the page handing over must not take it back
 const PAGE_ID = crypto.randomUUID();
+// Every window is an agent of its own: only the panel opened for the move takes the chat over, not the other
+// windows already open. It may start loading a moment before the handoff is written.
+const OPENED_AT = Date.now();
+const OPENING_SLACK_MS = 3_000;
 
 /** Remembers which chat was open, for the panel that opens next to show it */
 function handOff(sessionId: string | null): Promise<void> {
@@ -17,14 +21,12 @@ function handOff(sessionId: string | null): Promise<void> {
   return chrome.storage.session.set({ [HANDOFF_KEY]: { sessionId, at: Date.now(), from: PAGE_ID } satisfies Handoff });
 }
 
-/**
- * Calls `show` with the chat the side panel or window it replaced had open: once on opening, and again when
- * an already open window is brought to the front for another chat
- */
+/** Calls `show` with the chat the side panel or window it replaced had open, once on opening */
 export function useHandedOffSession(show: (sessionId: string) => void): void {
   useEffect(() => {
     const take = (handoff: Handoff | undefined) => {
       if (!handoff || handoff.from === PAGE_ID || Date.now() - handoff.at > HANDOFF_TTL_MS) return;
+      if (OPENED_AT < handoff.at - OPENING_SLACK_MS) return;
       void chrome.storage.session.remove(HANDOFF_KEY);
       show(handoff.sessionId);
     };

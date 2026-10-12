@@ -463,6 +463,15 @@
   "bg_errors_noRunningTask": {
     "message": "沒有執行中的任務"
   },
+  "bg_errors_tooManyAgents": {
+    "message": "已有 $COUNT$ 個代理在執行，已達同時執行的上限。請停止一個，或等其中一個完成。",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "4"
+      }
+    }
+  },
   "bg_cmd_newTask_noTask": {
     "message": "未提供任務"
   },

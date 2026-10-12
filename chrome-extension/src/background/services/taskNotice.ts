@@ -27,14 +27,22 @@ export async function noticeTask(
   kind: TaskNoticeKind,
   details: string,
   tabId: number | null,
-  { evenInFront = false }: { evenInFront?: boolean } = {},
+  {
+    evenInFront = false,
+    panelWindowId,
+  }: {
+    evenInFront?: boolean;
+    /** the window of Nanobrowser's own that shows the task, when it has one */
+    panelWindowId?: number;
+  } = {},
 ): Promise<void> {
   try {
     const { notifyOnFinish } = await generalSettingsStore.getSettings();
     if (!notifyOnFinish) return;
 
     const tab = tabId ? await chrome.tabs.get(tabId).catch(() => undefined) : undefined;
-    const windowIds = [tab?.windowId, await findStandaloneWindowId()].filter((id): id is number => id !== undefined);
+    const panelWindow = panelWindowId ?? (await findStandaloneWindowId());
+    const windowIds = [tab?.windowId, panelWindow].filter((id): id is number => id !== undefined);
     const focused = await chrome.windows.getLastFocused().catch(() => undefined);
     if (!evenInFront && focused?.focused && focused.id !== undefined && windowIds.includes(focused.id)) return;
 
@@ -44,7 +52,7 @@ export async function noticeTask(
 
     const title = t(kind === 'done' ? 'bg_notice_done' : kind === 'failed' ? 'bg_notice_failed' : 'bg_notice_waiting');
     const message = plainText(details).slice(0, 240) || title;
-    await chrome.notifications.create(`${NOTICE_PREFIX}${tabId ?? ''}:${Date.now()}`, {
+    await chrome.notifications.create(`${NOTICE_PREFIX}${tabId ?? ''}:${panelWindow ?? ''}:${Date.now()}`, {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icon-128.png'),
       title,
@@ -64,13 +72,19 @@ export function setupTaskNotices(): void {
     if (!notificationId.startsWith(NOTICE_PREFIX)) return;
     chrome.notifications.clear(notificationId);
     try {
-      const tabId = Number.parseInt(notificationId.slice(NOTICE_PREFIX.length), 10);
+      const [tabPart, panelPart] = notificationId.slice(NOTICE_PREFIX.length).split(':');
+      const tabId = Number.parseInt(tabPart, 10);
       const tab = Number.isNaN(tabId) ? undefined : await chrome.tabs.get(tabId).catch(() => undefined);
       if (tab?.id !== undefined && tab.windowId !== undefined) {
         await chrome.tabs.update(tab.id, { active: true });
         await chrome.windows.update(tab.windowId, { focused: true });
       }
-      const standaloneWindowId = await findStandaloneWindowId();
+      // the window that showed the task, if still open, else any of Nanobrowser's windows
+      const panelWindowId = Number.parseInt(panelPart, 10);
+      const panelWindow = Number.isNaN(panelWindowId)
+        ? undefined
+        : await chrome.windows.get(panelWindowId).catch(() => undefined);
+      const standaloneWindowId = panelWindow?.id ?? (await findStandaloneWindowId());
       if (standaloneWindowId !== undefined) await chrome.windows.update(standaloneWindowId, { focused: true });
       // the click is the user's gesture the side panel needs to be opened; when it is open already this does nothing
       else if (tab?.windowId !== undefined)

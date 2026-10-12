@@ -472,6 +472,15 @@
   "bg_errors_noRunningTask": {
     "message": "No running task"
   },
+  "bg_errors_tooManyAgents": {
+    "message": "$COUNT$ agents are running already, as many as may run at once. Stop one, or wait for one to finish.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "4"
+      }
+    }
+  },
   "bg_cmd_newTask_noTask": {
     "message": "No task provided"
   },

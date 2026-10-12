@@ -101,14 +101,24 @@ export function createStorage<D = string>(key: string, fallback: D, config?: Sto
     listeners.forEach(listener => listener());
   };
 
-  const set = async (valueOrUpdate: ValueOrUpdate<D>) => {
-    if (!initedCache) {
+  const write = async (valueOrUpdate: ValueOrUpdate<D>, fresh: boolean) => {
+    if (!initedCache || fresh) {
       cache = await get();
     }
     cache = await updateCache(valueOrUpdate, cache);
 
     await chrome?.storage[storageEnum].set({ [key]: serialize(cache) });
     _emitChange();
+  };
+
+  // Several windows and the service worker change the same keys (the chat list, as each one's agent saves its
+  // steps): an update made from the value before it holds a lock all of them share, and reads that value afresh
+  // inside it, so that two updates at once both land.
+  const set = async (valueOrUpdate: ValueOrUpdate<D>) => {
+    if (typeof valueOrUpdate !== 'function' || typeof navigator === 'undefined' || !navigator.locks) {
+      return write(valueOrUpdate, false);
+    }
+    await navigator.locks.request(`nb-storage:${storageEnum}:${key}`, () => write(valueOrUpdate, true));
   };
 
   const subscribe = (listener: () => void) => {

@@ -965,12 +965,18 @@ const SidePanel = () => {
   showHandedOffRef.current = showStopButton ? () => Promise.resolve() : handleSessionSelect;
   useHandedOffSession(useCallback((sessionId: string) => void showHandedOffRef.current(sessionId), []));
 
-  // Closed and opened again, the panel shows the chat it had open, unless a running task took its place meanwhile.
-  // Kept for the browser session: a new chat stays new, and a restarted browser starts with one.
+  // Closed and opened again, the side panel shows the chat it had open, unless a running task took its place
+  // meanwhile. Kept for the browser session: a new chat stays new, and a restarted browser starts with one. A
+  // window of its own is a new agent each time it opens, and starts with a new chat.
   const restoredRef = useRef(false);
+  const inWindowRef = useRef(false);
   useEffect(() => {
-    chrome.storage.session
-      .get(LAST_SESSION_KEY)
+    chrome.tabs
+      .getCurrent()
+      .then(tab => {
+        inWindowRef.current = !!tab;
+        return tab ? ({} as Record<string, unknown>) : chrome.storage.session.get(LAST_SESSION_KEY);
+      })
       .then(stored => {
         const sessionId = stored[LAST_SESSION_KEY];
         if (typeof sessionId === 'string' && !sessionIdRef.current) void showHandedOffRef.current(sessionId);
@@ -981,7 +987,7 @@ const SidePanel = () => {
       });
   }, []);
   useEffect(() => {
-    if (!restoredRef.current) return;
+    if (!restoredRef.current || inWindowRef.current) return;
     const saved = currentSessionId
       ? chrome.storage.session.set({ [LAST_SESSION_KEY]: currentSessionId })
       : chrome.storage.session.remove(LAST_SESSION_KEY);

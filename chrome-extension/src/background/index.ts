@@ -12,7 +12,6 @@ import {
   remoteControlStore,
   type ScheduledTask,
   type ActionMode,
-  type StepMeta,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
 import BrowserContext from './browser/context';
@@ -31,27 +30,34 @@ import { formatMemoryContext, memoryInstructions, rememberFromMessages, remember
 import { RemoteControl, type RemoteTaskEnd } from './services/remote';
 import { Scheduler, type ScheduledRunEnd } from './services/scheduler';
 import { saveUnattended, unattendedSaved } from './services/unattended';
+import {
+  type Instance,
+  instances,
+  MAX_RUNNING,
+  newInstance,
+  panels,
+  placeInstance,
+  pruneInstances,
+  runningInstances,
+  showIn,
+  shownInstance,
+} from './services/instances';
 
 const logger = createLogger('background');
 
-const browserContext = new BrowserContext({});
-let currentExecutor: Executor | null = null;
-/** the Planner model of the current executor: it also reads the user's messages for things to remember */
-let memoryLLM: BaseChatModel | null = null;
-let currentPort: chrome.runtime.Port | null = null;
-/** The task being worked on now and who asked for it: the side panel, or an agent through the bridge */
-let activeTask: {
-  taskId: string;
-  source: 'panel' | 'remote' | 'scheduled';
-} | null = null;
-/**
- * The side panel that shows the task the panel asked for and saves its steps to the chat. The task goes on
- * when that panel is closed: until another one opens, the steps are saved here instead.
- */
-let viewer: chrome.runtime.Port | null = null;
-/** the question or approval that task asked for last, for a side panel opened while it still waits to ask again */
-type WaitingFor = { state: ExecutionState; details: string; meta?: StepMeta };
-let waitingFor: WaitingFor | null = null;
+/** for the commands that need a page when no agent is at hand */
+const spareContext = new BrowserContext({});
+
+/** The window of Nanobrowser's own that shows the agent's task; a docked side panel has none */
+function panelWindowOf(instance: Instance): number | undefined {
+  return instance.viewer?.sender?.tab?.windowId;
+}
+
+/** The agent cannot start: as many as may run at once are running */
+function tooManyAgents(): Error {
+  return new Error(t('bg_errors_tooManyAgents', [String(MAX_RUNNING)]));
+}
+
 const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
 const OPTIONS_URL = chrome.runtime.getURL('options/index.html');
 
@@ -66,22 +72,31 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 // Listen for debugger detached event
-// if canceled_by_user, remove the tab from the browser context
+// if canceled_by_user, stop the agent that worked in the tab
 chrome.debugger.onDetach.addListener(async (source, reason) => {
   logger.info('Debugger detached:', source, reason);
+  if (!source.tabId) return;
   // whatever the reason, the page of that tab has no debugger any more
-  if (source.tabId) browserContext.forgetAttachedPage(source.tabId);
+  for (const instance of instances.values()) instance.browserContext.forgetAttachedPage(source.tabId);
+  spareContext.forgetAttachedPage(source.tabId);
   if (reason === 'canceled_by_user') {
-    if (source.tabId) {
-      currentExecutor?.cancel();
-      await browserContext.cleanup();
+    for (const instance of instances.values()) {
+      if (instance.browserContext.currentTabId !== source.tabId) continue;
+      instance.executor?.cancel();
+      await instance.browserContext.cleanup();
     }
   }
 });
 
 // Cleanup when tab is closed
 chrome.tabs.onRemoved.addListener(tabId => {
-  browserContext.removeAttachedPage(tabId);
+  for (const instance of instances.values()) instance.browserContext.removeAttachedPage(tabId);
+  spareContext.removeAttachedPage(tabId);
+});
+
+// an agent whose window was closed works where it is asked from next time
+chrome.windows.onRemoved.addListener(windowId => {
+  for (const instance of instances.values()) if (instance.windowId === windowId) instance.windowId = null;
 });
 
 logger.info(`background loaded · build ${import.meta.env.VITE_BUILD_INFO || 'unknown'}`);
@@ -89,7 +104,7 @@ logger.info(`background loaded · build ${import.meta.env.VITE_BUILD_INFO || 'un
 // A task can run with no side panel open, and then nothing else may wake the service worker for a while
 // (a model taking long to answer): an extension call now and then keeps it from being stopped as idle
 setInterval(() => {
-  if (activeTask) void chrome.runtime.getPlatformInfo();
+  if (runningInstances().length) void chrome.runtime.getPlatformInfo();
 }, 20_000);
 
 // Initialize analytics
@@ -99,17 +114,17 @@ analytics.init().catch(error => {
 
 // An executor holds the models and options it was set up with. When a setting is saved, the next message of
 // a running session gets a new executor instead of the stale one, so no reload is needed for it to apply.
-let settingsChanged = false;
+let settingsVersion = 0;
 for (const store of [llmProviderStore, agentModelStore, generalSettingsStore, firewallStore, captchaModelStore]) {
   store.subscribe(() => {
-    settingsChanged = true;
+    settingsVersion++;
   });
 }
 
 // A stricter action mode holds for a running task from its next action on, not only from the next message
 generalSettingsStore.subscribe(async () => {
   const { actionMode } = await generalSettingsStore.getSettings();
-  currentExecutor?.setActionMode(actionMode);
+  for (const instance of instances.values()) instance.executor?.setActionMode(actionMode);
 });
 
 /** What the agents are told about the action mode the user picked; auto needs no words */
@@ -165,7 +180,7 @@ chrome.runtime.onConnect.addListener(port => {
       return;
     }
 
-    currentPort = port;
+    panels.set(port, null);
     // the dot on the toolbar icon says a task has finished since the panel was last open
     void chrome.action.setBadgeText({ text: '' });
     void attachPanel(port).catch(error => logger.error('Failed to show the running task:', error));
@@ -181,16 +196,20 @@ chrome.runtime.onConnect.addListener(port => {
           case 'new_task': {
             if (!message.task) return port.postMessage({ type: 'error', error: t('bg_cmd_newTask_noTask') });
             if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
+            if (!message.taskId) return port.postMessage({ type: 'error', error: t('bg_errors_noTaskId') });
 
             logger.info('new_task', message.tabId, message.task);
-            // Otherwise the previous executor keeps running unreachable and both fight over the same tab
-            await currentExecutor?.cancel();
-            currentExecutor = await setupExecutor(message.taskId, message.task, browserContext);
-            subscribeToExecutorEvents(currentExecutor);
-
-            const result = await executeForPanel(currentExecutor, message.taskId, port);
-            logger.info('new_task execution result', message.tabId, result);
-            void updateMemories(currentExecutor);
+            // a new chat in this panel replaces the task it showed; the agents of other panels go on
+            const before = shownInstance(port);
+            if (before?.source === 'panel' && before.active) await before.executor?.cancel();
+            if (runningInstances().length >= MAX_RUNNING) throw tooManyAgents();
+            const instance = instances.get(message.taskId) ?? newInstance(message.taskId, 'panel');
+            await instance.executor?.cancel();
+            await startForPanel(instance, port, async () => {
+              await placeInstance(instance, message.tabId);
+              return setupExecutor(instance, message.task);
+            });
+            logger.info('new_task execution result', message.tabId);
             break;
           }
 
@@ -198,12 +217,13 @@ chrome.runtime.onConnect.addListener(port => {
             if (!message.task) return port.postMessage({ type: 'error', error: t('bg_cmd_followUpTask_noTask') });
             if (!message.taskId) return port.postMessage({ type: 'error', error: t('bg_errors_noTaskId') });
             // a message sent while the task runs is taken in by it, as the next thing to consider
-            if (activeTask?.taskId === message.taskId && currentExecutor?.steer(message.task)) {
+            const running = instances.get(message.taskId);
+            if (running?.active && running.executor?.steer(message.task)) {
               logger.info('steer', message.task);
               break;
             }
             // the task ended in the meantime: once it has wound down, the message is a follow-up
-            await panelRun?.catch(() => {});
+            await running?.run?.catch(() => {});
           }
           // falls through
           case 'follow_up_task': {
@@ -216,81 +236,88 @@ chrome.runtime.onConnect.addListener(port => {
             const continues = message.continues === true;
             logger.info('follow_up_task', message.tabId, message.task, continues ? '(continues)' : '');
 
-            await browserContext.resumeLastTab().catch(error => logger.warning('resumeLastTab failed', error));
-            const sameSession = currentExecutor && (await currentExecutor.getCurrentTaskId()) === message.taskId;
-            if (currentExecutor && sameSession && !currentExecutor.stopped && !settingsChanged) {
-              if (continues) currentExecutor.continueTask(message.task);
-              else currentExecutor.addFollowUpTask(message.task);
-            } else {
-              // The executor of this session is gone (side panel closed, service worker restarted, another
-              // session ran since), was cancelled, or was set up before the settings changed: a new one,
-              // built from the settings as they are now, goes on from what that one knew
-              const snapshot =
-                currentExecutor && sameSession
-                  ? currentExecutor.snapshot()
-                  : await loadSessionSnapshot(message.taskId, message.sentAt);
+            const instance = instances.get(message.taskId) ?? newInstance(message.taskId, 'panel');
+            if (!instance.active && runningInstances().length >= MAX_RUNNING) throw tooManyAgents();
+            await startForPanel(instance, port, async () => {
+              const context = instance.browserContext;
+              await context.resumeLastTab().catch(error => logger.warning('resumeLastTab failed', error));
+              await placeInstance(instance, message.tabId);
+              const executor = instance.executor;
+              if (executor && !executor.stopped && instance.settingsVersion === settingsVersion) {
+                if (continues) executor.continueTask(message.task);
+                else executor.addFollowUpTask(message.task);
+                return executor;
+              }
+              // The executor of this session is gone (service worker restarted, dropped while idle), was
+              // cancelled, or was set up before the settings changed: a new one, built from the settings as they
+              // are now, goes on from what that one knew
+              const snapshot = executor
+                ? executor.snapshot()
+                : await loadSessionSnapshot(message.taskId, message.sentAt);
               logger.info('follow_up_task: reloading the session context', snapshot?.messages.length ?? 0);
-              await currentExecutor?.cancel();
-              currentExecutor = await setupExecutor(message.taskId, message.task, browserContext, snapshot, {
-                continues,
-              });
-            }
-            // Re-subscribe to events in case the previous subscription was cleaned up
-            subscribeToExecutorEvents(currentExecutor);
-            const result = await executeForPanel(currentExecutor, message.taskId, port);
-            logger.info('follow_up_task execution result', message.tabId, result);
-            void updateMemories(currentExecutor);
+              await executor?.cancel();
+              return setupExecutor(instance, message.task, snapshot, { continues });
+            });
+            logger.info('follow_up_task execution result', message.tabId);
             break;
           }
 
           case 'cancel_task': {
-            if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
-            // a stop meant for a task that has already given way to another one must not end that one
-            if (message.taskId && activeTask?.source === 'panel' && activeTask.taskId !== message.taskId) {
+            // the panel names its chat; a bridge's task it shows has an id of its own
+            const instance = instances.get(message.taskId) ?? shownInstance(port);
+            if (!instance?.executor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
+            if (!instance.active) {
               logger.info('cancel_task for a task no longer running, ignored', message.taskId);
               break;
             }
-            logger.info('cancel_task: the user stopped the task in the side panel', message.taskId);
-            await currentExecutor.cancel();
+            logger.info('cancel_task: the user stopped the task in the side panel', instance.taskId);
+            await instance.executor.cancel();
             break;
           }
 
           case 'resume_task': {
-            if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_cmd_resumeTask_noTask') });
-            await currentExecutor.resume();
+            const executor = shownInstance(port)?.executor;
+            if (!executor) return port.postMessage({ type: 'error', error: t('bg_cmd_resumeTask_noTask') });
+            await executor.resume();
             return port.postMessage({ type: 'success' });
           }
 
           case 'confirm_action': {
-            if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
-            currentExecutor.confirmAction(message.approved === true);
+            const executor = shownInstance(port)?.executor;
+            if (!executor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
+            executor.confirmAction(message.approved === true);
             return port.postMessage({ type: 'success' });
           }
 
           case 'reveal_ask': {
             // the user wants to see what the question is about: its tab, with the field in view
-            await currentExecutor?.revealAsked(typeof message.field === 'number' ? message.field : undefined);
+            await shownInstance(port)?.executor?.revealAsked(
+              typeof message.field === 'number' ? message.field : undefined,
+            );
             break;
           }
 
           case 'ask_captcha': {
             const field = Number(message.field);
-            const image = await currentExecutor?.askedCaptcha(field, message.refresh === true).catch(error => {
-              logger.warning('Failed to show the captcha the user is asked for:', error);
-              return null;
-            });
+            const image = await shownInstance(port)
+              ?.executor?.askedCaptcha(field, message.refresh === true)
+              .catch(error => {
+                logger.warning('Failed to show the captcha the user is asked for:', error);
+                return null;
+              });
             return port.postMessage({ type: 'ask_captcha', field, image: image ?? null });
           }
 
           case 'pause_task': {
-            if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
-            await currentExecutor.pause();
+            const executor = shownInstance(port)?.executor;
+            if (!executor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
+            await executor.pause();
             return port.postMessage({ type: 'success' });
           }
 
           case 'screenshot': {
             if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
-            const page = await browserContext.switchTab(message.tabId);
+            const page = await (shownInstance(port)?.browserContext ?? spareContext).switchTab(message.tabId);
             const screenshot = await page.takeScreenshot();
             logger.info('screenshot', message.tabId, screenshot);
             return port.postMessage({ type: 'success', screenshot });
@@ -298,7 +325,7 @@ chrome.runtime.onConnect.addListener(port => {
 
           case 'state': {
             try {
-              const browserState = await browserContext.getState(true);
+              const browserState = await (shownInstance(port)?.browserContext ?? spareContext).getState(true);
               const elementsText = browserState.elementTree.clickableElementsToString(
                 DEFAULT_AGENT_OPTIONS.includeAttributes,
               );
@@ -313,7 +340,7 @@ chrome.runtime.onConnect.addListener(port => {
           }
 
           case 'nohighlight': {
-            const page = await browserContext.getCurrentPage();
+            const page = await (shownInstance(port)?.browserContext ?? spareContext).getCurrentPage();
             await page.removeHighlight();
             return port.postMessage({ type: 'success', msg: t('bg_cmd_nohighlight_ok') });
           }
@@ -324,17 +351,21 @@ chrome.runtime.onConnect.addListener(port => {
             if (!message.historySessionId)
               return port.postMessage({ type: 'error', error: t('bg_cmd_replay_noHistory') });
             logger.info('replay', message.tabId, message.taskId, message.historySessionId);
+            if (runningInstances().length >= MAX_RUNNING) throw tooManyAgents();
 
+            const instance = instances.get(message.taskId) ?? newInstance(message.taskId, 'panel');
             try {
               // Switch to the specified tab
-              await browserContext.switchTab(message.tabId);
+              await instance.browserContext.switchTab(message.tabId);
               // Setup executor with the new taskId and a dummy task description
-              await currentExecutor?.cancel();
-              currentExecutor = await setupExecutor(message.taskId, message.task, browserContext);
-              subscribeToExecutorEvents(currentExecutor);
+              await instance.executor?.cancel();
+              const executor = await setupExecutor(instance, message.task);
+              instance.executor = executor;
+              showIn(port, instance);
+              subscribeToExecutorEvents(instance, executor);
 
               // Run replayHistory with the history session ID
-              const result = await currentExecutor.replayHistory(message.historySessionId);
+              const result = await executor.replayHistory(message.historySessionId);
               logger.debug('replay execution result', message.tabId, result);
             } catch (error) {
               logger.error('Replay failed:', error);
@@ -360,77 +391,96 @@ chrome.runtime.onConnect.addListener(port => {
 
     port.onDisconnect.addListener(() => {
       // also when the side panel or its window is closed: a task goes on without it
-      logger.info('Side panel disconnected', activeTask ? `(task from ${activeTask.source})` : '(no task)');
-      if (currentPort === port) currentPort = null;
-      if (viewer === port) viewer = null;
+      const shown = shownInstance(port);
+      logger.info('Side panel disconnected', shown?.active ? `(task from ${shown.source})` : '(no task)');
+      panels.delete(port);
+      for (const instance of instances.values()) if (instance.viewer === port) instance.viewer = null;
+      pruneInstances();
     });
   }
 });
 
 /**
- * A side panel that opens while a task the panel asked for runs shows that task: its chat as saved so far,
- * then the steps as they come, and the question or approval the task waits for
+ * A side panel that opens while a task runs that no panel shows takes it over: the chat of a panel's task as
+ * saved so far, then the steps as they come, and the question or approval the task waits for. A panel that
+ * opens with every running task shown elsewhere starts a chat of its own.
  */
 async function attachPanel(port: chrome.runtime.Port): Promise<void> {
-  const task = activeTask;
-  if (task?.source === 'remote' && remoteTask?.taskId === task.taskId) {
-    const waiting = currentExecutor?.waitingForUser ? remoteTask.waitingFor : null;
-    port.postMessage({ type: 'remote_task', taskId: task.taskId, task: remoteTask.task, waitingFor: waiting });
+  const unseen = runningInstances()
+    .filter(instance => !instance.viewer && instance.source !== 'scheduled')
+    .reverse();
+  const instance = unseen.find(other => other.source === 'panel') ?? unseen[0];
+  if (!instance) return;
+  if (instance.source === 'remote') {
+    showIn(port, instance);
+    const waiting = instance.executor?.waitingForUser ? instance.waitingFor : null;
+    port.postMessage({ type: 'remote_task', taskId: instance.taskId, task: instance.remoteTask, waitingFor: waiting });
     return;
   }
-  if (task?.source !== 'panel' || viewer === port) return;
   await unattendedSaved();
-  // the panel closed again, another one opened, or the task ended while the steps were saved
-  if (activeTask !== task || currentPort !== port) return;
-  viewer = port;
-  logger.info('Side panel shows the running task', task.taskId);
+  // the panel closed again, another one took the task, or the task ended while the steps were saved
+  if (!instance.active || instance.viewer || !panels.has(port)) return;
+  showIn(port, instance);
+  logger.info('Side panel shows the running task', instance.taskId);
   // the planner goes on reporting while a question waits, so the last step says nothing about whether it does
-  const waiting = currentExecutor?.waitingForUser ? waitingFor : null;
-  port.postMessage({ type: 'task_attached', taskId: task.taskId, waitingFor: waiting });
+  const waiting = instance.executor?.waitingForUser ? instance.waitingFor : null;
+  port.postMessage({ type: 'task_attached', taskId: instance.taskId, waitingFor: waiting });
 }
 
-/** The run of the latest task the side panel asked for, until it has ended */
-let panelRun: Promise<void> | null = null;
-
-/** Run a task the side panel asked for. It takes over from whatever task was running. */
-async function executeForPanel(executor: Executor, taskId: string, port: chrome.runtime.Port): Promise<void> {
-  const claim = { taskId, source: 'panel' as const };
-  activeTask = claim;
-  viewer = port;
-  waitingFor = null;
+/**
+ * Run a task a side panel asked for, in the agent of its chat, shown in that panel. `prepare` places the agent
+ * and gives the executor to run; it runs once the agent counts as running, so that agents started together
+ * each take a window of their own.
+ */
+async function startForPanel(
+  instance: Instance,
+  port: chrome.runtime.Port,
+  prepare: () => Promise<Executor>,
+): Promise<void> {
+  instance.source = 'panel';
+  instance.active = true;
+  showIn(port, instance);
+  instance.waitingFor = null;
+  let executor: Executor;
+  try {
+    executor = await prepare();
+  } catch (error) {
+    instance.active = false;
+    throw error;
+  }
+  instance.executor = executor;
+  subscribeToExecutorEvents(instance, executor);
   const run = executor.execute().finally(() => {
-    if (activeTask === claim) activeTask = null;
+    if (instance.run === run) {
+      instance.run = null;
+      instance.active = false;
+      pruneInstances();
+    }
   });
-  panelRun = run;
+  instance.run = run;
   await run;
+  void updateMemories(instance, executor);
 }
 
 /**
  * A window for a task to work in: Chrome started by the bridge runs with none, and so does one whose windows
  * were all closed while it keeps running in the background
  */
-async function ensureBrowserWindow(): Promise<void> {
+async function ensureBrowserWindow(instance: Instance): Promise<void> {
   const windows = await chrome.windows.getAll({ windowTypes: ['normal'] });
   if (windows.length > 0) return;
   const window = await chrome.windows.create({ url: 'about:blank', focused: false, state: 'normal' });
   const tabId = window?.tabs?.[0]?.id;
-  if (tabId) browserContext.updateCurrentTabId(tabId);
+  if (tabId) instance.browserContext.updateCurrentTabId(tabId);
 }
 
 /** How long a remote task waits for the user to answer or approve before it goes on without them */
 const REMOTE_USER_WAIT_MS = 10 * 60_000;
-/** The remote task running now, and what it waits for from the user, for a side panel opened meanwhile */
-let remoteTask: { taskId: string; task: string; waitingFor: WaitingFor | null } | null = null;
 
-/**
- * Start a task for an agent on the bridge and return its id; the task goes on after that and its end is
- * reported to the bridge. The user comes first: a task of theirs is not interrupted, and one they start
- * from the side panel takes over.
- */
 /** What the page of a task waiting for the user shows, or nothing when it cannot be taken in a few seconds */
-async function waitingScreenshot(): Promise<string | undefined> {
+async function waitingScreenshot(context: BrowserContext): Promise<string | undefined> {
   try {
-    const page = await browserContext.getCurrentPage();
+    const page = await context.getCurrentPage();
     const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 3000));
     return (await Promise.race([page.takeScreenshot(), timeout])) ?? undefined;
   } catch (error) {
@@ -439,26 +489,40 @@ async function waitingScreenshot(): Promise<string | undefined> {
   }
 }
 
+/** A side panel showing no running task, the latest opened first, for a bridge's task to show in */
+function idlePanel(): chrome.runtime.Port | null {
+  const idle = [...panels.keys()].filter(port => !shownInstance(port)?.active);
+  return idle[idle.length - 1] ?? null;
+}
+
+/**
+ * Start a task for an agent on the bridge and return its id; the task goes on after that and its end is
+ * reported to the bridge. It runs beside the user's own tasks, in a window of its own when one of theirs
+ * works in the window it would use.
+ */
 async function startRemoteTask(task: string): Promise<string> {
-  if (activeTask) throw new Error('The browser is busy with another task');
+  if (runningInstances().length >= MAX_RUNNING) throw tooManyAgents();
   const taskId = `remote-${crypto.randomUUID()}`;
-  const claim = { taskId, source: 'remote' as const };
-  activeTask = claim;
+  const instance = newInstance(taskId, 'remote');
+  instance.remoteTask = task;
+  instance.active = true;
   let executor: Executor;
   try {
-    await currentExecutor?.cancel();
-    await ensureBrowserWindow();
-    executor = await setupExecutor(taskId, task, browserContext);
-    if (activeTask !== claim) throw new Error('The user started a task of their own');
+    await ensureBrowserWindow(instance);
+    await placeInstance(instance);
+    executor = await setupExecutor(instance, task);
   } catch (error) {
-    if (activeTask === claim) activeTask = null;
+    instances.delete(taskId);
     throw error;
   }
-  currentExecutor = executor;
-  remoteTask = { taskId, task, waitingFor: null };
-  subscribeToExecutorEvents(executor);
-  // an open side panel shows the task like one of its own, with its stop button
-  currentPort?.postMessage({ type: 'remote_task', taskId, task });
+  instance.executor = executor;
+  subscribeToExecutorEvents(instance, executor);
+  // a side panel with nothing running shows the task like one of its own, with its stop button
+  const port = idlePanel();
+  if (port) {
+    showIn(port, instance);
+    port.postMessage({ type: 'remote_task', taskId, task });
+  }
 
   // A question or an approval waits for the user, who is told wherever they are; nobody answering in time
   // lets the task go on: a question is left to the navigator, an action is not taken
@@ -481,7 +545,7 @@ async function startRemoteTask(task: string): Promise<string> {
   executor.subscribeExecutionEvents(async (event: AgentEvent) => {
     // the user may be far from this browser: a question or an approval goes out with what the page shows
     const waiting = event.state === ExecutionState.ACT_ASK || event.state === ExecutionState.ACT_CONFIRM;
-    const screenshot = waiting ? await waitingScreenshot() : undefined;
+    const screenshot = waiting ? await waitingScreenshot(instance.browserContext) : undefined;
     const meta = event.data.meta;
     const fields = meta?.kind === 'question' ? meta.fields?.map(field => field.label) : undefined;
     remoteControl.sendEvent({
@@ -511,10 +575,11 @@ async function startRemoteTask(task: string): Promise<string> {
         break;
       case ExecutionState.ACT_CONFIRM:
       case ExecutionState.ACT_ASK:
-        if (remoteTask?.taskId === taskId) {
-          remoteTask.waitingFor = { state: event.state, details: event.data.details, meta: event.data.meta };
-        }
-        void noticeTask('waiting', event.data.details, browserContext.currentTabId, { evenInFront: !currentPort });
+        instance.waitingFor = { state: event.state, details: event.data.details, meta: event.data.meta };
+        void noticeTask('waiting', event.data.details, instance.browserContext.currentTabId, {
+          evenInFront: !instance.viewer,
+          panelWindowId: panelWindowOf(instance),
+        });
         waitForUser(() =>
           event.state === ExecutionState.ACT_ASK ? executor.answerQuestion(null) : executor.confirmAction(false),
         );
@@ -523,7 +588,7 @@ async function startRemoteTask(task: string): Promise<string> {
   });
 
   logger.info('remote task', taskId, task);
-  void executor
+  const run = executor
     .execute()
     .catch(error => {
       end.status = 'failed';
@@ -531,52 +596,54 @@ async function startRemoteTask(task: string): Promise<string> {
     })
     .finally(() => {
       stopWaiting();
-      if (remoteTask?.taskId === taskId) remoteTask = null;
-      if (activeTask === claim) activeTask = null;
+      instance.run = null;
+      instance.active = false;
+      instance.waitingFor = null;
+      if (!instance.viewer) instances.delete(taskId);
       remoteControl.sendTaskEnd(end);
     });
+  instance.run = run;
   return taskId;
 }
 
 /**
  * Run a scheduled task in a window of its own, behind the user's, so it neither takes over the tab they
  * are using nor stalls the way a hidden tab does. The run is written to a chat of its own, where its
- * answer can be read and the conversation carried on. Returns null when the browser is busy.
+ * answer can be read and the conversation carried on. Returns null when as many agents run as may.
  */
 async function runScheduledTask(entry: ScheduledTask): Promise<ScheduledRunEnd | null> {
-  if (activeTask) return null;
+  if (runningInstances().length >= MAX_RUNNING) return null;
   const session = await chatHistoryStore.createSession(`Scheduled · ${entry.task}`.slice(0, 60));
   const taskId = session.id;
-  const claim = { taskId, source: 'scheduled' as const };
-  activeTask = claim;
-  let windowId: number | undefined;
+  const instance = newInstance(taskId, 'scheduled');
+  instance.active = true;
   const end: ScheduledRunEnd = {
     status: 'failed',
     result: 'The task stopped before it was finished',
     sessionId: taskId,
   };
+  let executor: Executor | null = null;
   try {
-    await currentExecutor?.cancel();
     const window = await chrome.windows.create({ url: 'about:blank', focused: false, state: 'normal' });
-    windowId = window?.id;
+    instance.windowId = window?.id ?? null;
     const tabId = window?.tabs?.[0]?.id;
     if (!tabId) throw new Error('Could not open a window for the scheduled task');
-    const executor = await setupExecutor(taskId, entry.task, browserContext, null, { scheduled: true });
-    if (activeTask !== claim) throw new Error('The user started a task of their own');
-    browserContext.updateCurrentTabId(tabId);
-    currentExecutor = executor;
-    executor.clearExecutionEvents();
-    executor.subscribeExecutionEvents(async (event: AgentEvent) => {
+    executor = await setupExecutor(instance, entry.task, null, { scheduled: true });
+    instance.browserContext.updateCurrentTabId(tabId);
+    instance.executor = executor;
+    const scheduled = executor;
+    scheduled.clearExecutionEvents();
+    scheduled.subscribeExecutionEvents(async (event: AgentEvent) => {
       switch (event.state) {
         case ExecutionState.TASK_OK:
           end.status = 'completed';
           end.result = event.data.details === taskId ? '' : event.data.details;
-          void noticeTask('done', end.result, browserContext.currentTabId);
+          void noticeTask('done', end.result, instance.browserContext.currentTabId);
           break;
         case ExecutionState.TASK_FAIL:
           end.status = 'failed';
           end.result = event.data.details;
-          void noticeTask('failed', end.result, browserContext.currentTabId);
+          void noticeTask('failed', end.result, instance.browserContext.currentTabId);
           break;
         case ExecutionState.TASK_CANCEL:
           end.status = 'cancelled';
@@ -584,23 +651,24 @@ async function runScheduledTask(entry: ScheduledTask): Promise<ScheduledRunEnd |
           break;
         case ExecutionState.ACT_CONFIRM:
           // nobody is there to approve: a step that needs approval is left for the user
-          executor.confirmAction(false);
+          scheduled.confirmAction(false);
           break;
         case ExecutionState.ACT_ASK:
-          executor.answerQuestion(null);
+          scheduled.answerQuestion(null);
           break;
       }
     });
     await chatHistoryStore.addMessage(taskId, { actor: Actors.USER, content: entry.task, timestamp: Date.now() });
     logger.info('scheduled task', entry.id, entry.task);
-    await executor.execute();
-    void updateMemories(executor);
+    await scheduled.execute();
+    void updateMemories(instance, scheduled);
   } catch (error) {
     end.result = error instanceof Error ? error.message : String(error);
   } finally {
-    if (activeTask === claim) activeTask = null;
-    await currentExecutor?.cleanup();
-    if (windowId !== undefined) await chrome.windows.remove(windowId).catch(() => {});
+    instance.active = false;
+    instances.delete(taskId);
+    await executor?.cleanup();
+    if (instance.windowId !== null) await chrome.windows.remove(instance.windowId).catch(() => {});
   }
   // the answer, or what went wrong, as the panel shows it in that chat
   await chatHistoryStore
@@ -616,11 +684,20 @@ async function runScheduledTask(entry: ScheduledTask): Promise<ScheduledRunEnd |
         : { actor: Actors.SYSTEM, content: end.result, timestamp: Date.now(), failed: end.status === 'failed' },
     )
     .catch(error => logger.error('Failed to save the scheduled run:', error));
-  if (!currentPort) void chrome.action.setBadgeText({ text: '•' });
+  if (!panels.size) void chrome.action.setBadgeText({ text: '•' });
   return end;
 }
 
 new Scheduler(runScheduledTask).start();
+
+/** The running agent of a task the bridge started */
+function remoteInstance(taskId: unknown): Instance {
+  const instance = typeof taskId === 'string' ? instances.get(taskId) : undefined;
+  if (instance?.source !== 'remote' || !instance.active || !instance.executor) {
+    throw new Error(t('bg_errors_noRunningTask'));
+  }
+  return instance;
+}
 
 const remoteControl = new RemoteControl(
   {
@@ -630,37 +707,38 @@ const remoteControl = new RemoteControl(
       return { taskId: await startRemoteTask(task) };
     },
     cancel_task: async params => {
-      if (activeTask?.source !== 'remote' || activeTask.taskId !== params.taskId || !currentExecutor) {
-        throw new Error(t('bg_errors_noRunningTask'));
-      }
-      await currentExecutor.cancel();
+      await remoteInstance(params.taskId).executor?.cancel();
       return { cancelled: true };
     },
     // the user's reply to what a remote task waits for, passed on by the bridge from wherever they are
     answer_task: async params => {
-      if (activeTask?.source !== 'remote' || activeTask.taskId !== params.taskId || !currentExecutor) {
-        throw new Error(t('bg_errors_noRunningTask'));
-      }
-      const waiting =
-        currentExecutor.waitingForUser && remoteTask?.taskId === params.taskId ? remoteTask.waitingFor : null;
-      if (!waiting || !remoteTask) throw new Error('The task is not waiting for the user');
-      remoteTask.waitingFor = null;
+      const instance = remoteInstance(params.taskId);
+      const executor = instance.executor as Executor;
+      const waiting = executor.waitingForUser ? instance.waitingFor : null;
+      if (!waiting) throw new Error('The task is not waiting for the user');
+      instance.waitingFor = null;
       const answer = typeof params.answer === 'string' ? params.answer.trim() : '';
       if (waiting.state === ExecutionState.ACT_CONFIRM) {
         const approved =
           typeof params.approve === 'boolean' ? params.approve : /^(y|yes|ok|approve|是|好|确认|同意)/i.test(answer);
-        currentExecutor.confirmAction(approved);
+        executor.confirmAction(approved);
         return { answered: true, approved };
       }
-      currentExecutor.answerQuestion(answer);
+      executor.answerQuestion(answer);
       return { answered: true };
     },
-    status: async () => ({
-      version: chrome.runtime.getManifest().version,
-      busy: activeTask !== null,
-      // a task of the user's own is none of the agent's business
-      taskId: activeTask?.source === 'remote' ? activeTask.taskId : null,
-    }),
+    status: async () => {
+      const running = runningInstances();
+      return {
+        version: chrome.runtime.getManifest().version,
+        // busy: no other task can start until one of those running ends
+        busy: running.length >= MAX_RUNNING,
+        running: running.length,
+        maxRunning: MAX_RUNNING,
+        // a task of the user's own is none of the agent's business
+        taskIds: running.filter(instance => instance.source === 'remote').map(instance => instance.taskId),
+      };
+    },
   },
   chrome.runtime.getManifest().version,
 );
@@ -737,12 +815,14 @@ async function loadSessionSnapshot(sessionId: string, before = Date.now()): Prom
 }
 
 async function setupExecutor(
-  taskId: string,
+  instance: Instance,
   task: string,
-  browserContext: BrowserContext,
   snapshot: ExecutorSnapshot | null = null,
   { scheduled = false, continues = false } = {},
 ) {
+  const { taskId, browserContext } = instance;
+  // settings saved while the executor is set up make it stale already
+  const version = settingsVersion;
   const providers = await llmProviderStore.getAllProviders();
   // if no providers, need to display the options page
   if (Object.keys(providers).length === 0) {
@@ -824,7 +904,7 @@ async function setupExecutor(
     firewall: firewall.enabled,
   });
 
-  memoryLLM = plannerLLM ?? navigatorLLM;
+  instance.memoryLLM = plannerLLM ?? navigatorLLM;
   const memoryContext = [
     generalSettings.memoryEnabled ? formatMemoryContext(await memoryStore.getAll()) : '',
     memoryInstructions(generalSettings.memoryEnabled, generalSettings.memoryAutoExtract),
@@ -852,8 +932,7 @@ async function setupExecutor(
     generalSettings: generalSettings,
   });
 
-  // the executor was built from the settings as they are now, whatever was saved while it was set up
-  settingsChanged = false;
+  instance.settingsVersion = version;
   return executor;
 }
 
@@ -871,10 +950,10 @@ async function importMemories(text: string) {
 }
 
 /** After a task, keep what it taught about the user, quietly: the memory shows in Settings, not in the chat */
-async function updateMemories(executor: Executor) {
+async function updateMemories(instance: Instance, executor: Executor) {
   const { messages, earlier, attachments } = executor.takeUserMessagesToRemember();
   const work = executor.takeWorkToRemember();
-  const llm = memoryLLM;
+  const llm = instance.memoryLLM;
   try {
     const settings = await generalSettingsStore.getSettings();
     if (!llm || !settings.memoryEnabled || !settings.memoryAutoExtract) return;
@@ -892,48 +971,52 @@ async function updateMemories(executor: Executor) {
   }
 }
 
-// Update subscribeToExecutorEvents to use port
-async function subscribeToExecutorEvents(executor: Executor) {
+/** Passes what an agent does on to the panel that shows it, or saves it to its chat when none does */
+function subscribeToExecutorEvents(instance: Instance, executor: Executor) {
   // Clear previous event listeners to prevent multiple subscriptions
   executor.clearExecutionEvents();
 
-  // Subscribe to new events
   executor.subscribeExecutionEvents(async event => {
     // An executor that was taken over winds down on its own time: its late "stopped" must not land in the chat
     // of the task that replaced it, nor its cleanup detach the pages that task now works on
-    if (executor !== currentExecutor) return;
-    const panelTask = activeTask?.source === 'panel' ? activeTask : null;
+    if (executor !== instance.executor) return;
+    const panelTask = instance.source === 'panel';
     if (panelTask && (event.state === ExecutionState.ACT_CONFIRM || event.state === ExecutionState.ACT_ASK)) {
-      waitingFor = { state: event.state, details: event.data.details, meta: event.data.meta };
+      instance.waitingFor = { state: event.state, details: event.data.details, meta: event.data.meta };
     }
     try {
-      if (panelTask && !viewer) {
-        saveUnattended(panelTask.taskId, event);
+      if (panelTask && !instance.viewer) {
+        saveUnattended(instance.taskId, event);
         if (event.state === ExecutionState.TASK_OK || event.state === ExecutionState.TASK_FAIL) {
           void chrome.action.setBadgeText({ text: '•' });
         }
       } else {
-        (panelTask ? viewer : currentPort)?.postMessage(event);
+        instance.viewer?.postMessage(event);
       }
     } catch (error) {
       logger.error('Failed to send message to side panel:', error);
     }
 
     // a task from another agent reports back to that agent, which also answers its questions
-    if (activeTask?.source === 'panel') {
-      const tabId = browserContext.currentTabId;
+    if (panelTask) {
+      const tabId = instance.browserContext.currentTabId;
       switch (event.state) {
         case ExecutionState.TASK_OK:
           // a task that ends without an answer reports its id as the details
-          void noticeTask('done', event.data.details === activeTask.taskId ? '' : event.data.details, tabId);
+          void noticeTask('done', event.data.details === instance.taskId ? '' : event.data.details, tabId, {
+            panelWindowId: panelWindowOf(instance),
+          });
           break;
         case ExecutionState.TASK_FAIL:
-          void noticeTask('failed', event.data.details, tabId);
+          void noticeTask('failed', event.data.details, tabId, { panelWindowId: panelWindowOf(instance) });
           break;
         case ExecutionState.ACT_ASK:
         case ExecutionState.ACT_CONFIRM:
           // with the side panel closed nothing on screen says the task waits, even in the browser's own window
-          void noticeTask('waiting', event.data.details, tabId, { evenInFront: !viewer });
+          void noticeTask('waiting', event.data.details, tabId, {
+            evenInFront: !instance.viewer,
+            panelWindowId: panelWindowOf(instance),
+          });
           break;
       }
     }
@@ -943,7 +1026,7 @@ async function subscribeToExecutorEvents(executor: Executor) {
       event.state === ExecutionState.TASK_FAIL ||
       event.state === ExecutionState.TASK_CANCEL
     ) {
-      await currentExecutor?.cleanup();
+      await executor.cleanup();
     }
   });
 }

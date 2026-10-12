@@ -463,6 +463,15 @@
   "bg_errors_noRunningTask": {
     "message": "Nenhuma tarefa em execução"
   },
+  "bg_errors_tooManyAgents": {
+    "message": "Já há $COUNT$ agentes em execução, o máximo ao mesmo tempo. Pare um ou espere um terminar.",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "4"
+      }
+    }
+  },
   "bg_cmd_newTask_noTask": {
     "message": "Nenhuma tarefa fornecida"
   },
