@@ -1,4 +1,5 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import type { TraceRecorder } from '../services/trace/recorder';
 import { ActionResult, AgentContext, type AgentOptions, type AgentOutput } from './types';
 import { t } from '@extension/i18n';
 import { NavigatorAgent, NavigatorActionRegistry, PAGE_INPUT_ACTIONS } from './agents/navigator';
@@ -87,6 +88,8 @@ export interface ExecutorExtraArgs {
   allowScheduling?: boolean;
   /** the task of a restored snapshot only asks to carry on with what it was working on (see continueTask) */
   continues?: boolean;
+  /** the chat's debug trace: it gets every event, and Jev's requests go through its fetch */
+  trace?: TraceRecorder;
 }
 
 export class Executor {
@@ -146,6 +149,7 @@ export class Executor {
     );
 
     this.generalSettings = extraArgs?.generalSettings;
+    context.trace = extraArgs?.trace;
     this.allowScheduling = extraArgs?.allowScheduling ?? true;
     this.navigatorPrompt = new NavigatorPrompt(context.options.maxActionsPerStep);
     this.plannerPrompt = new PlannerPrompt();
@@ -179,6 +183,7 @@ export class Executor {
           minTargetConfidence: this.generalSettings.fastModeMinTargetConfidence,
           textLLM: navigatorLLM,
           getGoal: () => this.decisionGoal(),
+          ...(extraArgs?.trace ? { fetchImpl: extraArgs.trace.fetch } : {}),
         }),
       );
     }

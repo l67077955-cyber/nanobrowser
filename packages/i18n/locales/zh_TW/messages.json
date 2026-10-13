@@ -103,6 +103,91 @@
   "chat_history_delete": {
     "message": "刪除工作階段"
   },
+  "chat_export_menu": {
+    "message": "匯出對話…"
+  },
+  "chat_export_title": {
+    "message": "匯出對話"
+  },
+  "chat_export_format": {
+    "message": "格式"
+  },
+  "chat_export_close": {
+    "message": "關閉"
+  },
+  "chat_export_save": {
+    "message": "匯出"
+  },
+  "chat_export_working": {
+    "message": "匯出中…"
+  },
+  "chat_export_failed": {
+    "message": "無法匯出對話"
+  },
+  "chat_export_debug": {
+    "message": "除錯包（JSON）"
+  },
+  "chat_export_debug_hint": {
+    "message": "全部內容：每次模型呼叫的完整提示與回覆、token、耗時、每一步讀到的頁面文字。可匯入。"
+  },
+  "chat_export_log": {
+    "message": "完整紀錄（JSON）"
+  },
+  "chat_export_log_hint": {
+    "message": "含每一步與代理所知的對話，不含模型呼叫。匯入後可接著聊。"
+  },
+  "chat_export_txt": {
+    "message": "對話（TXT）"
+  },
+  "chat_export_txt_hint": {
+    "message": "只有你和 Nanobrowser 說的話。"
+  },
+  "chat_export_md": {
+    "message": "含步驟的對話（Markdown）"
+  },
+  "chat_export_md_hint": {
+    "message": "對話，並在每個回答下列出背後的步驟。"
+  },
+  "chat_export_html": {
+    "message": "網頁（HTML）"
+  },
+  "chat_export_html_hint": {
+    "message": "任何瀏覽器都能開的網頁，步驟收合在每個回答下。"
+  },
+  "chat_export_pdf": {
+    "message": "PDF"
+  },
+  "chat_export_pdf_hint": {
+    "message": "網頁轉成可列印或傳送的文件，所有步驟展開。"
+  },
+  "chat_import_menu": {
+    "message": "匯入對話…"
+  },
+  "chat_import_button": {
+    "message": "匯入"
+  },
+  "chat_import_hint": {
+    "message": "從檔案匯入對話：Nanobrowser 的匯出檔，或文字、Markdown、網頁、PDF 形式的對話"
+  },
+  "chat_import_failed": {
+    "message": "無法匯入檔案"
+  },
+  "chat_import_empty": {
+    "message": "檔案中沒有文字。掃描的 PDF 只有頁面圖片。"
+  },
+  "chat_import_failedFile": {
+    "message": "無法匯入 $FILE$：$REASON$",
+    "placeholders": {
+      "file": {
+        "content": "$1",
+        "example": "chat.json"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "The file has no conversation in it"
+      }
+    }
+  },
   "chat_bookmarks_header": {
     "message": "快速入門"
   },
@@ -1767,6 +1852,33 @@
   },
   "options_general_notifyOnFinish_desc": {
     "message": "When you are in another window, a system notification and a flashing taskbar button tell you that a task finished, failed or is waiting for your answer. Click the notification to go back to it."
+  },
+  "options_general_group_debug": {
+    "message": "除錯追蹤"
+  },
+  "options_general_group_debug_footer": {
+    "message": "追蹤只存在這個瀏覽器中。其中包含你與網頁傳給模型的內容，分享匯出檔前請先檢查。保留最近 100 個對話的追蹤。"
+  },
+  "options_general_debugTrace": {
+    "message": "保留除錯追蹤"
+  },
+  "options_general_debugTrace_desc": {
+    "message": "每次模型呼叫的完整提示與回覆、token 與耗時、每次 Jev 請求，以及每一步讀到的頁面文字。可從對話選單匯出。"
+  },
+  "options_general_debugTraceScreenshots": {
+    "message": "包含截圖"
+  },
+  "options_general_debugTraceScreenshots_desc": {
+    "message": "傳給模型的截圖，原樣保存。追蹤會大上好幾倍。"
+  },
+  "options_general_debugTraceClear": {
+    "message": "刪除所有追蹤"
+  },
+  "options_general_debugTraceClear_desc": {
+    "message": "對話保留，只刪除代理逐步執行的紀錄。"
+  },
+  "options_general_debugTraceCleared": {
+    "message": "已刪除"
   },
   "bg_notice_done": {
     "message": "Task done"

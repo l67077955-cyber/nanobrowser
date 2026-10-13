@@ -1,5 +1,6 @@
 import { createStorage } from '../base/base';
 import { StorageEnum } from '../base/enums';
+import { traceStore } from '../trace/store';
 import type {
   ChatSession,
   ChatMessage,
@@ -88,6 +89,8 @@ export function createChatHistoryStorage(): ChatHistoryStorage {
         await getSessionAgentContextStorage(sessionMeta.id).set(EMPTY_AGENT_CONTEXT);
       }
       await chatSessionsMetaStorage.set([]);
+      // what the agents did goes with the chats
+      await traceStore.clear().catch(() => {});
     },
 
     // Get session metadata without messages (for UI listing)
@@ -177,6 +180,8 @@ export function createChatHistoryStorage(): ChatHistoryStorage {
 
       // Remove the session's agent context
       await getSessionAgentContextStorage(sessionId).set(EMPTY_AGENT_CONTEXT);
+      // and its debug trace
+      await traceStore.deleteSession(sessionId).catch(() => {});
     },
 
     addMessage: async (sessionId: string, message: Message): Promise<ChatMessage> => {

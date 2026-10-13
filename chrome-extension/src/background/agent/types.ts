@@ -60,6 +60,8 @@ export class AgentContext {
   stateMessageAdded: boolean;
   history: AgentStepHistory;
   finalAnswer: string | null;
+  /** the chat's debug trace, which gets every event as it is reported */
+  trace?: { event(event: AgentEvent): void };
   /** element indices as the deciding model saw them; actions resolve their index here, not in a re-read DOM */
   observedSelectorMap: Map<number, DOMElementNode> | null;
   private pendingConfirmation: ((approved: boolean) => void) | null;
@@ -103,6 +105,7 @@ export class AgentContext {
       details: eventDetails,
       meta,
     });
+    this.trace?.event(event);
     await this.eventManager.emit(event);
   }
 

@@ -371,6 +371,10 @@ html .nb-menu > button:focus-visible {
   background: var(--nb-tile-2);
   outline: none;
 }
+html .nb-menu > button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 html .nb-menu-view {
   height: 32px;
   margin: 2px 0;

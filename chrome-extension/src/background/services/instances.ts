@@ -1,6 +1,7 @@
 import type { StepMeta } from '@extension/storage';
 import BrowserContext, { getActiveBrowserTab } from '../browser/context';
 import type { Executor } from '../agent/executor';
+import type { TraceRecorder } from './trace/recorder';
 import type { ExecutionState } from '../agent/event/types';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { createLogger } from '../log';
@@ -37,6 +38,8 @@ export type Instance = {
   windowId: number | null;
   /** what an agent on the bridge asked for */
   remoteTask?: string;
+  /** the chat's debug trace, while traces are kept */
+  trace: TraceRecorder | null;
 };
 
 /** The agents, by the id of their task (the chat's id for a panel's task) */
@@ -65,6 +68,7 @@ export function newInstance(
     active: false,
     run: null,
     windowId: null,
+    trace: null,
   };
   instances.set(taskId, instance);
   return instance;

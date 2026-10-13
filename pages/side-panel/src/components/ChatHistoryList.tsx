@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { FiTrash2, FiBookmark } from 'react-icons/fi';
+import { FiTrash2, FiBookmark, FiDownload, FiUpload } from 'react-icons/fi';
 import { t } from '@extension/i18n';
 
 interface ChatSession {
@@ -13,6 +13,9 @@ interface ChatHistoryListProps {
   onSessionSelect: (sessionId: string) => void;
   onSessionDelete: (sessionId: string) => void;
   onSessionBookmark: (sessionId: string) => void;
+  onSessionExport?: (sessionId: string) => void;
+  /** take a chat in from a file */
+  onImport?: () => void;
   visible: boolean;
 }
 
@@ -21,6 +24,8 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
   onSessionSelect,
   onSessionDelete,
   onSessionBookmark,
+  onSessionExport,
+  onImport,
   visible,
 }) => {
   if (!visible) return null;
@@ -35,7 +40,19 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
 
   return (
     <div className="h-full overflow-y-auto p-2">
-      <h2 className="nb-label px-2 pb-2 pt-1">{t('chat_history_title')}</h2>
+      <div className="flex items-center justify-between px-2 pb-2 pt-1">
+        <h2 className="nb-label">{t('chat_history_title')}</h2>
+        {onImport && (
+          <button
+            type="button"
+            onClick={onImport}
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] text-nb-muted hover:bg-nb-tile-2 hover:text-nb-ink"
+            title={t('chat_import_hint')}>
+            <FiUpload size={12} aria-hidden="true" />
+            {t('chat_import_button')}
+          </button>
+        )}
+      </div>
       {sessions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-nb-line p-4 text-center text-[12.5px] text-nb-muted">
           {t('chat_history_empty')}
@@ -51,6 +68,19 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
                 <span className="min-w-0 flex-1 truncate text-[13px] text-nb-ink">{session.title}</span>
                 <span className="shrink-0 text-[11px] tabular-nums text-nb-muted">{formatDate(session.createdAt)}</span>
               </button>
+              {onSessionExport && (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onSessionExport(session.id);
+                  }}
+                  className={`${actionButton} hover:text-nb-ink`}
+                  aria-label={t('chat_export_menu')}
+                  title={t('chat_export_menu')}
+                  type="button">
+                  <FiDownload size={14} />
+                </button>
+              )}
               {onSessionBookmark && (
                 <button
                   onClick={e => {

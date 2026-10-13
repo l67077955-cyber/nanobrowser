@@ -10,6 +10,8 @@ import {
   chatHistoryStore,
   captchaModelStore,
   remoteControlStore,
+  traceStore,
+  type GeneralSettingsConfig,
   type ScheduledTask,
   type ActionMode,
 } from '@extension/storage';
@@ -30,6 +32,9 @@ import { formatMemoryContext, memoryInstructions, rememberFromMessages, remember
 import { RemoteControl, type RemoteTaskEnd } from './services/remote';
 import { Scheduler, type ScheduledRunEnd } from './services/scheduler';
 import { saveUnattended, unattendedSaved } from './services/unattended';
+import { MAX_TRACED_SESSIONS, TraceRecorder } from './services/trace/recorder';
+import { exportChat, importChat, readChatFile } from './services/export';
+import type { ExportFormat } from './services/export/formats';
 import {
   type Instance,
   instances,
@@ -168,6 +173,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+// A side panel or window saves a chat as a file, or takes one in from a file
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id || sender.url !== SIDE_PANEL_URL) return false;
+  if (message?.type !== 'export_chat' && message?.type !== 'import_chat') return false;
+  const work =
+    message.type === 'export_chat'
+      ? exportChat(String(message.sessionId), message.format as ExportFormat).then(file => ({ file }))
+      : (async () => {
+          const name = String(message.name ?? 'chat');
+          return { sessionId: await importChat(readChatFile(name, String(message.text ?? ''))) };
+        })();
+  work.then(sendResponse).catch(error => {
+    logger.error(`Failed to ${message.type === 'export_chat' ? 'export' : 'import'} a chat:`, error);
+    sendResponse({ error: error instanceof Error ? error.message : String(error) });
+  });
+  // the answer is sent when the file is ready
+  return true;
+});
+
 // Setup connection listener for long-lived connections (e.g., side panel)
 chrome.runtime.onConnect.addListener(port => {
   if (port.name === 'side-panel-connection') {
@@ -207,7 +231,7 @@ chrome.runtime.onConnect.addListener(port => {
             await instance.executor?.cancel();
             await startForPanel(instance, port, async () => {
               await placeInstance(instance, message.tabId);
-              return setupExecutor(instance, message.task);
+              return setupExecutor(instance, message.task, null, { trigger: 'new task' });
             });
             logger.info('new_task execution result', message.tabId);
             break;
@@ -246,6 +270,7 @@ chrome.runtime.onConnect.addListener(port => {
               if (executor && !executor.stopped && instance.settingsVersion === settingsVersion) {
                 if (continues) executor.continueTask(message.task);
                 else executor.addFollowUpTask(message.task);
+                instance.trace?.task(message.task, continues ? 'keep going' : 'follow-up', {});
                 return executor;
               }
               // The executor of this session is gone (service worker restarted, dropped while idle), was
@@ -256,7 +281,10 @@ chrome.runtime.onConnect.addListener(port => {
                 : await loadSessionSnapshot(message.taskId, message.sentAt);
               logger.info('follow_up_task: reloading the session context', snapshot?.messages.length ?? 0);
               await executor?.cancel();
-              return setupExecutor(instance, message.task, snapshot, { continues });
+              return setupExecutor(instance, message.task, snapshot, {
+                continues,
+                trigger: continues ? 'keep going' : 'follow-up, with a new executor',
+              });
             });
             logger.info('follow_up_task execution result', message.tabId);
             break;
@@ -359,7 +387,7 @@ chrome.runtime.onConnect.addListener(port => {
               await instance.browserContext.switchTab(message.tabId);
               // Setup executor with the new taskId and a dummy task description
               await instance.executor?.cancel();
-              const executor = await setupExecutor(instance, message.task);
+              const executor = await setupExecutor(instance, message.task, null, { trigger: 'replay' });
               instance.executor = executor;
               showIn(port, instance);
               subscribeToExecutorEvents(instance, executor);
@@ -510,7 +538,7 @@ async function startRemoteTask(task: string): Promise<string> {
   try {
     await ensureBrowserWindow(instance);
     await placeInstance(instance);
-    executor = await setupExecutor(instance, task);
+    executor = await setupExecutor(instance, task, null, { trigger: 'bridge' });
   } catch (error) {
     instances.delete(taskId);
     throw error;
@@ -628,7 +656,7 @@ async function runScheduledTask(entry: ScheduledTask): Promise<ScheduledRunEnd |
     instance.windowId = window?.id ?? null;
     const tabId = window?.tabs?.[0]?.id;
     if (!tabId) throw new Error('Could not open a window for the scheduled task');
-    executor = await setupExecutor(instance, entry.task, null, { scheduled: true });
+    executor = await setupExecutor(instance, entry.task, null, { scheduled: true, trigger: 'schedule' });
     instance.browserContext.updateCurrentTabId(tabId);
     instance.executor = executor;
     const scheduled = executor;
@@ -814,11 +842,34 @@ async function loadSessionSnapshot(sessionId: string, before = Date.now()): Prom
   }
 }
 
+/** The chat's trace recorder while traces are kept: one per chat, made at its first run */
+function traceFor(instance: Instance, settings: GeneralSettingsConfig): TraceRecorder | null {
+  if (!settings.debugTrace) {
+    instance.trace = null;
+    return null;
+  }
+  if (!instance.trace) {
+    instance.trace = new TraceRecorder(instance.taskId);
+    traceStore.prune(MAX_TRACED_SESSIONS).catch(error => logger.warning('Failed to drop old traces:', error));
+  }
+  instance.trace.screenshots = settings.debugTraceScreenshots;
+  return instance.trace;
+}
+
 async function setupExecutor(
   instance: Instance,
   task: string,
   snapshot: ExecutorSnapshot | null = null,
-  { scheduled = false, continues = false } = {},
+  {
+    scheduled = false,
+    continues = false,
+    trigger = 'task',
+  }: {
+    scheduled?: boolean;
+    continues?: boolean;
+    /** why the run starts, for the trace: a new task, a follow-up, a bridge's task, a schedule, a replay */
+    trigger?: string;
+  } = {},
 ) {
   const { taskId, browserContext } = instance;
   // settings saved while the executor is set up make it stale already
@@ -913,7 +964,27 @@ async function setupExecutor(
     .filter(Boolean)
     .join('\n\n');
 
+  const trace = traceFor(instance, generalSettings);
+  if (trace) {
+    for (const llm of [navigatorLLM, plannerLLM, captchaLLM]) if (llm) llm.callbacks = [trace.handler];
+    trace.task(task, trigger, {
+      source: instance.source,
+      extension: chrome.runtime.getManifest().version,
+      build: import.meta.env.VITE_BUILD_INFO || 'unknown',
+      navigator: { ...navigatorModel, providerName: navigatorProviderConfig.name || navigatorModel.provider },
+      planner: plannerModel
+        ? { ...plannerModel, providerName: providers[plannerModel.provider].name || plannerModel.provider }
+        : 'navigator',
+      captcha: captchaModel && captchaProviderConfig ? captchaModel : null,
+      settings: generalSettings,
+      firewall,
+      memories: generalSettings.memoryEnabled,
+      resumedFrom: snapshot ? { tasks: snapshot.tasks, messages: snapshot.messages.length } : null,
+    });
+  }
+
   const executor = new Executor(task, taskId, browserContext, navigatorLLM, {
+    trace: trace ?? undefined,
     plannerLLM: plannerLLM ?? navigatorLLM,
     captchaLLM,
     memoryContext,
@@ -959,6 +1030,7 @@ async function updateMemories(instance: Instance, executor: Executor) {
     if (!llm || !settings.memoryEnabled || !settings.memoryAutoExtract) return;
     const change = await rememberFromMessages(messages, {
       llm,
+      ...(instance.trace ? { fetchImpl: instance.trace.fetch } : {}),
       jevApiKey: settings.fastMode ? settings.fastModeApiKey : undefined,
       earlier,
       attachments,
@@ -1027,6 +1099,7 @@ function subscribeToExecutorEvents(instance: Instance, executor: Executor) {
       event.state === ExecutionState.TASK_CANCEL
     ) {
       await executor.cleanup();
+      void instance.trace?.flush();
     }
   });
 }

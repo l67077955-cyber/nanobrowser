@@ -103,6 +103,91 @@
   "chat_history_delete": {
     "message": "Delete session"
   },
+  "chat_export_menu": {
+    "message": "Export chat…"
+  },
+  "chat_export_title": {
+    "message": "Export chat"
+  },
+  "chat_export_format": {
+    "message": "Format"
+  },
+  "chat_export_close": {
+    "message": "Close"
+  },
+  "chat_export_save": {
+    "message": "Export"
+  },
+  "chat_export_working": {
+    "message": "Exporting…"
+  },
+  "chat_export_failed": {
+    "message": "The chat could not be exported"
+  },
+  "chat_export_debug": {
+    "message": "Debug bundle (JSON)"
+  },
+  "chat_export_debug_hint": {
+    "message": "Everything: every model call with its full prompt and reply, tokens, timings, the page text each step read. Can be imported."
+  },
+  "chat_export_log": {
+    "message": "Full log (JSON)"
+  },
+  "chat_export_log_hint": {
+    "message": "The chat with every step and what the agent knew, without the model calls. Import it to go on with it."
+  },
+  "chat_export_txt": {
+    "message": "Conversation (TXT)"
+  },
+  "chat_export_txt_hint": {
+    "message": "What you and Nanobrowser said, nothing else."
+  },
+  "chat_export_md": {
+    "message": "Conversation with steps (Markdown)"
+  },
+  "chat_export_md_hint": {
+    "message": "The conversation, with the steps behind each answer listed under it."
+  },
+  "chat_export_html": {
+    "message": "Web page (HTML)"
+  },
+  "chat_export_html_hint": {
+    "message": "A page that opens in any browser, the steps folded under each answer."
+  },
+  "chat_export_pdf": {
+    "message": "PDF"
+  },
+  "chat_export_pdf_hint": {
+    "message": "The web page as a document to print or send, every step shown."
+  },
+  "chat_import_menu": {
+    "message": "Import chat…"
+  },
+  "chat_import_button": {
+    "message": "Import"
+  },
+  "chat_import_hint": {
+    "message": "Take a chat in from a file: an export of Nanobrowser, or a conversation as text, Markdown, a web page or a PDF"
+  },
+  "chat_import_failed": {
+    "message": "The file could not be imported"
+  },
+  "chat_import_empty": {
+    "message": "The file has no text in it. A scanned PDF holds only pictures of pages."
+  },
+  "chat_import_failedFile": {
+    "message": "$FILE$ could not be imported: $REASON$",
+    "placeholders": {
+      "file": {
+        "content": "$1",
+        "example": "chat.json"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "The file has no conversation in it"
+      }
+    }
+  },
   "chat_bookmarks_header": {
     "message": "Saved tasks"
   },
@@ -1253,6 +1338,33 @@
   },
   "options_general_notifyOnFinish_desc": {
     "message": "When a task finishes, fails or needs your answer"
+  },
+  "options_general_group_debug": {
+    "message": "Debug trace"
+  },
+  "options_general_group_debug_footer": {
+    "message": "The trace stays in this browser. It holds what you and the pages said to the models, so look through it before you share an export of it. The 100 latest chats keep theirs."
+  },
+  "options_general_debugTrace": {
+    "message": "Keep a debug trace"
+  },
+  "options_general_debugTrace_desc": {
+    "message": "Every model call with its full prompt and reply, tokens and time, each Jev request and the page text each step read. Export it from a chat's menu."
+  },
+  "options_general_debugTraceScreenshots": {
+    "message": "Include screenshots"
+  },
+  "options_general_debugTraceScreenshots_desc": {
+    "message": "The screenshots sent to the models, as they were sent. A trace becomes many times larger."
+  },
+  "options_general_debugTraceClear": {
+    "message": "Delete all traces"
+  },
+  "options_general_debugTraceClear_desc": {
+    "message": "The chats stay; only what their agents did, step by step, goes."
+  },
+  "options_general_debugTraceCleared": {
+    "message": "Deleted"
   },
   "bg_notice_done": {
     "message": "Task done"

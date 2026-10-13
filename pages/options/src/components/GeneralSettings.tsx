@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react';
 import { FiChevronRight } from 'react-icons/fi';
-import { type GeneralSettingsConfig, generalSettingsStore, DEFAULT_GENERAL_SETTINGS } from '@extension/storage';
+import {
+  type GeneralSettingsConfig,
+  generalSettingsStore,
+  DEFAULT_GENERAL_SETTINGS,
+  traceStore,
+} from '@extension/storage';
 import { t } from '@extension/i18n';
 import { SettingsGroup, SettingsRow, Toggle, NumberField, ConfidenceSlider } from './SettingsList';
 
 export const GeneralSettings = () => {
   const [settings, setSettings] = useState<GeneralSettingsConfig>(DEFAULT_GENERAL_SETTINGS);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [tracesCleared, setTracesCleared] = useState(false);
 
   useEffect(() => {
     // Load initial settings
@@ -128,6 +134,41 @@ export const GeneralSettings = () => {
             </SettingsRow>
           </>
         )}
+      </SettingsGroup>
+
+      <SettingsGroup title={t('options_general_group_debug')} footer={t('options_general_group_debug_footer')}>
+        <SettingsRow
+          title={t('options_general_debugTrace')}
+          subtitle={t('options_general_debugTrace_desc')}
+          htmlFor="debugTrace">
+          <Toggle id="debugTrace" checked={settings.debugTrace} onChange={v => updateSetting('debugTrace', v)} />
+        </SettingsRow>
+        {settings.debugTrace && (
+          <SettingsRow
+            title={t('options_general_debugTraceScreenshots')}
+            subtitle={t('options_general_debugTraceScreenshots_desc')}
+            htmlFor="debugTraceScreenshots">
+            <Toggle
+              id="debugTraceScreenshots"
+              checked={settings.debugTraceScreenshots}
+              onChange={v => updateSetting('debugTraceScreenshots', v)}
+            />
+          </SettingsRow>
+        )}
+        <SettingsRow title={t('options_general_debugTraceClear')} subtitle={t('options_general_debugTraceClear_desc')}>
+          <button
+            type="button"
+            disabled={tracesCleared}
+            onClick={() =>
+              traceStore
+                .clear()
+                .then(() => setTracesCleared(true))
+                .catch(error => console.error('Failed to delete the traces:', error))
+            }
+            className="rounded-md border border-nb-line bg-nb-tile-2 px-3 py-1.5 text-sm text-nb-ink hover:bg-nb-tile disabled:opacity-50">
+            {tracesCleared ? t('options_general_debugTraceCleared') : t('options_general_debugTraceClear')}
+          </button>
+        </SettingsRow>
       </SettingsGroup>
 
       <SettingsGroup>

@@ -103,6 +103,91 @@
   "chat_history_delete": {
     "message": "Excluir sessão"
   },
+  "chat_export_menu": {
+    "message": "Exportar conversa…"
+  },
+  "chat_export_title": {
+    "message": "Exportar conversa"
+  },
+  "chat_export_format": {
+    "message": "Formato"
+  },
+  "chat_export_close": {
+    "message": "Fechar"
+  },
+  "chat_export_save": {
+    "message": "Exportar"
+  },
+  "chat_export_working": {
+    "message": "Exportando…"
+  },
+  "chat_export_failed": {
+    "message": "Não foi possível exportar a conversa"
+  },
+  "chat_export_debug": {
+    "message": "Pacote de depuração (JSON)"
+  },
+  "chat_export_debug_hint": {
+    "message": "Tudo: cada chamada de modelo com prompt e resposta completos, tokens, tempos, o texto de página de cada passo. Pode ser importado."
+  },
+  "chat_export_log": {
+    "message": "Registro completo (JSON)"
+  },
+  "chat_export_log_hint": {
+    "message": "A conversa com cada passo e o que o agente sabia, sem as chamadas de modelo. Importe para continuar."
+  },
+  "chat_export_txt": {
+    "message": "Conversa (TXT)"
+  },
+  "chat_export_txt_hint": {
+    "message": "O que você e o Nanobrowser disseram, nada mais."
+  },
+  "chat_export_md": {
+    "message": "Conversa com passos (Markdown)"
+  },
+  "chat_export_md_hint": {
+    "message": "A conversa, com os passos de cada resposta listados abaixo dela."
+  },
+  "chat_export_html": {
+    "message": "Página web (HTML)"
+  },
+  "chat_export_html_hint": {
+    "message": "Uma página que abre em qualquer navegador, com os passos recolhidos sob cada resposta."
+  },
+  "chat_export_pdf": {
+    "message": "PDF"
+  },
+  "chat_export_pdf_hint": {
+    "message": "A página como documento para imprimir ou enviar, com todos os passos."
+  },
+  "chat_import_menu": {
+    "message": "Importar conversa…"
+  },
+  "chat_import_button": {
+    "message": "Importar"
+  },
+  "chat_import_hint": {
+    "message": "Trazer uma conversa de um arquivo: uma exportação do Nanobrowser ou uma conversa em texto, Markdown, página web ou PDF"
+  },
+  "chat_import_failed": {
+    "message": "Não foi possível importar o arquivo"
+  },
+  "chat_import_empty": {
+    "message": "O arquivo não tem texto. Um PDF escaneado contém só imagens das páginas."
+  },
+  "chat_import_failedFile": {
+    "message": "Não foi possível importar $FILE$: $REASON$",
+    "placeholders": {
+      "file": {
+        "content": "$1",
+        "example": "chat.json"
+      },
+      "reason": {
+        "content": "$2",
+        "example": "The file has no conversation in it"
+      }
+    }
+  },
   "chat_bookmarks_header": {
     "message": "Início Rápido"
   },
@@ -1767,6 +1852,33 @@
   },
   "options_general_notifyOnFinish_desc": {
     "message": "When you are in another window, a system notification and a flashing taskbar button tell you that a task finished, failed or is waiting for your answer. Click the notification to go back to it."
+  },
+  "options_general_group_debug": {
+    "message": "Rastro de depuração"
+  },
+  "options_general_group_debug_footer": {
+    "message": "O rastro fica neste navegador. Ele contém o que você e as páginas disseram aos modelos; revise-o antes de compartilhar uma exportação. As 100 conversas mais recentes mantêm o seu."
+  },
+  "options_general_debugTrace": {
+    "message": "Manter rastro de depuração"
+  },
+  "options_general_debugTrace_desc": {
+    "message": "Cada chamada de modelo com o prompt e a resposta completos, tokens e tempo, cada pedido ao Jev e o texto de página lido em cada passo. Exporte pelo menu da conversa."
+  },
+  "options_general_debugTraceScreenshots": {
+    "message": "Incluir capturas de tela"
+  },
+  "options_general_debugTraceScreenshots_desc": {
+    "message": "As capturas enviadas aos modelos, como foram enviadas. O rastro fica muitas vezes maior."
+  },
+  "options_general_debugTraceClear": {
+    "message": "Apagar todos os rastros"
+  },
+  "options_general_debugTraceClear_desc": {
+    "message": "As conversas ficam; só some o que os agentes fizeram, passo a passo."
+  },
+  "options_general_debugTraceCleared": {
+    "message": "Apagados"
   },
   "bg_notice_done": {
     "message": "Task done"

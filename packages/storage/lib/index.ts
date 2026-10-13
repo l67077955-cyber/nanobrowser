@@ -8,3 +8,4 @@ export * from './prompt/favorites';
 export { default as favoritesStorage } from './prompt/favorites';
 export * from './memory';
 export * from './schedule';
+export * from './trace';

@@ -18,6 +18,8 @@ import {
   FiRepeat,
   FiMessageSquare,
   FiTerminal,
+  FiDownload,
+  FiUpload,
 } from 'react-icons/fi';
 import {
   type ActionMode,
@@ -45,6 +47,7 @@ import ChatHistoryList from './components/ChatHistoryList';
 import BookmarkList from './components/BookmarkList';
 import WindowToggleButton, { useHandedOffSession } from './components/WindowToggleButton';
 import PinButton from './components/PinButton';
+import { ExportDialog, IMPORT_ACCEPT, importChatFile } from './components/ChatTransfer';
 import { getTargetTab } from './utils';
 import { EventType, type AgentEvent, ExecutionState } from './types/event';
 import './SidePanel.css';
@@ -89,6 +92,9 @@ const SidePanel = () => {
   const followRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  /** the chat the export dialog saves, while it is open */
+  const [exportSessionId, setExportSessionId] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [inputEnabled, setInputEnabled] = useState(true);
   const [showStopButton, setShowStopButton] = useState(false);
   // action text awaiting the user's approval (manual action mode)
@@ -937,6 +943,26 @@ const SidePanel = () => {
     }
   };
 
+  /** A chat taken in from a file opens here, ready to go on with */
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const sessionId = await importChatFile(file);
+      await loadChatSessions();
+      await handleSessionSelect(sessionId);
+    } catch (error) {
+      appendMessage({
+        actor: Actors.SYSTEM,
+        content: t('chat_import_failedFile', [file.name, error instanceof Error ? error.message : String(error)]),
+        timestamp: Date.now(),
+        failed: true,
+      });
+      setShowHistory(false);
+    }
+  };
+
   const handleSessionSelect = async (sessionId: string) => {
     try {
       const fullSession = await chatHistoryStore.getSession(sessionId);
@@ -1412,6 +1438,28 @@ const SidePanel = () => {
                     {t('chat_history_title')}
                   </button>
                 )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!currentSessionId || !messages.length}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setExportSessionId(currentSessionId);
+                  }}>
+                  <FiDownload aria-hidden="true" />
+                  {t('chat_export_menu')}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={showStopButton}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    importInputRef.current?.click();
+                  }}>
+                  <FiUpload aria-hidden="true" />
+                  {t('chat_import_menu')}
+                </button>
                 {/* the pinned window lives as long as the page under it, so that page stays put */}
                 {!pinned && <WindowToggleButton sessionId={currentSessionId} menuItem />}
                 <div className="nb-menu-view" role="group" aria-label={t('nav_view')}>
@@ -1451,6 +1499,16 @@ const SidePanel = () => {
           </div>
         </div>
       </header>
+      <input
+        ref={importInputRef}
+        type="file"
+        accept={IMPORT_ACCEPT}
+        className="hidden"
+        onChange={handleImportFile}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
+      {exportSessionId && <ExportDialog sessionId={exportSessionId} onClose={() => setExportSessionId(null)} />}
       {showHistory ? (
         <div className="flex-1 overflow-hidden">
           <div className="nb-col h-full">
@@ -1459,6 +1517,8 @@ const SidePanel = () => {
               onSessionSelect={handleSessionSelect}
               onSessionDelete={handleSessionDelete}
               onSessionBookmark={handleSessionBookmark}
+              onSessionExport={setExportSessionId}
+              onImport={() => importInputRef.current?.click()}
               visible={true}
             />
           </div>

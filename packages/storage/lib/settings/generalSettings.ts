@@ -36,6 +36,10 @@ export interface GeneralSettingsConfig {
   openInWindow: boolean;
   /** a notification and a flashing taskbar button when a task ends or waits for the user, if they look elsewhere */
   notifyOnFinish: boolean;
+  /** keep a debug trace of every task: each model call with its prompt and reply, the page text read, timings */
+  debugTrace: boolean;
+  /** put the screenshots sent to the models into the trace too; they make it many times larger */
+  debugTraceScreenshots: boolean;
 }
 
 export type GeneralSettingsStorage = BaseStorage<GeneralSettingsConfig> & {
@@ -65,6 +69,8 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsConfig = {
   memoryAutoExtract: true,
   openInWindow: false,
   notifyOnFinish: true,
+  debugTrace: true,
+  debugTraceScreenshots: false,
 };
 
 const storage = createStorage<GeneralSettingsConfig>('general-settings', DEFAULT_GENERAL_SETTINGS, {
