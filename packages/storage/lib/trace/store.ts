@@ -83,16 +83,20 @@ export function createTraceStore(factory: IDBFactory | undefined = globalThis.in
   }
 
   return {
-    async append(sessionId, entries, blobs) {
-      if (!entries.length && !blobs.length) return;
+    async append(sessionId, entries, blobs, continuing = false) {
+      if (!entries.length && !blobs.length) return true;
       const tx = (await db()).transaction([ENTRIES, BLOBS, SESSIONS], 'readwrite');
+      const sessions = tx.objectStore(SESSIONS);
+      const info = (await request(sessions.get(sessionId))) as TraceSessionInfo | undefined;
+      if (continuing && !info) {
+        tx.abort();
+        return false;
+      }
       for (const entry of entries) tx.objectStore(ENTRIES).add({ ...entry, sessionId });
       for (const blob of blobs) {
         tx.objectStore(BLOBS).put({ key: blobKey(sessionId, blob.hash), ...blob } satisfies StoredBlob);
       }
-      const sessions = tx.objectStore(SESSIONS);
       const now = Date.now();
-      const info = (await request(sessions.get(sessionId))) as TraceSessionInfo | undefined;
       sessions.put({
         sessionId,
         startedAt: info?.startedAt ?? entries[0]?.t ?? now,
@@ -100,6 +104,7 @@ export function createTraceStore(factory: IDBFactory | undefined = globalThis.in
         entries: (info?.entries ?? 0) + entries.length,
       } satisfies TraceSessionInfo);
       await done(tx);
+      return true;
     },
 
     async getEntries(sessionId) {

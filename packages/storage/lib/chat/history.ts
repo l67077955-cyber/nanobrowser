@@ -114,27 +114,28 @@ export function createChatHistoryStorage(): ChatHistoryStorage {
       };
     },
 
-    createSession: async (title: string): Promise<ChatSession> => {
+    createSession: async (title: string, initialMessages: Message[] = []): Promise<ChatSession> => {
       const newSessionId = crypto.randomUUID();
       const currentTime = getCurrentTimestamp();
+      const messages: ChatMessage[] = initialMessages.map(message => ({ ...message, id: crypto.randomUUID() }));
       const newSessionMeta: ChatSessionMetadata = {
         id: newSessionId,
         title,
         createdAt: currentTime,
         updatedAt: currentTime,
-        messageCount: 0,
+        messageCount: messages.length,
       };
 
-      // Create empty messages array for the new session
+      // The messages first: the session is listed only once they are stored
       const messagesStorage = getSessionMessagesStorage(newSessionId);
-      await messagesStorage.set([]);
+      await messagesStorage.set(messages);
 
       // Add session metadata to the index
       await chatSessionsMetaStorage.set(prevSessions => [...prevSessions, newSessionMeta]);
 
       return {
         ...newSessionMeta,
-        messages: [],
+        messages,
       };
     },
 

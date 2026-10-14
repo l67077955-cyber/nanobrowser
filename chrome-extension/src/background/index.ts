@@ -833,7 +833,10 @@ void applyRemoteControl().catch(error => logger.error('Failed to set up remote c
 async function loadSessionSnapshot(sessionId: string, before = Date.now()): Promise<ExecutorSnapshot | null> {
   try {
     const stored = await chatHistoryStore.loadAgentContext(sessionId);
-    if (stored) return JSON.parse(stored) as ExecutorSnapshot;
+    // an imported chat brings its context from a file: one not of this shape is rebuilt from the chat instead
+    const snapshot: unknown = stored ? JSON.parse(stored) : null;
+    if (isSnapshot(snapshot)) return snapshot;
+    if (snapshot) logger.warning('The stored session context is not one an executor can go on from, ignored');
     const session = await chatHistoryStore.getSession(sessionId);
     return session ? snapshotFromChat(session.messages.filter(message => message.timestamp < before)) : null;
   } catch (error) {
@@ -842,13 +845,25 @@ async function loadSessionSnapshot(sessionId: string, before = Date.now()): Prom
   }
 }
 
+function isSnapshot(value: unknown): value is ExecutorSnapshot {
+  if (!value || typeof value !== 'object') return false;
+  const { tasks, messages, actionResults } = value as Partial<ExecutorSnapshot>;
+  return (
+    Array.isArray(tasks) &&
+    tasks.every(task => typeof task === 'string') &&
+    Array.isArray(messages) &&
+    messages.every(stored => typeof stored?.message === 'object' && stored.message !== null) &&
+    Array.isArray(actionResults)
+  );
+}
+
 /** The chat's trace recorder while traces are kept: one per chat, made at its first run */
 function traceFor(instance: Instance, settings: GeneralSettingsConfig): TraceRecorder | null {
   if (!settings.debugTrace) {
     instance.trace = null;
     return null;
   }
-  if (!instance.trace) {
+  if (!instance.trace || instance.trace.stopped) {
     instance.trace = new TraceRecorder(instance.taskId);
     traceStore.prune(MAX_TRACED_SESSIONS).catch(error => logger.warning('Failed to drop old traces:', error));
   }
@@ -966,7 +981,9 @@ async function setupExecutor(
 
   const trace = traceFor(instance, generalSettings);
   if (trace) {
-    for (const llm of [navigatorLLM, plannerLLM, captchaLLM]) if (llm) llm.callbacks = [trace.handler];
+    // alongside the call logger createChatModel attached, not in its place
+    for (const llm of [navigatorLLM, plannerLLM, captchaLLM])
+      if (llm) llm.callbacks = [...(Array.isArray(llm.callbacks) ? llm.callbacks : []), trace.handler];
     trace.task(task, trigger, {
       source: instance.source,
       extension: chrome.runtime.getManifest().version,

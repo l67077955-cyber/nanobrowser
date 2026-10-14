@@ -101,7 +101,11 @@ export interface TraceSessionInfo {
 }
 
 export interface TraceStore {
-  append(sessionId: string, entries: TraceEntry[], blobs: TraceBlob[]): Promise<void>;
+  /**
+   * Adds to the session's trace. With `continuing` (the writer has written to it before) nothing is written
+   * when the trace is gone, deleted with its chat or cleared, and false is returned.
+   */
+  append(sessionId: string, entries: TraceEntry[], blobs: TraceBlob[], continuing?: boolean): Promise<boolean>;
   /** the session's entries, oldest first */
   getEntries(sessionId: string): Promise<TraceEntry[]>;
   /** the session's bodies, by hash */

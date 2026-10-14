@@ -150,8 +150,8 @@ export interface ChatHistoryStorage {
   // Get a specific chat session with its messages
   getSession: (sessionId: string) => Promise<ChatSession | null>;
 
-  // Create a new chat session
-  createSession: (title: string) => Promise<ChatSession>;
+  // Create a new chat session, with the messages it starts with (an imported chat) written in one go
+  createSession: (title: string, messages?: Message[]) => Promise<ChatSession>;
 
   // Update an existing chat session
   updateTitle: (sessionId: string, title: string) => Promise<ChatSessionMetadata>;

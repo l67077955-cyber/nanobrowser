@@ -1,3 +1,4 @@
+import type { ExportFormat } from '@extension/shared';
 import type { ChatMessage, ChatSession, Message, StepMeta, TraceEntry } from '@extension/storage';
 import { Actors } from '../../agent/event/types';
 
@@ -6,7 +7,7 @@ import { Actors } from '../../agent/event/types';
  * reading the stores, printing a PDF and saving files happen in ./index.ts.
  */
 
-export type ExportFormat = 'debug' | 'log' | 'txt' | 'md' | 'html' | 'pdf';
+export type { ExportFormat };
 
 export const EXPORT_FORMATS: Record<ExportFormat, { extension: string; mime: string }> = {
   debug: { extension: 'debug.json', mime: 'application/json' },

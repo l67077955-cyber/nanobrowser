@@ -115,6 +115,10 @@ export class TraceRecorder {
   private starts = new Map<string, number>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private writing: Promise<void> = Promise.resolve();
+  /** something was written: a trace missing after that was deleted, and the bodies it had are gone with it */
+  private written = false;
+  /** the trace was deleted (with its chat, or cleared in the settings) while this recorder was in use */
+  stopped = false;
   /** the LangChain handler to give the chat models of the chat's agent */
   readonly handler: BaseCallbackHandler;
   /** fetch for Jev's requests, recorded as they go */
@@ -148,6 +152,7 @@ export class TraceRecorder {
   }
 
   private add(entry: TraceEntry): void {
+    if (this.stopped) return;
     this.entries.push(entry);
     if (!this.timer) this.timer = setTimeout(() => void this.flush(), FLUSH_DELAY_MS);
   }
@@ -190,7 +195,15 @@ export class TraceRecorder {
     this.blobs = [];
     if (!entries.length && !blobs.length) return this.writing;
     this.writing = this.writing
-      .then(() => this.store.append(this.sessionId, entries, blobs))
+      .then(async () => {
+        if (this.stopped) return;
+        if ((await this.store.append(this.sessionId, entries, blobs, this.written)) === false) {
+          logger.info('The debug trace of this chat was deleted, recording stops', this.sessionId);
+          this.stopped = true;
+          return;
+        }
+        this.written = true;
+      })
       .catch(error => {
         // a body that was not written is written again with the next entry that refers to it
         for (const blob of blobs) this.known.delete(blob.hash);

@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FiDownload, FiX } from 'react-icons/fi';
 import { t } from '@extension/i18n';
-
-/** The formats a chat is saved in, as the background names them */
-export type ExportFormat = 'debug' | 'log' | 'txt' | 'md' | 'html' | 'pdf';
+import type { ExportedFile, ExportFormat } from '@extension/shared';
 
 const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: 'debug', label: t('chat_export_debug'), hint: t('chat_export_debug_hint') },
@@ -18,8 +16,6 @@ const LAST_FORMAT_KEY = 'nb-export-format';
 
 /** Files a chat is taken back in from */
 export const IMPORT_ACCEPT = '.json,.txt,.md,.markdown,.html,.htm,.log,.pdf';
-
-type ExportedFile = { filename: string; mime: string; data: string; base64?: boolean };
 
 /** Saves a file the background made, the way a download link does */
 function save(file: ExportedFile): void {
@@ -49,15 +45,18 @@ export function ExportDialog({ sessionId, onClose }: { sessionId: string; onClos
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  // the side panel passes a new onClose with each of its renders: focus is set only when the dialog opens
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     dialogRef.current?.querySelector<HTMLInputElement>('input:checked')?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
 
   const exportNow = async () => {
     setBusy(true);

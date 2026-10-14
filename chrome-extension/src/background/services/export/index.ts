@@ -1,3 +1,4 @@
+import type { ExportedFile } from '@extension/shared';
 import { chatHistoryStore, traceStore } from '@extension/storage';
 import { createLogger } from '../../log';
 import {
@@ -15,14 +16,6 @@ import {
 } from './formats';
 
 const logger = createLogger('export');
-
-/** A file for the side panel to save: text as it is, a PDF as base64 */
-export interface ExportedFile {
-  filename: string;
-  mime: string;
-  data: string;
-  base64?: boolean;
-}
 
 function parsed(text: string | null | undefined): unknown {
   if (!text) return null;
@@ -61,7 +54,8 @@ async function printToPdf(html: string): Promise<string> {
 
 /** A chat saved as a file in one of the formats */
 export async function exportChat(sessionId: string, format: ExportFormat): Promise<ExportedFile> {
-  if (!(format in EXPORT_FORMATS)) throw new Error(`Unknown export format: ${format}`);
+  if (!Object.prototype.hasOwnProperty.call(EXPORT_FORMATS, format))
+    throw new Error(`Unknown export format: ${format}`);
   const session = await chatHistoryStore.getSession(sessionId);
   if (!session) throw new Error('That chat is gone');
   const now = new Date();
@@ -134,19 +128,24 @@ export function readChatFile(name: string, text: string): ImportedChat {
 /** Saves a chat taken from a file as a new chat, and returns its id */
 export async function importChat(chat: ImportedChat): Promise<string> {
   if (!chat.messages.length) throw new Error('The file has no conversation in it');
-  const session = await chatHistoryStore.createSession(chat.title);
-  for (const message of chat.messages) await chatHistoryStore.addMessage(session.id, message);
-  if (chat.agentContext) {
-    const context = typeof chat.agentContext === 'string' ? chat.agentContext : JSON.stringify(chat.agentContext);
-    await chatHistoryStore.storeAgentContext(session.id, context);
-  }
-  if (chat.stepHistory) {
-    const { task, history } = chat.stepHistory;
-    await chatHistoryStore.storeAgentStepHistory(
-      session.id,
-      task,
-      typeof history === 'string' ? history : JSON.stringify(history),
-    );
+  const session = await chatHistoryStore.createSession(chat.title, chat.messages);
+  try {
+    if (chat.agentContext) {
+      const context = typeof chat.agentContext === 'string' ? chat.agentContext : JSON.stringify(chat.agentContext);
+      await chatHistoryStore.storeAgentContext(session.id, context);
+    }
+    if (chat.stepHistory) {
+      const { task, history } = chat.stepHistory;
+      await chatHistoryStore.storeAgentStepHistory(
+        session.id,
+        task,
+        typeof history === 'string' ? history : JSON.stringify(history),
+      );
+    }
+  } catch (error) {
+    // no half-imported chat is left in the history
+    await chatHistoryStore.deleteSession(session.id).catch(() => {});
+    throw error;
   }
   if (chat.trace?.entries.length) {
     const entries = chat.trace.entries.map(entry => ({ ...entry, sessionId: session.id }));

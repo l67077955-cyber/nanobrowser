@@ -27,6 +27,7 @@ function memoryStore() {
     append: vi.fn(async (_sessionId: string, more: TraceEntry[], moreBlobs: TraceBlob[]) => {
       entries.push(...more);
       blobs.push(...moreBlobs);
+      return true;
     }),
   } as unknown as TraceStore;
   return { store, entries, blobs };
@@ -193,6 +194,25 @@ describe('TraceRecorder', () => {
     await recorder.fetch('https://jev.example', { body: '{"q":1}' });
     await recorder.flush();
     expect(blobs.some(blob => JSON.stringify(blob.value) === '{"q":1}')).toBe(true);
+  });
+
+  it('stops once its trace was deleted elsewhere, instead of writing entries that point at bodies gone with it', async () => {
+    const { store } = memoryStore();
+    const recorder = new TraceRecorder('chat-1', { store });
+    recorder.task('find a flight', 'new task', {});
+    await recorder.flush();
+    expect(vi.mocked(store.append).mock.calls[0][3]).toBe(false);
+
+    // the chat was deleted, or its trace cleared in the settings
+    vi.mocked(store.append).mockResolvedValueOnce(false);
+    recorder.task('and a hotel', 'follow-up', {});
+    await recorder.flush();
+    expect(vi.mocked(store.append).mock.calls[1][3]).toBe(true);
+    expect(recorder.stopped).toBe(true);
+
+    recorder.task('and a car', 'follow-up', {});
+    await recorder.flush();
+    expect(store.append).toHaveBeenCalledTimes(2);
   });
 });
 
