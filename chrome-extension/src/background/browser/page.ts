@@ -2552,6 +2552,11 @@ export default class Page {
     }
 
     const currentUrl = this._puppeteerPage.url();
+    // no address yet: a tab that is still (re)loading, not a site the user blocked
+    if (currentUrl.trim() === '') {
+      logger.warning(`Tab ${this._tabId} has no address yet, not checking it`);
+      return;
+    }
     if (!isUrlAllowed(currentUrl, this._config.allowedUrls, this._config.deniedUrls)) {
       const errorMessage = `URL: ${currentUrl} is not allowed`;
       logger.error(errorMessage);

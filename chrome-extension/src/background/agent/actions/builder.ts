@@ -439,27 +439,22 @@ export class ActionBuilder {
           if (checked !== undefined) msg += checked ? ' - it is now checked' : ' - it is now unchecked';
           logger.info(msg);
 
-          // TODO: could be optimized by chrome extension tab api
-          const currentTabIds = await this.context.browserContext.getAllTabIds();
-          if (currentTabIds.size > initialTabIds.size) {
+          const newTabId = await this.context.browserContext.findOpenedTab(initialTabIds, page.tabId);
+          if (newTabId) {
             const newTabMsg = t('act_click_newTabOpened');
             msg += ` - ${newTabMsg}`;
             logger.info(newTabMsg);
-            // find the tab id that is not in the initial tab ids
-            const newTabId = Array.from(currentTabIds).find(id => !initialTabIds.has(id));
-            if (newTabId) {
-              await this.context.browserContext.adoptOpenedTab(newTabId, userTabId);
-              // the click worked either way: a tab that cannot be attached is no reason to click again
-              try {
-                const newPage = await this.context.browserContext.switchTab(newTabId);
-                // which page it is: often the very page the agent was on, opened again by a link
-                const newUrl = (await chrome.tabs.get(newTabId).catch(() => null))?.url || newPage.url();
-                if (newUrl) msg += ` (${newUrl})`;
-              } catch (switchError) {
-                const reason = switchError instanceof Error ? switchError.message : String(switchError);
-                logger.warning(`Could not attach the tab the click opened: ${reason}`);
-                msg += ` - new tab opened but could not be attached: ${reason}`;
-              }
+            await this.context.browserContext.adoptOpenedTab(newTabId, userTabId);
+            // the click worked either way: a tab that cannot be attached is no reason to click again
+            try {
+              const newPage = await this.context.browserContext.switchTab(newTabId);
+              // which page it is: often the very page the agent was on, opened again by a link
+              const newUrl = (await chrome.tabs.get(newTabId).catch(() => null))?.url || newPage.url();
+              if (newUrl) msg += ` (${newUrl})`;
+            } catch (switchError) {
+              const reason = switchError instanceof Error ? switchError.message : String(switchError);
+              logger.warning(`Could not attach the tab the click opened: ${reason}`);
+              msg += ` - new tab opened but could not be attached: ${reason}`;
             }
           } else if (page.clickHint) {
             msg += ` - ${page.clickHint}`;

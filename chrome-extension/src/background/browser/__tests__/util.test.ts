@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPageStateOutdated, isUrlAllowed } from '../util';
+import { isPageStateOutdated, isUrlAllowed, pickOpenedTab } from '../util';
 
 describe('isUrlAllowed', () => {
   it('allows everything when both lists are empty, except dangerous schemes', () => {
@@ -70,5 +70,35 @@ describe('isPageStateOutdated', () => {
 
   it('keeps the state when the address of the tab is unknown', () => {
     expect(isPageStateOutdated(google, '', google)).toBe(false);
+  });
+});
+
+describe('pickOpenedTab', () => {
+  const before = new Set([1, 2, 3]);
+
+  it('takes the tab the clicked tab opened', () => {
+    expect(pickOpenedTab([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 10, openerTabId: 2 }], before, 2)).toBe(10);
+  });
+
+  it('passes over a tab the browser put to sleep, which comes back under a new id', () => {
+    // the bilibili run: 热门 opened a tab while Edge put a grok.com tab to sleep
+    const tabs = [{ id: 1 }, { id: 3 }, { id: 9, discarded: true }, { id: 10, openerTabId: 2 }, { id: 2 }];
+    expect(pickOpenedTab(tabs, before, 2)).toBe(10);
+    expect(pickOpenedTab([{ id: 1 }, { id: 2 }, { id: 9, discarded: true }], before, 2)).toBeUndefined();
+  });
+
+  it('passes over a tab another page or the user opened meanwhile', () => {
+    expect(
+      pickOpenedTab([{ id: 1 }, { id: 2 }, { id: 9, openerTabId: 3 }, { id: 10, openerTabId: 2 }], before, 2),
+    ).toBe(10);
+  });
+
+  it('takes a lone new tab without an opener, but not one of several', () => {
+    expect(pickOpenedTab([{ id: 1 }, { id: 2 }, { id: 10 }], before, 2)).toBe(10);
+    expect(pickOpenedTab([{ id: 1 }, { id: 2 }, { id: 9 }, { id: 10 }], before, 2)).toBeUndefined();
+  });
+
+  it('finds nothing when no tab was opened', () => {
+    expect(pickOpenedTab([{ id: 1 }, { id: 2 }, { id: 3 }], before, 2)).toBeUndefined();
   });
 });

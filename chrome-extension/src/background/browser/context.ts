@@ -8,7 +8,7 @@ import {
 } from './views';
 import Page, { build_initial_state } from './page';
 import { createLogger } from '@src/background/log';
-import { isUrlAllowed } from './util';
+import { isUrlAllowed, pickOpenedTab } from './util';
 import { analytics } from '../services/analytics';
 
 const logger = createLogger('BrowserContext');
@@ -229,6 +229,12 @@ export default class BrowserContext {
   public async getAllTabIds(): Promise<Set<number>> {
     const tabs = await chrome.tabs.query({ windowType: 'normal' });
     return new Set(tabs.map(tab => tab.id).filter(id => id !== undefined));
+  }
+
+  /** The tab a click on openerTabId opened, given the tabs open before it; see pickOpenedTab */
+  public async findOpenedTab(initialTabIds: Set<number>, openerTabId: number): Promise<number | undefined> {
+    const tabs = await chrome.tabs.query({ windowType: 'normal' });
+    return pickOpenedTab(tabs, initialTabIds, openerTabId);
   }
 
   /**

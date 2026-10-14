@@ -85,6 +85,24 @@ export function isUrlAllowed(url: string, allowList: string[], denyList: string[
   }
 }
 
+/**
+ * The tab a click opened, among the tabs open after it: one that was not there before and that the clicked
+ * tab opened. Tabs elsewhere in the browser come and go meanwhile, and a tab the browser puts to sleep can
+ * come back under a new id, discarded: neither is what the click opened.
+ * @returns undefined when no tab, or no single tab, can be told to be the one the click opened
+ */
+export function pickOpenedTab(
+  tabs: Partial<Pick<chrome.tabs.Tab, 'id' | 'openerTabId' | 'discarded'>>[],
+  initialTabIds: Set<number>,
+  openerTabId: number,
+): number | undefined {
+  const added = tabs.filter(tab => tab.id !== undefined && !initialTabIds.has(tab.id) && !tab.discarded);
+  const opened = added.filter(tab => tab.openerTabId === openerTabId);
+  if (opened.length > 0) return opened[opened.length - 1].id;
+  // a page can open a tab without being its opener: only a lone new tab can be taken for it
+  return added.length === 1 ? added[0].id : undefined;
+}
+
 // Check if a URL is a new tab page (about:blank or chrome://new-tab-page).
 /**
  * Whether the state last read from a tab describes a document that is no longer there: the tab shows the
