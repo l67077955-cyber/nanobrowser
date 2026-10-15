@@ -131,10 +131,76 @@ export function extractJsonFromModelOutput(content: string): Record<string, unkn
         // next candidate
       }
     }
+    // Last, the same candidates with the quotes a model left unescaped inside a string ("1-1 of 1") escaped
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(escapeStrayQuotes(candidate));
+      } catch {
+        // next candidate
+      }
+    }
     throw new Error('no JSON object found');
   } catch (e) {
     throw new ResponseParseError(`Could not manually extract JSON from model output`);
   }
+}
+
+/**
+ * Escape the double quotes a model wrote unescaped inside a JSON string, and the raw line breaks: jsonrepair
+ * reads `"no date, "1-1 of 1", Notification…"` as a new key. A quote ends a string only when what follows can
+ * come after it: a colon after a key; after a value the end of its object or array, or a comma and then the next
+ * key (in an object) or the next value (in an array). Every other quote is text.
+ */
+export function escapeStrayQuotes(json: string): string {
+  const containers: string[] = [];
+  let expectKey = false;
+  let inString = false;
+  let isKey = false;
+  let out = '';
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (inString) {
+      if (c === '\\') {
+        out += c + (json[i + 1] ?? '');
+        i++;
+      } else if (c === '"') {
+        const rest = json.slice(i + 1, i + 200);
+        const ends = isKey
+          ? /^\s*:/.test(rest)
+          : /^\s*([}\]]|$)/.test(rest) ||
+            (containers[containers.length - 1] === '['
+              ? /^\s*,\s*["{[\d\-tfn]/.test(rest)
+              : /^\s*,\s*"[A-Za-z_][\w-]*"\s*:/.test(rest));
+        out += ends ? c : '\\"';
+        if (ends) inString = false;
+      } else if (c === '\n') {
+        out += '\\n';
+      } else if (c === '\r') {
+        out += '\\r';
+      } else if (c === '\t') {
+        out += '\\t';
+      } else {
+        out += c;
+      }
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      isKey = containers[containers.length - 1] === '{' && expectKey;
+    } else if (c === '{' || c === '[') {
+      containers.push(c);
+      expectKey = c === '{';
+    } else if (c === '}' || c === ']') {
+      containers.pop();
+      expectKey = false;
+    } else if (c === ',') {
+      expectKey = containers[containers.length - 1] === '{';
+    } else if (c === ':') {
+      expectKey = false;
+    }
+    out += c;
+  }
+  return out;
 }
 
 /**

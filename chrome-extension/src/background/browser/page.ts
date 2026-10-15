@@ -1019,6 +1019,9 @@ export default class Page {
     const keyParts = keys.split('+');
     const modifiers = keyParts.slice(0, -1);
     const mainKey = keyParts[keyParts.length - 1];
+    // Enter submits, and a search in a single-page app (Gmail) loads no document: the load wait below returned at
+    // once, and the next step read the old page (the inbox, not the results)
+    const before = mainKey.trim().toLowerCase() === 'enter' ? await this.probePage() : null;
 
     // Press modifiers and main key, ensure modifiers are released even if an error occurs.
     try {
@@ -1045,6 +1048,21 @@ export default class Page {
           logger.error('Failed to release modifier:', modifier, releaseError);
         }
       }
+    }
+    if (before) await this.waitForTextChange(before);
+  }
+
+  /** Wait until the page's text differs from `before` and then holds still for a moment, at most CLICK_SETTLE_MS */
+  private async waitForTextChange(before: PageProbe): Promise<void> {
+    const deadline = Date.now() + CLICK_SETTLE_MS;
+    let last: string | null = null;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 400));
+      const now = await this.probePage();
+      // the URL alone is no sign: Gmail puts the search in it before the results show
+      if (!now || now.sig === before.sig) continue;
+      if (now.sig === last) return;
+      last = now.sig;
     }
   }
 
