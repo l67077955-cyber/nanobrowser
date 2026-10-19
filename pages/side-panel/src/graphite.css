@@ -464,8 +464,9 @@ html .nb-palette button {
 html .nb-palette button > svg,
 html .nb-palette button > i {
   flex-shrink: 0;
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
   color: var(--nb-muted);
 }
 html .nb-palette-label {

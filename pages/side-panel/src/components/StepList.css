@@ -144,8 +144,9 @@
   color: var(--nb-good);
 }
 .nb-work-mark svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 .nb-work-title {
   font-weight: 500;
@@ -756,8 +757,9 @@ button.nb-line:hover .nb-dot {
   overflow-wrap: anywhere;
 }
 .nb-facts li > svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
   margin-top: 3px;
   color: var(--nb-muted);
 }
@@ -816,8 +818,9 @@ button.nb-line:hover .nb-dot {
   color: var(--nb-ink);
 }
 .nb-disclose svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
   transition: transform 0.15s ease;
 }
 .nb-disclose.open svg {
@@ -867,8 +870,9 @@ button.nb-line:hover .nb-dot {
   color: var(--nb-muted);
 }
 .nb-peek-eye svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 .nb-peek-eye.live {
   color: var(--nb-jev);
@@ -1077,8 +1081,9 @@ button.nb-line:hover .nb-dot {
   color: var(--nb-ink);
 }
 .nb-ghost svg {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 
 /* ---------- when a task ends badly ---------- */
@@ -1097,6 +1102,9 @@ button.nb-line:hover .nb-dot {
 }
 .nb-failure-title svg {
   flex: none;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
   color: var(--nb-critical);
 }
 .nb-failure p {
@@ -1139,8 +1147,9 @@ button.nb-line:hover .nb-dot {
   border-color: var(--nb-muted);
 }
 .nb-button svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 .nb-button.primary {
   border-color: var(--nb-ink);
@@ -1225,8 +1234,9 @@ button.nb-line:hover .nb-dot {
   color: var(--nb-ink);
 }
 .nb-jump svg {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 .nb-confirm {
   display: flex;
@@ -1343,6 +1353,11 @@ button.nb-line:hover .nb-dot {
 .nb-ask-icon {
   padding: 4px !important;
   color: var(--nb-muted);
+}
+.nb-ask-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 .nb-ask-icon:hover {
   color: var(--nb-ink);
@@ -1681,8 +1696,9 @@ button.nb-line:hover .nb-dot {
 }
 .nb-dock-meta svg {
   flex-shrink: 0;
-  width: 11px;
-  height: 11px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 .nb-dock-resume {
   flex-shrink: 0;
@@ -1706,8 +1722,9 @@ button.nb-line:hover .nb-dot {
   color: var(--nb-ink);
 }
 .nb-dock-toggle svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
   transform: rotate(180deg);
   transition: transform 0.2s;
 }
@@ -1782,8 +1799,9 @@ button.nb-line:hover .nb-dot {
 }
 .nb-dock-queue li > svg {
   flex-shrink: 0;
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
   color: var(--nb-muted);
 }
 .nb-dock-queue li > span {
@@ -1807,8 +1825,9 @@ button.nb-line:hover .nb-dot {
   color: var(--nb-critical);
 }
 .nb-dock-queue button svg {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 .nb-dock-chips {
   display: flex;
@@ -1840,8 +1859,9 @@ button.nb-line:hover .nb-dot {
 }
 .nb-dock-chip svg {
   flex-shrink: 0;
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
   color: var(--nb-muted);
 }
 .nb-dock-chip:hover {
