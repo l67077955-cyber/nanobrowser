@@ -79,7 +79,7 @@ export default function RoutineList({ onOpenSession }: { onOpenSession?: (sessio
                 className={`${actionButton} hover:text-nb-ink`}
                 aria-label={routine.enabled ? t('chat_routines_pause') : t('chat_routines_resume')}
                 title={routine.enabled ? t('chat_routines_pause') : t('chat_routines_resume')}>
-                {routine.enabled ? <FiPause size={13} /> : <FiPlay size={13} />}
+                {routine.enabled ? <FiPause size={16} /> : <FiPlay size={16} />}
               </button>
               <button
                 type="button"
@@ -87,7 +87,7 @@ export default function RoutineList({ onOpenSession }: { onOpenSession?: (sessio
                 className={`${actionButton} mr-1 hover:text-nb-critical`}
                 aria-label={t('chat_routines_delete')}
                 title={t('chat_routines_delete')}>
-                <FiTrash2 size={13} />
+                <FiTrash2 size={16} />
               </button>
             </li>
           );

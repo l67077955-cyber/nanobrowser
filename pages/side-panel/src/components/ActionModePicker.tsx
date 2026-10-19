@@ -102,10 +102,10 @@ export default function ActionModePicker() {
         aria-label={`${t('chat_actionMode_label')}: ${t(label)}`}
         title={t('chat_actionMode_label')}
         className={`nb-mode-button flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11.5px] font-medium transition-colors hover:bg-nb-tile-2 ${tone}`}>
-        <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+        <Icon className="size-4 shrink-0" aria-hidden="true" />
         <span className="shrink-0">{t(label)}</span>
         <FiChevronUp
-          className={`size-3 shrink-0 text-nb-muted transition-transform ${open ? '' : 'rotate-180'}`}
+          className={`size-4 shrink-0 text-nb-muted transition-transform ${open ? '' : 'rotate-180'}`}
           aria-hidden="true"
         />
       </button>
@@ -129,12 +129,12 @@ export default function ActionModePicker() {
                 role="menuitemradio"
                 aria-checked={current}
                 onClick={() => void choose(option)}>
-                <OptionIcon className={`mt-0.5 size-3.5 shrink-0 ${optionTone}`} aria-hidden="true" />
+                <OptionIcon className={`mt-0.5 size-4 shrink-0 ${optionTone}`} aria-hidden="true" />
                 <span className="min-w-0 flex-1">
                   <b>{t(optionLabel)}</b>
                   <small>{t(desc)}</small>
                 </span>
-                <span className="nb-menu-check">{current && <FiCheck size={13} />}</span>
+                <span className="nb-menu-check">{current && <FiCheck size={16} />}</span>
               </button>
             );
           })}

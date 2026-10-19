@@ -63,6 +63,9 @@ code {
 .header-icon {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   padding: 6px;
   border-radius: 8px;
   color: var(--nb-ink-2);
@@ -70,6 +73,12 @@ code {
   transition:
     color 0.15s ease,
     background-color 0.15s ease;
+}
+
+.header-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 
 .header-icon:hover,
@@ -103,9 +112,8 @@ code {
   font-weight: 500;
 }
 .header.floating .header-icon {
-  opacity: 0.55;
+  opacity: 1;
   transition:
-    opacity 0.15s ease,
     color 0.15s ease,
     background-color 0.15s ease;
 }

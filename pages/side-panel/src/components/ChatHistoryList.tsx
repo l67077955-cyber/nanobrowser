@@ -48,7 +48,7 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
             onClick={onImport}
             className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] text-nb-muted hover:bg-nb-tile-2 hover:text-nb-ink"
             title={t('chat_import_hint')}>
-            <FiUpload size={12} aria-hidden="true" />
+            <FiUpload size={16} aria-hidden="true" />
             {t('chat_import_button')}
           </button>
         )}
@@ -78,7 +78,7 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
                   aria-label={t('chat_export_menu')}
                   title={t('chat_export_menu')}
                   type="button">
-                  <FiDownload size={14} />
+                  <FiDownload size={16} />
                 </button>
               )}
               {onSessionBookmark && (
@@ -91,7 +91,7 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
                   aria-label={t('chat_history_bookmark')}
                   title={t('chat_history_bookmark')}
                   type="button">
-                  <FiBookmark size={14} />
+                  <FiBookmark size={16} />
                 </button>
               )}
               <button
@@ -103,7 +103,7 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
                 aria-label={t('chat_history_delete')}
                 title={t('chat_history_delete')}
                 type="button">
-                <FiTrash2 size={14} />
+                <FiTrash2 size={16} />
               </button>
             </li>
           ))}

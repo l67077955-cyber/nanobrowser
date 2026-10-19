@@ -111,14 +111,14 @@ const BookmarkList: React.FC<BookmarkListProps> = ({
                   className={`${actionButton} hover:text-nb-good`}
                   aria-label={t('chat_bookmarks_saveEdit')}
                   type="button">
-                  <FiCheck size={14} />
+                  <FiCheck size={16} />
                 </button>
                 <button
                   onClick={handleCancelEdit}
                   className={`${actionButton} hover:text-nb-ink`}
                   aria-label={t('chat_bookmarks_cancelEdit')}
                   type="button">
-                  <FiX size={14} />
+                  <FiX size={16} />
                 </button>
               </div>
             ) : (
@@ -139,7 +139,7 @@ const BookmarkList: React.FC<BookmarkListProps> = ({
                   aria-label={t('chat_bookmarks_edit')}
                   title={t('chat_bookmarks_edit')}
                   type="button">
-                  <FiEdit2 size={13} />
+                  <FiEdit2 size={16} />
                 </button>
                 <button
                   onClick={e => {
@@ -152,7 +152,7 @@ const BookmarkList: React.FC<BookmarkListProps> = ({
                   aria-label={t('chat_bookmarks_delete')}
                   title={t('chat_bookmarks_delete')}
                   type="button">
-                  <FiTrash2 size={13} />
+                  <FiTrash2 size={16} />
                 </button>
               </>
             )}

@@ -96,18 +96,19 @@ html .header.floating .header-title {
   font-weight: 500;
 }
 html .header-lead img {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 html .header-icon,
 html .header.floating .header-icon {
-  padding: 4px;
+  padding: 6px;
   color: var(--nb-muted);
   opacity: 1;
 }
 html .header-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 html .header-icon:hover,
 html .header-icon[aria-expanded='true'] {
@@ -223,8 +224,9 @@ html .nb-input textarea {
   font-size: 12.5px;
 }
 html .nb-input svg {
-  max-width: 14px;
-  max-height: 14px;
+  max-width: 16px;
+  max-height: 16px;
+  stroke-width: 1.8;
 }
 html .nb-input button.bg-nb-ink {
   background: var(--nb-accent);
@@ -362,8 +364,9 @@ html .nb-menu > button {
   font-size: 12px;
 }
 html .nb-menu > button > svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
   color: var(--nb-muted);
 }
 html .nb-menu > button:hover:enabled,

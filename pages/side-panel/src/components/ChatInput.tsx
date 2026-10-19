@@ -229,7 +229,7 @@ export default function ChatInput({
   }, []);
 
   const iconButton =
-    'rounded-md p-1.5 text-nb-muted transition-colors hover:bg-nb-tile-2 hover:text-nb-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
+    'flex size-7 items-center justify-center rounded-md text-nb-muted transition-colors hover:bg-nb-tile-2 hover:text-nb-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
 
   return (
     <div className="relative">
@@ -255,14 +255,14 @@ export default function ChatInput({
                 <div
                   key={index}
                   className="flex items-center gap-1.5 rounded-md border border-nb-hair bg-nb-tile-2 py-0.5 pl-2 pr-1 text-[11.5px] text-nb-ink-2">
-                  <FiFileText className="size-3 shrink-0 text-nb-muted" />
+                  <FiFileText className="size-4 shrink-0 text-nb-muted" />
                   <span className="max-w-[150px] truncate">{file.name}</span>
                   <button
                     type="button"
                     onClick={() => handleRemoveFile(index)}
                     className="rounded p-0.5 text-nb-muted transition-colors hover:bg-nb-track hover:text-nb-ink"
                     aria-label={`Remove ${file.name}`}>
-                    <FiX className="size-3" />
+                    <FiX className="size-4" />
                   </button>
                 </div>
               ))}
@@ -324,7 +324,7 @@ export default function ChatInput({
                   aria-label={t('chat_buttons_stop')}
                   title={t('chat_buttons_stop')}
                   className="flex size-7 items-center justify-center rounded-full border border-nb-line bg-nb-tile-2 text-nb-ink-2 transition-colors hover:border-nb-muted hover:text-nb-ink">
-                  <FiSquare className="size-2.5 fill-current" />
+                  <FiSquare className="size-3 fill-current" />
                 </button>
               )}
               {!showStopButton && historicalSessionId && (
@@ -332,7 +332,7 @@ export default function ChatInput({
                   type="button"
                   onClick={handleReplay}
                   className="flex items-center gap-1.5 rounded-full border border-nb-line bg-nb-tile-2 px-3 py-1 text-[12.5px] font-medium text-nb-ink transition-colors hover:border-nb-muted">
-                  <FiRotateCcw className="size-3.5" />
+                  <FiRotateCcw className="size-4" />
                   {t('chat_buttons_replay')}
                 </button>
               )}
@@ -343,7 +343,7 @@ export default function ChatInput({
                   aria-label={t('chat_buttons_queue')}
                   title={t('chat_buttons_queue')}
                   className="flex size-7 items-center justify-center rounded-full border border-nb-line bg-nb-tile-2 text-nb-ink-2 transition-colors hover:border-nb-muted hover:text-nb-ink">
-                  <FiCornerDownRight className="size-3.5" />
+                  <FiCornerDownRight className="size-4" />
                 </button>
               )}
               {!(showStopButton && isSendButtonDisabled) && (

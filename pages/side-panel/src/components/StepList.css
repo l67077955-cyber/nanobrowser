@@ -245,8 +245,9 @@ button.nb-line {
   color: var(--nb-muted);
 }
 .nb-dot svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
 }
 .nb-say {
   display: flex;
@@ -1401,8 +1402,9 @@ button.nb-line:hover .nb-dot {
 .nb-welcome-tab img,
 .nb-welcome-tab svg {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
   border-radius: 3px;
 }
 .nb-welcome-tab b {
@@ -1489,9 +1491,10 @@ button.nb-line:hover .nb-dot {
 }
 .nb-menu > button > svg {
   flex: none;
-  width: 14px;
-  height: 14px;
-  color: var(--nb-ink-2);
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
+  color: var(--nb-muted);
 }
 .nb-menu > button:hover:enabled {
   background: var(--nb-tile-2);

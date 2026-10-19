@@ -98,7 +98,7 @@ export function ExportDialog({ sessionId, onClose }: { sessionId: string; onClos
             {t('chat_export_title')}
           </h2>
           <button type="button" className="header-icon" onClick={onClose} aria-label={t('chat_export_close')}>
-            <FiX size={15} />
+            <FiX size={16} />
           </button>
         </div>
         <fieldset className="flex flex-col gap-0.5" disabled={busy}>
@@ -140,7 +140,7 @@ export function ExportDialog({ sessionId, onClose }: { sessionId: string; onClos
           onClick={exportNow}
           disabled={busy}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-nb-ink px-3 py-2 text-[13px] font-medium text-nb-tile disabled:opacity-60">
-          <FiDownload size={14} aria-hidden="true" />
+          <FiDownload size={16} aria-hidden="true" />
           {busy ? t('chat_export_working') : t('chat_export_save')}
         </button>
       </div>
