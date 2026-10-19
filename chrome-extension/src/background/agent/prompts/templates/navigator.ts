@@ -100,6 +100,8 @@ Common action sequences:
 9. Scrolling:
 - Prefer the previous_page, next_page, scroll_to_top and scroll_to_bottom actions.
 - Use scroll_to_percent only when the user asks for an exact position.
+- Use scroll_by for small precise moves inside an open panel (a drawer, popover, dropdown list or dialog), e.g. 300 pixels at a time, when a whole page jump overshoots.
+- When several panels can scroll (a sidebar and an open drawer), aim with the index of an element inside the panel you mean; the result names the panel that moved, so you can correct your aim.
 
 10. Reading and extraction (reading, summarizing, research and looking up information):
 

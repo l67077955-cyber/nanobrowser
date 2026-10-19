@@ -935,6 +935,24 @@
   "act_nextPage_ok": {
     "message": "Rolado para a próxima página"
   },
+  "act_scrollBy_start": {
+    "message": "Rolar $PIXELS$ pixels",
+    "placeholders": {
+      "pixels": {
+        "content": "$1",
+        "example": "300"
+      }
+    }
+  },
+  "act_scrollBy_ok": {
+    "message": "Rolado $PIXELS$ pixels",
+    "placeholders": {
+      "pixels": {
+        "content": "$1",
+        "example": "300"
+      }
+    }
+  },
   "act_errors_alreadyAtTop": {
     "message": "O elemento com índice $INDEX$ já está no topo, não é possível rolar para a página anterior",
     "placeholders": {

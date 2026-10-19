@@ -944,6 +944,24 @@
   "act_nextPage_ok": {
     "message": "Scrolled to next page"
   },
+  "act_scrollBy_start": {
+    "message": "Scroll by $PIXELS$ pixels",
+    "placeholders": {
+      "pixels": {
+        "content": "$1",
+        "example": "300"
+      }
+    }
+  },
+  "act_scrollBy_ok": {
+    "message": "Scrolled by $PIXELS$ pixels",
+    "placeholders": {
+      "pixels": {
+        "content": "$1",
+        "example": "300"
+      }
+    }
+  },
   "act_errors_alreadyAtTop": {
     "message": "Element with index $INDEX$ is already at top, cannot scroll to previous page",
     "placeholders": {

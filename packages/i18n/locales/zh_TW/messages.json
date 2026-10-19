@@ -935,6 +935,24 @@
   "act_nextPage_ok": {
     "message": "已捲動至下一頁"
   },
+  "act_scrollBy_start": {
+    "message": "依 $PIXELS$ 像素捲動",
+    "placeholders": {
+      "pixels": {
+        "content": "$1",
+        "example": "300"
+      }
+    }
+  },
+  "act_scrollBy_ok": {
+    "message": "已依 $PIXELS$ 像素捲動",
+    "placeholders": {
+      "pixels": {
+        "content": "$1",
+        "example": "300"
+      }
+    }
+  },
   "act_errors_alreadyAtTop": {
     "message": "索引為 $INDEX$ 的元素已在頂端，無法捲動至上一頁",
     "placeholders": {

@@ -22,6 +22,7 @@ import {
   waitActionSchema,
   previousPageActionSchema,
   scrollToPercentActionSchema,
+  scrollByActionSchema,
   nextPageActionSchema,
   scrollToTopActionSchema,
   scrollToBottomActionSchema,
@@ -254,11 +255,12 @@ export class ActionBuilder {
     return page.getCachedState()?.selectorMap.get(index);
   }
 
-  /** The result of scrolling the open dialog rather than the page behind it */
-  private dialogScrolled(moved: boolean): ActionResult {
+  /** The result of scrolling the open panel rather than the page behind it */
+  private dialogScrolled(moved: boolean, scrolled?: string): ActionResult {
+    const what = scrolled ? `"${scrolled}"` : 'the open dialog';
     const msg = moved
-      ? 'Scrolled inside the open dialog'
-      : 'The open dialog is already scrolled as far as it goes; close it (Escape or its close button) to reach the page behind';
+      ? `Scrolled inside ${what}`
+      : `No further scrolling inside ${what}; close it (Escape or its close button) to reach the page behind`;
     this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
     return new ActionResult({ extractedContent: msg, includeInMemory: true });
   }
@@ -716,7 +718,7 @@ export class ActionBuilder {
         await page.scrollToPercent(input.yPercent, elementNode);
       } else {
         const dialog = await page.scrollOpenDialog({ percent: input.yPercent }).catch(() => null);
-        if (dialog) return this.dialogScrolled(dialog.moved);
+        if (dialog) return this.dialogScrolled(dialog.moved, dialog.scrolled);
         await page.scrollToPercent(input.yPercent);
       }
       const msg = t('act_scrollToPercent_ok', [input.yPercent.toString()]);
@@ -724,6 +726,36 @@ export class ActionBuilder {
       return new ActionResult({ extractedContent: msg, includeInMemory: true });
     }, scrollToPercentActionSchema);
     actions.push(scrollToPercent);
+
+    // Scroll by an exact pixel amount, for small precise moves inside an open panel
+    const scrollBy = new Action(async (input: z.infer<typeof scrollByActionSchema.schema>) => {
+      const intent = input.intent || t('act_scrollBy_start', [input.pixels.toString()]);
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_START, intent);
+      const page = await this.context.browserContext.getCurrentPage();
+
+      if (input.index) {
+        const elementNode = await this.observedElement(input.index);
+        if (!elementNode) {
+          const errorMsg = t('act_errors_elementNotExist', [input.index.toString()]);
+          this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, errorMsg);
+          return new ActionResult({ error: errorMsg, includeInMemory: true });
+        }
+        await page.scrollBy(input.pixels, elementNode);
+        // which panel moved, so the model can aim at another one next
+        const where = await page.describeScrollTarget(elementNode).catch(() => null);
+        const movedMsg = t('act_scrollBy_ok', [input.pixels.toString()]) + (where ? ` inside "${where}"` : '');
+        this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, movedMsg);
+        return new ActionResult({ extractedContent: movedMsg, includeInMemory: true });
+      } else {
+        const dialog = await page.scrollOpenDialog({ pixels: input.pixels }).catch(() => null);
+        if (dialog) return this.dialogScrolled(dialog.moved, dialog.scrolled);
+        await page.scrollBy(input.pixels);
+      }
+      const msg = t('act_scrollBy_ok', [input.pixels.toString()]);
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
+      return new ActionResult({ extractedContent: msg, includeInMemory: true });
+    }, scrollByActionSchema);
+    actions.push(scrollBy);
 
     // Scroll to top
     const scrollToTop = new Action(async (input: z.infer<typeof scrollToTopActionSchema.schema>) => {
@@ -740,7 +772,7 @@ export class ActionBuilder {
         await page.scrollToPercent(0, elementNode);
       } else {
         const dialog = await page.scrollOpenDialog({ percent: 0 }).catch(() => null);
-        if (dialog) return this.dialogScrolled(dialog.moved);
+        if (dialog) return this.dialogScrolled(dialog.moved, dialog.scrolled);
         await page.scrollToPercent(0);
       }
       const msg = t('act_scrollToTop_ok');
@@ -764,7 +796,7 @@ export class ActionBuilder {
         await page.scrollToPercent(100, elementNode);
       } else {
         const dialog = await page.scrollOpenDialog({ percent: 100 }).catch(() => null);
-        if (dialog) return this.dialogScrolled(dialog.moved);
+        if (dialog) return this.dialogScrolled(dialog.moved, dialog.scrolled);
         await page.scrollToPercent(100);
       }
       const msg = t('act_scrollToBottom_ok');
@@ -805,7 +837,7 @@ export class ActionBuilder {
         await page.scrollToPreviousPage(elementNode);
       } else {
         const dialog = await page.scrollOpenDialog({ pages: -1 }).catch(() => null);
-        if (dialog) return this.dialogScrolled(dialog.moved);
+        if (dialog) return this.dialogScrolled(dialog.moved, dialog.scrolled);
         // Check if page is already at top
         const [initialScrollY] = await page.getScrollInfo();
         if (initialScrollY === 0) {
@@ -855,7 +887,7 @@ export class ActionBuilder {
         await page.scrollToNextPage(elementNode);
       } else {
         const dialog = await page.scrollOpenDialog({ pages: 1 }).catch(() => null);
-        if (dialog) return this.dialogScrolled(dialog.moved);
+        if (dialog) return this.dialogScrolled(dialog.moved, dialog.scrolled);
         // Check if page is already at bottom
         const [initialScrollY, initialVisualViewportHeight, initialScrollHeight] = await page.getScrollInfo();
         if (initialScrollY + initialVisualViewportHeight >= initialScrollHeight) {

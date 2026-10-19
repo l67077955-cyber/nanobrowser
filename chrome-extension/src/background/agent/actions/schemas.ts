@@ -189,6 +189,17 @@ export const scrollToPercentActionSchema: ActionSchema = {
   }),
 };
 
+export const scrollByActionSchema: ActionSchema = {
+  name: 'scroll_by',
+  description:
+    'Scroll by an exact number of pixels: positive scrolls down, negative scrolls up. Use for small precise moves inside an open panel (a drawer, popover, dropdown list or dialog) when a whole page or percent jump overshoots. Pass the index of any element inside the panel you want to scroll when several can scroll (a field in the drawer rather than an item in the sidebar). With no index, scrolls the open panel, or the whole document when none is open.',
+  schema: z.object({
+    intent: z.string().default('').describe('purpose of this action'),
+    pixels: z.number().int().describe('pixels to scroll: positive down, negative up, e.g. 300 or -300'),
+    index: z.number().int().nullable().optional().describe('index of the element'),
+  }),
+};
+
 export const scrollToTopActionSchema: ActionSchema = {
   name: 'scroll_to_top',
   description: 'Scroll the document in the window or an element to the top',

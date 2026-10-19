@@ -78,6 +78,90 @@ async function isBlankPng(base64: string): Promise<boolean> {
 
 const IDENTITY_ATTRIBUTES = ['role', 'type', 'name', 'aria-label', 'data-testid', 'placeholder', 'href'];
 
+/** How far an open panel is scrolled: a fraction of its box, whole screens, or exact pixels */
+export type PanelScrollHow = { percent: number } | { pages: number } | { pixels: number };
+
+/**
+ * Scrolls the open overlay panel in the page instead of the page behind it: a dialog, sheet, drawer,
+ * popover, select list, menu or tooltip scrolls inside its own box, so scrolling the window changes
+ * nothing. Null when no open panel can scroll.
+ *
+ * Runs in the page: it is passed to page.evaluate and must not use anything outside itself.
+ */
+export function scrollOpenPanel(how: PanelScrollHow): { moved: boolean; scrolled: string } | null {
+  const vw = window.visualViewport?.width || window.innerWidth;
+  const vh = window.visualViewport?.height || window.innerHeight;
+  const inView = (rect: DOMRect): boolean =>
+    rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 && rect.left < vw && rect.top < vh;
+  const shown = (el: Element): boolean => {
+    if (!inView(el.getBoundingClientRect())) return false;
+    const style = getComputedStyle(el);
+    // a panel on its way out (opacity-0, translate-x-full) is still in the DOM: scrolling it is pointless
+    return style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+  };
+  // overlay panels, popup lists and drop-downs, whatever UI library rendered them
+  const panels = Array.from(
+    document.querySelectorAll(
+      'dialog[open], [role="dialog"], [role="alertdialog"], [role="listbox"], [role="menu"], [aria-modal="true"], ' +
+        '[data-slot="sheet-content"], [data-slot="drawer-content"], [data-slot="popover-content"], ' +
+        '[data-slot="select-content"], [data-slot="dropdown-menu-content"], [data-slot="tooltip-content"], ' +
+        '[data-vaul-drawer], [data-radix-popper-content-wrapper]',
+    ),
+  ).filter(shown);
+  if (!panels.length) return null;
+  // the topmost one: portals render at the end of the body
+  const panel = panels[panels.length - 1];
+  const rect = panel.getBoundingClientRect();
+  const x = Math.min(Math.max(rect.left + rect.width / 2, 0), vw - 1);
+  const y = Math.min(Math.max(rect.top + rect.height / 2, 0), vh - 1);
+  const scrollable = (el: Element): el is HTMLElement => {
+    if (!(el instanceof HTMLElement)) return false;
+    if (!/^(auto|scroll|overlay)$/.test(getComputedStyle(el).overflowY)) return false;
+    return el.scrollHeight > el.clientHeight + 4;
+  };
+  // the boxes scrolling what is under the panel's middle, innermost first: a list open inside a sheet
+  // scrolls before the sheet behind it, and the sheet gets its turn when the list cannot move further
+  const chain: HTMLElement[] = [];
+  for (
+    let el: Element | null = document.elementFromPoint(x, y);
+    el && el !== document.documentElement;
+    el = el.parentElement
+  ) {
+    if (scrollable(el)) chain.push(el);
+  }
+  if (!chain.length) {
+    // the middle is covered by something without a scroller (a toast over the panel): fall back to the
+    // largest scrolling box inside the panel
+    const boxes = [panel, ...Array.from(panel.querySelectorAll('*'))].filter(el => scrollable(el) && shown(el));
+    if (!boxes.length) return null;
+    chain.push(
+      boxes.reduce((a, b) => (b.clientHeight * b.clientWidth > a.clientHeight * a.clientWidth ? b : a)) as HTMLElement,
+    );
+  }
+  const name =
+    panel.getAttribute('aria-label') ||
+    panel.querySelector('h1, h2, [role="heading"]')?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 60) ||
+    panel.getAttribute('data-slot') ||
+    panel.getAttribute('role') ||
+    panel.tagName.toLowerCase();
+  const scrollOne = (box: HTMLElement): boolean => {
+    const max = box.scrollHeight - box.clientHeight;
+    const before = box.scrollTop;
+    const top =
+      'percent' in how
+        ? (max * how.percent) / 100
+        : 'pages' in how
+          ? before + how.pages * box.clientHeight
+          : before + how.pixels;
+    box.scrollTo({ top: Math.max(0, Math.min(max, top)), behavior: 'instant' });
+    return Math.abs(box.scrollTop - before) > 1;
+  };
+  for (const box of chain) {
+    if (scrollOne(box)) return { moved: true, scrolled: name };
+  }
+  return { moved: false, scrolled: name };
+}
+
 const collapseLabel = (text: string) => {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > 60 ? `${flat.slice(0, 59)}…` : flat;
@@ -849,34 +933,17 @@ export default class Page {
   }
 
   /**
-   * Scroll the open dialog instead of the page behind it: a modal (a plan table, a settings box) scrolls
-   * inside its own box, so scrolling the window changes nothing. Null when no open dialog can scroll.
+   * Scroll the open overlay panel (a dialog, sheet, drawer, popover, select list or menu) instead of the
+   * page behind it: it scrolls inside its own box, so scrolling the window changes nothing. Null when no
+   * open panel can scroll.
    */
-  async scrollOpenDialog(how: { percent: number } | { pages: number }): Promise<{ moved: boolean } | null> {
+  async scrollOpenDialog(
+    how: { percent: number } | { pages: number } | { pixels: number },
+  ): Promise<{ moved: boolean; scrolled: string } | null> {
     if (!this._puppeteerPage) {
       throw new Error('Puppeteer is not connected');
     }
-    return this._puppeteerPage.evaluate(how => {
-      const visible = (el: Element) => {
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== 'hidden';
-      };
-      const dialogs = Array.from(
-        document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'),
-      ).filter(visible);
-      const dialog = dialogs[dialogs.length - 1];
-      if (!dialog) return null;
-      const scrolls = (el: Element) =>
-        /^(auto|scroll|overlay)$/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 4;
-      const boxes = [dialog, ...Array.from(dialog.querySelectorAll('*'))].filter(el => scrolls(el) && visible(el));
-      if (!boxes.length) return null;
-      const box = boxes.reduce((a, b) => (b.clientHeight * b.clientWidth > a.clientHeight * a.clientWidth ? b : a));
-      const max = box.scrollHeight - box.clientHeight;
-      const before = box.scrollTop;
-      const top = 'percent' in how ? (max * how.percent) / 100 : before + how.pages * box.clientHeight;
-      box.scrollTo({ top: Math.max(0, Math.min(max, top)), behavior: 'instant' });
-      return { moved: Math.abs(box.scrollTop - before) > 1 };
-    }, how);
+    return this._puppeteerPage.evaluate(scrollOpenPanel, how);
   }
 
   // scroll to a percentage of the page or element
@@ -954,6 +1021,61 @@ export default class Page {
         });
       });
     }
+  }
+
+  /**
+   * Which box an index-based scroll moves, in words for the action result (a drawer, a list, the
+   * sidebar): null when the scroll would move the window itself. Lets the model aim at one panel
+   * among several by passing the index of an element inside it.
+   */
+  async describeScrollTarget(elementNode?: DOMElementNode): Promise<string | null> {
+    const page = this._puppeteerPage;
+    if (!page || !elementNode) return null;
+    const element = await this.locateElement(elementNode);
+    if (!element) return null;
+    const box = await element.boundingBox().catch(() => null);
+    if (!box) return null;
+    return page
+      .evaluate(
+        ([x, y]: [number, number]) => {
+          const scrollable = (el: Element): el is HTMLElement => {
+            if (!(el instanceof HTMLElement)) return false;
+            if (!/^(auto|scroll|overlay)$/.test(getComputedStyle(el).overflowY)) return false;
+            return el.scrollHeight > el.clientHeight + 4;
+          };
+          let target: HTMLElement | null = null;
+          for (
+            let el: Element | null = document.elementFromPoint(x, y);
+            el && el !== document.documentElement;
+            el = el.parentElement
+          ) {
+            if (scrollable(el)) {
+              target = el;
+              break;
+            }
+          }
+          // the window itself scrolls: nothing panel-like to name
+          if (!target || target === document.body) return null;
+          const panel = target.closest(
+            'dialog, [role="dialog"], [role="alertdialog"], [role="listbox"], [role="menu"], [aria-modal="true"], [data-slot], [data-vaul-drawer]',
+          );
+          const scope = panel ?? target;
+          const heading = scope
+            .querySelector('h1, h2, h3, [role="heading"]')
+            ?.textContent?.replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 60);
+          return (
+            scope.getAttribute('aria-label') ||
+            heading ||
+            scope.getAttribute('data-slot') ||
+            scope.getAttribute('role') ||
+            scope.tagName.toLowerCase()
+          );
+        },
+        [box.x + box.width / 2, box.y + box.height / 2] as [number, number],
+      )
+      .catch(() => null);
   }
 
   async scrollToPreviousPage(elementNode?: DOMElementNode): Promise<void> {
