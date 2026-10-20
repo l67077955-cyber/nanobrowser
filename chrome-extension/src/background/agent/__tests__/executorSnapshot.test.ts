@@ -102,4 +102,27 @@ describe('Executor snapshot', () => {
     const third = new Executor(keepGoing, 'session-1', browserContext, llm, { snapshot, continues: true });
     expect(goalOf(third)).toBe(`${ownTask}\nThe user added: ${keepGoing}`);
   });
+
+  it('says that the run was still under way when the state was taken', () => {
+    const executor = new Executor(remote, 'session-1', browserContext, llm);
+    expect(executor.snapshot().live).toBe(false);
+    expect(executor.snapshot(true).live).toBe(true);
+  });
+
+  it('tells the model that the step of a run that was cut short may have gone through', () => {
+    const first = new Executor(remote, 'session-1', browserContext, llm);
+    const snapshot = JSON.parse(JSON.stringify(first.snapshot(true)));
+    snapshot.interrupted = true;
+
+    const second = new Executor(keepGoing, 'session-1', browserContext, llm, { snapshot, continues: true });
+    expect(contents(second).some(content => content.includes('INTERRUPTED'))).toBe(true);
+  });
+
+  it('says nothing of an interruption to a run that ended on its own', () => {
+    const first = new Executor(remote, 'session-1', browserContext, llm);
+    const snapshot = JSON.parse(JSON.stringify(first.snapshot()));
+
+    const second = new Executor(keepGoing, 'session-1', browserContext, llm, { snapshot, continues: true });
+    expect(contents(second).some(content => content.includes('INTERRUPTED'))).toBe(false);
+  });
 });

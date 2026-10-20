@@ -32,7 +32,7 @@ import { formatMemoryContext, memoryInstructions, rememberFromMessages, remember
 import { RemoteControl, type RemoteTaskEnd } from './services/remote';
 import { Scheduler, type ScheduledRunEnd } from './services/scheduler';
 import { saveUnattended, unattendedSaved } from './services/unattended';
-import { interruptedSessions } from './services/taskState';
+import { interruptedSessions, interruptedSnapshot } from './services/taskState';
 import { MAX_TRACED_SESSIONS, TraceRecorder } from './services/trace/recorder';
 import { exportChat, importChat, readChatFile } from './services/export';
 import type { ExportFormat } from './services/export/formats';
@@ -128,14 +128,32 @@ async function markInterruptedTasks(): Promise<void> {
     logger.info('The task of a chat was interrupted:', interrupted.map(session => session.id).join(', '));
     for (const session of interrupted) {
       await chatHistoryStore.setSessionTaskState(session.id, 'interrupted');
+      await markSnapshotInterrupted(session.id);
     }
   } catch (error) {
     logger.error('Failed to mark the interrupted tasks:', error);
   }
 }
 
-void markInterruptedTasks();
+/**
+ * The state the run was left in is marked as cut short, so that the model is told the step it was in may or
+ * may not have gone through when the session goes on from here.
+ */
+async function markSnapshotInterrupted(sessionId: string): Promise<void> {
+  try {
+    const stored = await chatHistoryStore.loadAgentContext(sessionId);
+    const marked = interruptedSnapshot(stored);
+    if (!marked) return;
+    await chatHistoryStore.storeAgentContext(sessionId, marked);
+  } catch (error) {
+    logger.error('Failed to mark the session context as interrupted:', error);
+  }
+}
 
+/** The marking of the interrupted tasks, awaited by a panel that asks what was left unfinished */
+let interruptedMarking: Promise<void> = Promise.resolve();
+
+interruptedMarking = markInterruptedTasks();
 // Initialize analytics
 analytics.init().catch(error => {
   logger.error('Failed to initialize analytics:', error);
@@ -468,6 +486,16 @@ chrome.runtime.onConnect.addListener(port => {
  * opens with every running task shown elsewhere starts a chat of its own.
  */
 async function attachPanel(port: chrome.runtime.Port): Promise<void> {
+  // the chats whose task was left unfinished: the panel offers to carry on with them
+  await interruptedMarking;
+  const sessions = await chatHistoryStore.getSessionsMetadata();
+  const interrupted = sessions.filter(session => session.taskState === 'interrupted');
+  if (interrupted.length > 0) {
+    port.postMessage({
+      type: 'interrupted_tasks',
+      taskIds: interrupted.sort((a, b) => b.updatedAt - a.updatedAt).map(session => session.id),
+    });
+  }
   const unseen = runningInstances()
     .filter(instance => !instance.viewer && instance.source !== 'scheduled')
     .reverse();

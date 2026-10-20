@@ -1,4 +1,5 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { HumanMessage } from '@langchain/core/messages';
 import type { TraceRecorder } from '../services/trace/recorder';
 import { ActionResult, AgentContext, type AgentOptions, type AgentOutput } from './types';
 import { t } from '@extension/i18n';
@@ -71,7 +72,21 @@ export interface ExecutorSnapshot {
   messages: StoredManagedMessage[];
   /** results the navigator has not written into the messages yet */
   actionResults: Pick<ActionResult, 'extractedContent' | 'error'>[];
+  /** the run was still under way when this was taken */
+  live?: boolean;
+  /**
+   * The run was cut short: the browser was closed while a step was under way, so that step may or may not
+   * have gone through. The model is told so when the session goes on from here.
+   */
+  interrupted?: boolean;
 }
+
+/**
+ * The note a run that was cut short leaves for the model: the step it was in the middle of may or may not have
+ * gone through, so the page is looked at before that step is tried again.
+ */
+export const INTERRUPTED_NOTE =
+  'INTERRUPTED: the browser was closed while this step was under way. The action it was about to take may or may not have gone through (delivery unknown): look at the page before trying it again.';
 
 export interface ExecutorExtraArgs {
   plannerLLM?: BaseChatModel;
@@ -208,6 +223,11 @@ export class Executor {
       context.actionResults = snapshot.actionResults.map(
         result => new ActionResult({ ...result, includeInMemory: true }),
       );
+      if (snapshot.interrupted) {
+        // the run was cut short by the browser closing: the model is told that the step it was in may or may
+        // not have gone through, so that it looks before trying that step again
+        context.messageManager.addMessageWithTokens(new HumanMessage(INTERRUPTED_NOTE));
+      }
       if (extraArgs?.continues && this.tasks.length > 0) this.continueTask(task);
       else this.addFollowUpTask(task);
       return;
@@ -221,7 +241,7 @@ export class Executor {
     );
   }
 
-  snapshot(): ExecutorSnapshot {
+  snapshot(live = false): ExecutorSnapshot {
     const messages = this.context.messageManager.exportMessages();
     // the page is read again when the session goes on
     if (this.context.stateMessageAdded) messages.pop();
@@ -232,7 +252,20 @@ export class Executor {
       actionResults: this.context.actionResults
         .filter(result => result.includeInMemory)
         .map(({ extractedContent, error }) => ({ extractedContent, error })),
+      live,
     };
+  }
+
+  /**
+   * The state of the run as it is now, kept so that a browser that quits in the middle of it does not lose the
+   * work it had done: the session goes on from here. `live` says the run was still under way when this was taken.
+   */
+  private async storeSnapshot(live: boolean): Promise<void> {
+    try {
+      await chatHistoryStore.storeAgentContext(this.context.taskId, JSON.stringify(this.snapshot(live)));
+    } catch (error) {
+      logger.error('Failed to store the session context:', error);
+    }
   }
 
   /** A cancelled executor takes no more tasks */
@@ -508,6 +541,9 @@ export class Executor {
         // Execute navigator
         navigatorDone = await this.navigate();
 
+        // the state of the run is kept as it is now: a browser that quits here does not lose the work done so far
+        await this.storeSnapshot(true);
+
         if (navigatorDone && this.navigatorClaim && !this.navigatorClaim.success && this.steers.length === 0) {
           // the navigator gives up: the planner would only say "not done" and send it back to try again
           logger.info('Navigator gave up, ending the run');
@@ -592,9 +628,7 @@ export class Executor {
         logger.debug('Executor history', JSON.stringify(this.context.history, null, 2));
       }
       // kept so that the session can go on after this executor is gone
-      await chatHistoryStore
-        .storeAgentContext(this.context.taskId, JSON.stringify(this.snapshot()))
-        .catch(error => logger.error('Failed to store the session context:', error));
+      await this.storeSnapshot(false);
       // store the history only if replay is enabled
       if (this.generalSettings?.replayHistoricalTasks) {
         const historyString = JSON.stringify(this.context.history);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { interruptedSessions } from '../services/taskState';
+import { interruptedSessions, interruptedSnapshot } from '../services/taskState';
 
 const session = (id: string, taskState?: 'running' | 'interrupted') => ({
   id,
@@ -19,5 +19,24 @@ describe('interruptedSessions', () => {
   it('leaves a task that is still running alone', () => {
     const sessions = [session('a', 'running')];
     expect(interruptedSessions(sessions, ['a'])).toEqual([]);
+  });
+});
+
+describe('interruptedSnapshot', () => {
+  it('marks the state of a run that was still under way', () => {
+    const stored = JSON.stringify({ tasks: ['a'], messages: [], actionResults: [], live: true });
+    const marked = JSON.parse(interruptedSnapshot(stored) ?? '{}');
+    expect(marked.interrupted).toBe(true);
+    expect(marked.live).toBe(true);
+  });
+
+  it('leaves the state of a run that ended on its own alone', () => {
+    const stored = JSON.stringify({ tasks: ['a'], messages: [], actionResults: [] });
+    expect(interruptedSnapshot(stored)).toBeNull();
+  });
+
+  it('has nothing to mark without a state', () => {
+    expect(interruptedSnapshot(null)).toBeNull();
+    expect(interruptedSnapshot('not json')).toBeNull();
   });
 });

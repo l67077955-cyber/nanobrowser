@@ -524,6 +524,17 @@ const SidePanel = () => {
             typeof message.taskId === 'string' ? message.taskId : null,
             message.waitingFor ?? null,
           );
+        } else if (message && message.type === 'interrupted_tasks') {
+          // a task that was running when the browser was closed was left unfinished: its chat is opened, with
+          // the offer to carry on with it
+          const ids = Array.isArray((message as { taskIds?: unknown }).taskIds)
+            ? ((message as { taskIds: unknown[] }).taskIds.filter(id => typeof id === 'string') as string[])
+            : [];
+          if (ids.length > 0 && !sessionIdRef.current) {
+            void showHandedOffRef.current(ids[0]);
+            // the interruption is shown once: the chat is open, and the way on is to carry on with it
+            void chatHistoryStore.setSessionTaskState(ids[0], undefined);
+          }
         } else if (message && message.type === 'heartbeat_ack') {
           console.log('Heartbeat acknowledged');
         }
@@ -997,6 +1008,12 @@ const SidePanel = () => {
               failed: true,
             },
           ]);
+          // the question the agent was asking is asked again: the answer goes to the run that goes on from here
+          const asked = [...fullSession.messages].reverse().find(message => message.meta?.kind === 'question');
+          if (asked?.meta?.kind === 'question') {
+            showAsk(asked.content, asked.meta);
+            setAwaitingReply(true);
+          }
         }
         setActivity(null);
         setQueue([]);
@@ -1035,17 +1052,6 @@ const SidePanel = () => {
           const stored = await chrome.storage.session.get(LAST_SESSION_KEY);
           const sessionId = stored[LAST_SESSION_KEY];
           if (typeof sessionId === 'string' && !sessionIdRef.current) await showHandedOffRef.current(sessionId);
-        }
-        if (!sessionIdRef.current) {
-          const sessions = await chatHistoryStore.getSessionsMetadata();
-          const interrupted = sessions
-            .filter(session => session.taskState === 'interrupted')
-            .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-          if (interrupted) {
-            await showHandedOffRef.current(interrupted.id);
-            // the interruption is shown once: the chat is open, and the way on is to carry on with it
-            await chatHistoryStore.setSessionTaskState(interrupted.id, undefined);
-          }
         }
       } catch (err) {
         console.error('Failed to reopen the last chat:', err);
