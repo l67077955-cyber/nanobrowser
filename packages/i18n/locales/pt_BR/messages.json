@@ -1339,6 +1339,18 @@
   "chat_ask_captcha_refresh": {
     "message": "New picture"
   },
+  "chat_ask_other": {
+    "message": "Other"
+  },
+  "chat_ask_other_placeholder": {
+    "message": "Answer in your own words"
+  },
+  "chat_ask_close": {
+    "message": "Close"
+  },
+  "dock_stop": {
+    "message": "Stop the task"
+  },
   "chat_confirm_decline": {
     "message": "Skip"
   },
@@ -1855,6 +1867,77 @@
   },
   "chat_routines_delete": {
     "message": "Excluir"
+  },
+  "act_listSchedules_start": {
+    "message": "Listar tarefas agendadas"
+  },
+  "act_listSchedules_ok": {
+    "message": "Tarefas agendadas ($COUNT$):",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "act_listSchedules_empty": {
+    "message": "Não há tarefas agendadas."
+  },
+  "act_listSchedules_next": {
+    "message": "próxima $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1",
+        "example": "Hoje 09:00"
+      }
+    }
+  },
+  "act_listSchedules_paused": {
+    "message": "pausada"
+  },
+  "act_listSchedules_done": {
+    "message": "concluída, não será executada novamente"
+  },
+  "act_deleteSchedule_start": {
+    "message": "Excluir tarefa agendada"
+  },
+  "act_deleteSchedule_ok": {
+    "message": "Tarefa agendada excluída: $TASK$",
+    "placeholders": {
+      "task": {
+        "content": "$1",
+        "example": "Verificar preços toda manhã"
+      }
+    }
+  },
+  "act_deleteSchedule_badIndex": {
+    "message": "Não existe agendamento número $INDEX$: há apenas $COUNT$. Liste novamente e use um desses números.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "5"
+      },
+      "count": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "act_deleteSchedule_ambiguous": {
+    "message": "\"$TASK$\" corresponde a $COUNT$ agendamentos, não a um só. Liste e exclua pelo número.",
+    "placeholders": {
+      "task": {
+        "content": "$1",
+        "example": "preços"
+      },
+      "count": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "act_deleteSchedule_noTarget": {
+    "message": "Diga qual agendamento excluir: o número da lista de list_schedules ou palavras que correspondam a exatamente um deles."
   },
   "options_models_labels_thinking": {
     "message": "Thinking"

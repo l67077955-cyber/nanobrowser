@@ -18,6 +18,8 @@ interface AgentDockProps {
   onResumeQueue: () => void;
   /** a follow-up the planner offered was picked */
   onPick: (task: string) => void;
+  /** the bar is closed: the task under way is stopped */
+  onStop: () => void;
 }
 
 type Phase = Activity['phase'] | 'idle';
@@ -95,6 +97,7 @@ export default function AgentDock({
   onUnqueue,
   onResumeQueue,
   onPick,
+  onStop,
 }: AgentDockProps) {
   const [open, setOpen] = useState(true);
   const { startedAt, plan, followUps, steps } = useLatestTurn(messages);
@@ -125,23 +128,25 @@ export default function AgentDock({
         <span className="nb-orb" aria-hidden>
           <i />
         </span>
-        <span className="nb-dock-now">
-          <span className={`nb-dock-headline${running ? ' nb-shimmer' : ''}`} title={page || undefined}>
-            {headline}
-            {running && '…'}
-          </span>
-          {meta.length > 0 && <span className="nb-dock-meta">{meta.join(' · ')}</span>}
-          {!running && nextRoutine?.nextRunAt && (
-            <span className="nb-dock-meta" title={nextRoutine.task}>
-              <FiClock aria-hidden />
-              {t('dock_nextRoutine')} · {formatWhen(nextRoutine.nextRunAt)} · {nextRoutine.task}
-            </span>
-          )}
+        <span className={`nb-dock-headline${running ? ' nb-shimmer' : ''}`} title={page || undefined}>
+          {headline}
+          {running && '…'}
         </span>
+        {meta.length > 0 && <span className="nb-dock-meta">{meta.join(' · ')}</span>}
         {!running && queue.length > 0 && queueHeld && (
           <button type="button" className="nb-button nb-dock-resume" onClick={onResumeQueue}>
             <FiPlay aria-hidden />
             {t('dock_resume')}
+          </button>
+        )}
+        {running && (
+          <button
+            type="button"
+            className="nb-dock-stop"
+            onClick={onStop}
+            aria-label={t('dock_stop')}
+            title={t('dock_stop')}>
+            <FiX aria-hidden />
           </button>
         )}
         {hasBody && (
@@ -156,6 +161,14 @@ export default function AgentDock({
           </button>
         )}
       </div>
+      {!running && nextRoutine?.nextRunAt && (
+        <div className="nb-dock-routine" title={nextRoutine.task}>
+          <FiClock aria-hidden />
+          <span>
+            {t('dock_nextRoutine')} · {formatWhen(nextRoutine.nextRunAt)} · {nextRoutine.task}
+          </span>
+        </div>
+      )}
       {open && hasBody && (
         <div className="nb-dock-body">
           {showPlan && (

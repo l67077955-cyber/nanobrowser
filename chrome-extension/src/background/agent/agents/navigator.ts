@@ -26,6 +26,7 @@ import {
 } from './errors';
 import { calcBranchPathHashSet } from '@src/background/browser/dom/views';
 import { type BrowserState, BrowserStateHistory, URLNotAllowedError } from '@src/background/browser/views';
+import { PendingClickTracker } from '../elementIdentity';
 import { convertZodToJsonSchema, repairJsonString } from '@src/background/utils';
 import { HistoryTreeProcessor } from '@src/background/browser/dom/history/service';
 import { AgentStepRecord } from '../history';
@@ -475,6 +476,10 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   private decisionEngine: NavigatorDecisionEngine | null = null;
   private readonly repeats = new RepeatedActionTracker();
   private readonly failedClicks = new FailedClickTracker();
+  /**
+   * The mark on the controls whose last click started a request the page has not shown the result of yet.
+   */
+  private readonly pendingClicks = new PendingClickTracker();
   /** Set when a step left its remaining actions out because the page changed under them */
   private cutShort: ActionResult | null = null;
   /** the last step's model call ran out of time: a second timeout in a row ends the task */
@@ -703,6 +708,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
 
       // take the actions, resolving indices against the state the decision was made on
       const actStarted = performance.now();
+      // the mark on a control whose request is still on its way grows older with every step
+      this.pendingClicks.age();
       const pageKey = `${currentState.url}\n${currentState.scrollY}\n${withoutTicking(pageText)}`;
       const ranBefore = this.repeats.count(actions, pageKey);
       this.failedClicks.judge(modelOutput.current_state?.evaluation_previous_goal);
@@ -731,7 +738,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       logger.info(
         `⏱ step ${this.context.nSteps + 1}: observe ${observeMs}ms, decide ${decisionMs}ms (${engineResult.decision ? this.decisionEngine?.name : this.modelName}), act ${actMs}ms`,
       );
-      this.decisionEngine?.observeStep(actions, actionResults);
+      this.decisionEngine?.observeStep(actions, actionResults, currentState);
       // logger.info('Action results', JSON.stringify(actionResults, null, 2));
 
       // goes into memory with the results, so the navigator and the planner both read it
@@ -850,6 +857,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
   resetRepeats(): void {
     this.repeats.reset();
     this.failedClicks.reset();
+    this.pendingClicks.reset();
   }
 
   setDecisionEngine(engine: NavigatorDecisionEngine | null): void {
@@ -1075,6 +1083,16 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           }
         }
 
+        // a control whose last click started a request is not acted on again before the page shows the result
+        if (actionName === 'click_element' && indexArg !== null) {
+          const pending = this.pendingClicks.reason(browserState.selectorMap.get(indexArg), browserState.url);
+          if (pending) {
+            logger.warning(pending);
+            results.push(new ActionResult({ error: pending, includeInMemory: true }));
+            break;
+          }
+        }
+
         const target = indexArg !== null ? describeTarget(browserState.selectorMap.get(indexArg)) : '';
         logger.info(`▶ ${actionsForLog([action], browserState.selectorMap)}${target ? ` on ${target}` : ''}`);
         const actionStarted = performance.now();
@@ -1098,6 +1116,8 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
           if (domElement) {
             const interactedElement = HistoryTreeProcessor.convertDomElementToHistoryElement(domElement);
             result.interactedElement = interactedElement;
+            // the click started a request the page has not shown the result of yet
+            if (result.pending) this.pendingClicks.mark(domElement, browserState.url);
           }
         }
         results.push(result);

@@ -220,6 +220,8 @@ export class ActionResult {
   interactedElement: DOMHistoryElement | null;
   /** the page's text was read: what the user asked for may be in it */
   readPage: boolean;
+  /** the action started a request whose result the page has not shown yet: doing it again would send it twice */
+  pending: boolean;
 
   constructor(params: Partial<ActionResult> = {}) {
     this.isDone = params.isDone ?? false;
@@ -229,6 +231,7 @@ export class ActionResult {
     this.error = params.error ?? null;
     this.includeInMemory = params.includeInMemory ?? false;
     this.readPage = params.readPage ?? false;
+    this.pending = params.pending ?? false;
   }
 }
 

@@ -317,6 +317,14 @@ chrome.runtime.onConnect.addListener(port => {
             return port.postMessage({ type: 'success' });
           }
 
+          case 'dismiss_ask': {
+            // the user put the question away without answering it: the agent is told that no reply came
+            const executor = shownInstance(port)?.executor;
+            if (!executor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
+            executor.answerQuestion(null);
+            return port.postMessage({ type: 'success' });
+          }
+
           case 'reveal_ask': {
             // the user wants to see what the question is about: its tab, with the field in view
             await shownInstance(port)?.executor?.revealAsked(

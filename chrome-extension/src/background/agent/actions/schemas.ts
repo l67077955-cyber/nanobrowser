@@ -290,3 +290,33 @@ export const waitActionSchema: ActionSchema = {
     seconds: z.number().int().default(3).describe('amount of seconds'),
   }),
 };
+
+export const listSchedulesActionSchema: ActionSchema = {
+  name: 'list_schedules',
+  description:
+    'List the scheduled tasks (routines/crons): what each runs and when. Always call this first when the user asks about, changes or deletes a schedule, since schedules are not web pages and have no element indexes.',
+  schema: z.object({
+    intent: z.string().default('').describe('purpose of this action'),
+  }),
+};
+
+export const deleteScheduleActionSchema: ActionSchema = {
+  name: 'delete_schedule',
+  description:
+    'Delete a scheduled task so it never runs again. Pass the number from a fresh list_schedules call, or enough words of its task text to match exactly one schedule. Never guess: list first when unsure which one is meant.',
+  schema: z.object({
+    intent: z.string().default('').describe('purpose of this action'),
+    index: z
+      .number()
+      .int()
+      .min(1)
+      .nullable()
+      .optional()
+      .describe('number of the schedule in the list_schedules output (1 for the first)'),
+    task: z
+      .string()
+      .nullable()
+      .optional()
+      .describe('words from the scheduled task text, matching exactly one schedule'),
+  }),
+};

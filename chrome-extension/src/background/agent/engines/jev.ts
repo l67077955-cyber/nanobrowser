@@ -6,6 +6,7 @@ import type { BrowserState } from '@src/background/browser/views';
 import type { ActionResult } from '../types';
 import type { DecisionAlternative, JevTrace } from '@extension/storage';
 import type { EngineResult, NavigatorDecisionEngine } from './types';
+import { identityOf } from '../elementIdentity';
 
 const logger = createLogger('JevEngine');
 
@@ -51,6 +52,8 @@ Do not toggle a checkbox, switch, or radio already in the requested state.
 Submit populated search fields before opening a result; a populated field alone is not an applied search.
 WAIT only when the needed control is absent/disabled, or submitted results are still loading.
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
+A form that was just sent is not sent again: if the page shows the result, the task is done there; if it
+shows nothing yet, check the page (reload, read) instead of sending it a second time.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
 DONE requires visible evidence that ALL requirements are satisfied. If asked to open a result,
 a matching link is not enough. BLOCKED means no supported operation can make progress.
@@ -704,12 +707,10 @@ export async function postJev(
   }
 }
 
-/** The navigator action each element operation becomes */
-const ACTION_NAMES: Record<Operation, string> = {
-  CLICK: 'click_element',
-  TYPE_TEXT: 'input_text',
-  SELECT: 'select_dropdown_option',
-};
+/** How many of the recent steps may have acted on the same element before the step goes to the LLM */
+const TARGET_WINDOW = 3;
+/** how often the same element may appear in that window: the third time is a loop, not progress */
+const TARGET_REPEAT_LIMIT = 2;
 
 export interface JevEngineOptions {
   apiKey: string;
@@ -733,15 +734,17 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
   private history: JevHistoryEntry[] = [];
   private lastDecisionKey: string | null = null;
   private repeatCount = 0;
-  /** the element action the last step ran, whoever decided it, and how many steps in a row ran it */
-  private lastStepKey: string | null = null;
-  private stepRepeats = 0;
+  /** the elements the recent steps acted on, by what they are and not by the number they carried */
+  private recentTargets: string[] = [];
+  /** the page the last decision was made on: the step's actions belong to it */
+  private lastState: BrowserState | null = null;
 
   constructor(private readonly options: JevEngineOptions) {
     ({ url: this.url, model: this.model } = jevEndpoint(options.apiKey));
   }
 
   async decide(state: BrowserState, signal: AbortSignal): Promise<EngineResult> {
+    this.lastState = state;
     const space = buildActionSpace(state.selectorMap);
     if (space.elements.length === 0) {
       return {
@@ -805,8 +808,11 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     if (choice.kind === 'group') {
       return { decision: null, trace: { ...trace, deferred: this.unsure(choice) ?? 'unsure which element' } };
     }
+    // the element this step would act on, by what it is: the number it carries changes with every step
+    const targetIdentity =
+      choice.kind === 'action' ? identityOf(state.selectorMap.get(choice.target.index), state.url) : null;
     const deferral =
-      this.deferralReason(choice) ??
+      this.deferralReason(choice, targetIdentity) ??
       (choice.kind === 'action' &&
       choice.operation === 'CLICK' &&
       searchAlreadySubmitted(choice.target.index, state.selectorMap, state.url)
@@ -830,7 +836,7 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
   }
 
   /** Why this choice should go to the LLM instead, or null to execute it */
-  private deferralReason(choice: ResolvedChoice): string | null {
+  private deferralReason(choice: ResolvedChoice, identity: string | null): string | null {
     // DONE needs a written answer and BLOCKED needs reasoning: both are the LLM's job.
     if (choice.kind === 'control' && choice.operation === 'DONE') return 'task looks done';
     if (choice.kind === 'control' && choice.operation === 'BLOCKED') return 'no way forward';
@@ -844,14 +850,19 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     }
 
     // Same decision three times in a row means the page is not responding to it; let the LLM look.
-    const key = choice.kind === 'action' ? `${choice.operation}:${choice.target.index}` : choice.operation;
+    // The element counts as what it is, not by the number it carried: a re-rendered button is the same one.
+    const key =
+      choice.kind === 'action' ? (identity ?? `${choice.operation}:${choice.target.index}`) : choice.operation;
     this.repeatCount = key === this.lastDecisionKey ? this.repeatCount + 1 : 0;
     this.lastDecisionKey = key;
     if (this.repeatCount >= 2) return 'same action repeated';
-    // The LLM may have taken it in between: two steps in a row already ran it and the page did not move on
-    if (choice.kind === 'action' && this.stepRepeats >= 2) {
-      const stepKey = `${ACTION_NAMES[choice.operation]}:${choice.target.index}`;
-      if (stepKey === this.lastStepKey) return 'same action repeated';
+    // The same element acted on again, with something else in between: a loop, not progress. The LLM
+    // has the memory of what the last steps did and can see that the page did not move on.
+    if (
+      identity &&
+      this.recentTargets.slice(-TARGET_WINDOW).filter(target => target === identity).length >= TARGET_REPEAT_LIMIT
+    ) {
+      return 'same action repeated';
     }
     return null;
   }
@@ -876,12 +887,7 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
     return null;
   }
 
-  observeStep(actions: Record<string, unknown>[], results: ActionResult[]): void {
-    const [name, args] = Object.entries(actions.length === 1 ? actions[0] : {})[0] ?? [];
-    const index = (args as Record<string, unknown> | undefined)?.index;
-    const stepKey = name && index !== undefined && index !== null ? `${name}:${index}` : null;
-    this.stepRepeats = stepKey && stepKey === this.lastStepKey ? this.stepRepeats + 1 : 1;
-    this.lastStepKey = stepKey;
+  observeStep(actions: Record<string, unknown>[], results: ActionResult[], state?: BrowserState): void {
     actions.forEach((action, i) => {
       const [name, args] = Object.entries(action)[0] ?? [];
       if (!name) return;
@@ -894,8 +900,15 @@ export class JevDecisionEngine implements NavigatorDecisionEngine {
       const error = results[i]?.error;
       if (error) entry.error = collapse(String(error), 200);
       this.history.push(entry);
+      // what the step acted on, by what the element is: the same button reads as another number after
+      // the page re-renders, and a loop through the same button is what has to be caught
+      const stepState = state ?? this.lastState;
+      const target =
+        stepState && typeof a.index === 'number' ? identityOf(stepState.selectorMap.get(a.index), stepState.url) : null;
+      if (target) this.recentTargets.push(target);
     });
     this.history = this.history.slice(-HISTORY_SIZE);
+    this.recentTargets = this.recentTargets.slice(-TARGET_WINDOW);
   }
 
   private async toAction(

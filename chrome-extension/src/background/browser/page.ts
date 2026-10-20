@@ -21,7 +21,7 @@ import {
 import { findThroughShadowRoots } from './dom/shadowPath';
 import { AGENT_MARK_ID, drawAgentMark, removeAgentMark, setAgentMarkVisible } from './agentMark';
 import { describeNotices, NOTICES_KEY, type PageNotice, watchPageNotices } from './notices';
-import { CONTROLS_KEY, probeControls } from './controlState';
+import { CONTROLS_KEY, describeControlChanges, probeControls } from './controlState';
 import { DOMElementNode, type DOMState } from './dom/views';
 import {
   type BrowserContextConfig,
@@ -217,6 +217,16 @@ interface FrameProbe {
   frame: Frame;
   sig: string | null;
   shown: boolean;
+}
+
+/**
+ * What a click left behind: the words for the model, and whether the request it started is still on its way.
+ * A pending click is one whose result the page has not shown yet: acting on it again would send it twice.
+ */
+interface ClickOutcome {
+  /** undefined while the page shows no change at all */
+  text: string | null | undefined;
+  pending: boolean;
 }
 
 /** In a frame: a cheap signature of its document's text. Passed to evaluate, so it uses nothing outside itself */
@@ -2065,14 +2075,22 @@ export default class Page {
    */
   async clickElementNode(useVision: boolean, elementNode: DOMElementNode): Promise<boolean | undefined> {
     this.clickHint = null;
+    this.clickPending = false;
     const probe: { before?: PageProbe } = {};
     const result = await this.performClick(useVision, elementNode, probe);
-    if (probe.before) this.clickHint = await this.clickOutcomeHint(probe.before);
+    if (probe.before) {
+      const outcome = await this.clickOutcomeHint(probe.before);
+      this.clickHint = outcome.text ?? null;
+      this.clickPending = outcome.pending;
+    }
     return result;
   }
 
   /** What the last click_element left visible: validation errors, or nothing happening. Null when all looks fine. */
   clickHint: string | null = null;
+
+  /** The last click_element started a request whose result the page has not shown yet */
+  clickPending: boolean = false;
 
   /** Read the page cheaply before a click; null when the page cannot be read */
   private async probePage(element?: ElementHandle): Promise<PageProbe | null> {
@@ -2155,44 +2173,52 @@ export default class Page {
    * that loads something first fetches, and judged too early such a click reads as having done nothing, so the
    * model clicks it again.
    */
-  private async clickOutcomeHint(before: PageProbe): Promise<string | null> {
+  private async clickOutcomeHint(before: PageProbe): Promise<ClickOutcome> {
     const deadline = Date.now() + CLICK_SETTLE_MS;
     for (;;) {
       await new Promise(resolve => setTimeout(resolve, 400));
-      const hint = await this.clickOutcomeNow(before);
-      if (hint === undefined) {
+      const outcome = await this.clickOutcomeNow(before);
+      if (outcome.text === undefined) {
         if (Date.now() < deadline) continue;
-        return this.unchangedHint(before);
+        return { text: await this.unchangedHint(before), pending: false };
       }
-      return hint;
+      return outcome;
     }
   }
 
   /** The click's outcome as clickOutcomeHint tells it; undefined while the page shows no change at all */
-  private async clickOutcomeNow(before: PageProbe): Promise<string | null | undefined> {
+  private async clickOutcomeNow(before: PageProbe): Promise<ClickOutcome> {
     try {
       const after = await this.probePage();
       // unreadable page: it navigated or closed, which counts as a change
-      if (!after || after.url !== before.url) return null;
+      if (!after || after.url !== before.url) return { text: null, pending: false };
       // null when unknown (no snapshot, or the page did not answer): then only the text decides
       const controls = await this.controlsIn(before, 'diff', 8);
       const frameAfter = before.frame ? await this.probeFrame(before.frame.frame) : null;
       // the frame the element was in went away: a banner or a dialog in an iframe that the click closed
       if (before.frame?.shown && frameAfter && !frameAfter.shown) {
-        return 'The click took effect: the embedded frame it was in (such as a cookie banner) closed';
+        return {
+          text: 'The click took effect: the embedded frame it was in (such as a cookie banner) closed',
+          pending: false,
+        };
       }
       const frameSame = !before.frame || !frameAfter || frameAfter.sig === before.frame.sig;
-      const changed = controls && controls.length > 0 ? `it changed ${controls.join('; ')}` : null;
-      const unchanged = after.sig === before.sig && after.modals === before.modals && frameSame && !changed;
+      const unchanged = after.sig === before.sig && after.modals === before.modals && frameSame && !controls?.length;
       const dialogOpen = before.inModal && after.modals > 0;
       if (after.errors && after.errors !== before.errors) {
-        return `Possible validation errors visible after the click: ${after.errors}${dialogOpen ? ' (the dialog is still open)' : ''}${changed ? `; ${changed}` : ''}`;
+        return {
+          text: `Possible validation errors visible after the click: ${after.errors}${dialogOpen ? ' (the dialog is still open)' : ''}${controls?.length ? `; it changed ${controls.join('; ')}` : ''}`,
+          pending: false,
+        };
       }
-      if (changed) return `The click took effect: ${changed}`;
-      if (unchanged) return undefined;
-      return null;
+      if (controls && controls.length > 0) {
+        const described = describeControlChanges(controls);
+        return { text: described.text, pending: described.pending };
+      }
+      if (unchanged) return { text: undefined, pending: false };
+      return { text: null, pending: false };
     } catch {
-      return null;
+      return { text: null, pending: false };
     }
   }
 

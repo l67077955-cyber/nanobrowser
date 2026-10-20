@@ -96,7 +96,12 @@ describe('Jev action space', () => {
   it('names an input button by its value, so it is offered beside a link with the same text', () => {
     const link = el('a', { href: 'register.htm' }, 1, [text('Register')]);
     const submit = el('input', { type: 'submit', value: 'Register', class: 'button' }, 2);
-    const space = buildActionSpace(new Map([[1, link], [2, submit]]));
+    const space = buildActionSpace(
+      new Map([
+        [1, link],
+        [2, submit],
+      ]),
+    );
     expect(Object.keys(space.targets.CLICK!)).toEqual(['1', '2']);
     expect(space.targets.CLICK!['2'].label).toBe('Register');
   });
@@ -318,10 +323,35 @@ describe('JevDecisionEngine', () => {
   it('defers a click the last two steps already made, whoever decided them', async () => {
     const { engine } = engineWith({ operation: choice('CLICK', OPS), click_target: choice('3', ['1', '3', 'none']) });
     const llmClick = [{ click_element: { intent: 'open the menu', index: 3 } }];
-    engine.observeStep(llmClick, [new ActionResult()]);
+    engine.observeStep(llmClick, [new ActionResult()], signupPage());
     expect((await engine.decide(signupPage(), signal)).decision).not.toBeNull();
-    engine.observeStep(llmClick, [new ActionResult()]);
+    engine.observeStep(llmClick, [new ActionResult()], signupPage());
     expect((await engine.decide(signupPage(), signal)).decision).toBeNull();
+  });
+
+  it('defers a click on the same button when the page renumbered it', async () => {
+    // the page re-rendered: the same button reads as another number, and a loop through it is what to catch
+    const state = signupPage();
+    const renumbered = {
+      ...state,
+      selectorMap: new Map([
+        [1, state.selectorMap.get(1)!],
+        [2, state.selectorMap.get(2)!],
+        [7, state.selectorMap.get(3)!],
+      ]),
+    };
+    const answers = { operation: choice('CLICK', OPS), click_target: choice('7', ['1', '7', 'none']) };
+    const { engine } = engineWith(answers);
+    engine.observeStep([{ click_element: { intent: 'Submit the reply', index: 3 } }], [new ActionResult()], state);
+    // a step in between that touched another element
+    engine.observeStep(
+      [{ input_text: { intent: 'Write the reply', index: 1, text: 'hello' } }],
+      [new ActionResult()],
+      state,
+    );
+    // the same button, now at another number
+    engine.observeStep([{ click_element: { intent: 'Submit the reply', index: 7 } }], [new ActionResult()], renumbered);
+    expect((await engine.decide(renumbered, signal)).decision).toBeNull();
   });
 
   it('throws on HTTP errors so the navigator can fall back', async () => {

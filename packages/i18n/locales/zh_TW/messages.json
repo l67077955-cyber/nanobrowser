@@ -1339,6 +1339,18 @@
   "chat_ask_captcha_refresh": {
     "message": "New picture"
   },
+  "chat_ask_other": {
+    "message": "Other"
+  },
+  "chat_ask_other_placeholder": {
+    "message": "Answer in your own words"
+  },
+  "chat_ask_close": {
+    "message": "Close"
+  },
+  "dock_stop": {
+    "message": "Stop the task"
+  },
   "chat_confirm_decline": {
     "message": "Skip"
   },
@@ -1855,6 +1867,77 @@
   },
   "chat_routines_delete": {
     "message": "刪除"
+  },
+  "act_listSchedules_start": {
+    "message": "列出排程任務"
+  },
+  "act_listSchedules_ok": {
+    "message": "排程任務（共 $COUNT$ 個）：",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "act_listSchedules_empty": {
+    "message": "目前沒有排程任務。"
+  },
+  "act_listSchedules_next": {
+    "message": "下次 $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1",
+        "example": "今天 09:00"
+      }
+    }
+  },
+  "act_listSchedules_paused": {
+    "message": "已暫停"
+  },
+  "act_listSchedules_done": {
+    "message": "已結束，不會再執行"
+  },
+  "act_deleteSchedule_start": {
+    "message": "刪除排程任務"
+  },
+  "act_deleteSchedule_ok": {
+    "message": "已刪除排程任務：$TASK$",
+    "placeholders": {
+      "task": {
+        "content": "$1",
+        "example": "每天早上查價格"
+      }
+    }
+  },
+  "act_deleteSchedule_badIndex": {
+    "message": "沒有編號 $INDEX$ 的排程，一共只有 $COUNT$ 個。重新列出後再用其中一個編號刪除。",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "5"
+      },
+      "count": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "act_deleteSchedule_ambiguous": {
+    "message": "「$TASK$」符合 $COUNT$ 個排程，不是唯一一個。列出後用編號刪除。",
+    "placeholders": {
+      "task": {
+        "content": "$1",
+        "example": "價格"
+      },
+      "count": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "act_deleteSchedule_noTarget": {
+    "message": "請說要刪哪一個排程：list_schedules 列出的編號，或只符合其中一個的關鍵字。"
   },
   "options_models_labels_thinking": {
     "message": "Thinking"

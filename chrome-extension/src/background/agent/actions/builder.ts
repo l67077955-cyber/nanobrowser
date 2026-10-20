@@ -20,6 +20,8 @@ import {
   getDropdownOptionsActionSchema,
   closeTabActionSchema,
   waitActionSchema,
+  listSchedulesActionSchema,
+  deleteScheduleActionSchema,
   previousPageActionSchema,
   scrollToPercentActionSchema,
   scrollByActionSchema,
@@ -33,6 +35,7 @@ import { ExecutionState, Actors } from '../event/types';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { wrapUntrustedContent } from '../messages/utils';
 import type { DOMElementNode } from '@src/background/browser/dom/views';
+import { describeRepeat, scheduleStore } from '@extension/storage';
 import { ElementChangedError, ElementNotFoundError } from '@src/background/browser/views';
 import { pageShowed } from '@src/background/browser/notices';
 import { CaptchaUnreadableError, readCaptcha } from '@src/background/services/captcha';
@@ -464,7 +467,7 @@ export class ActionBuilder {
           const notices = await page.takeNotices();
           if (notices) msg += ` - ${pageShowed(notices)}`;
           this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
-          return new ActionResult({ extractedContent: msg, includeInMemory: true });
+          return new ActionResult({ extractedContent: msg, includeInMemory: true, pending: page.clickPending });
         } catch (error) {
           const changed = error instanceof ElementChangedError;
           const msg = changed ? error.message : t('act_errors_elementNoLongerAvailable', [input.index.toString()]);
@@ -1061,6 +1064,64 @@ export class ActionBuilder {
       true,
     );
     actions.push(selectDropdownOption);
+
+    // Scheduled tasks (routines/crons): listing and deleting them. Creating stays with the planner,
+    // which sets schedule/schedule_task when the user asks for something later or repeatedly.
+    const listSchedules = new Action(async (input: z.infer<typeof listSchedulesActionSchema.schema>) => {
+      const intent = input.intent || t('act_listSchedules_start');
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_START, intent);
+      const routines = (await scheduleStore.getAll()).sort((a, b) => a.createdAt - b.createdAt);
+      if (!routines.length) {
+        const msg = t('act_listSchedules_empty');
+        this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
+        return new ActionResult({ extractedContent: msg, includeInMemory: true });
+      }
+      const lines = routines.map((routine, i) => {
+        const state = !routine.enabled
+          ? t('act_listSchedules_paused')
+          : routine.nextRunAt
+            ? t('act_listSchedules_next', [new Date(routine.nextRunAt).toLocaleString()])
+            : t('act_listSchedules_done');
+        return `${i + 1}. "${routine.task}" — ${describeRepeat(routine.repeat)} (${state})`;
+      });
+      const msg = `${t('act_listSchedules_ok', [routines.length.toString()])}\n${lines.join('\n')}`;
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
+      return new ActionResult({ extractedContent: msg, includeInMemory: true });
+    }, listSchedulesActionSchema);
+    actions.push(listSchedules);
+
+    const deleteSchedule = new Action(async (input: z.infer<typeof deleteScheduleActionSchema.schema>) => {
+      const intent = input.intent || t('act_deleteSchedule_start');
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_START, intent);
+      const fail = (errorMsg: string) => {
+        this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_FAIL, errorMsg);
+        return new ActionResult({ error: errorMsg, includeInMemory: true });
+      };
+      const routines = (await scheduleStore.getAll()).sort((a, b) => a.createdAt - b.createdAt);
+      if (!routines.length) return fail(t('act_listSchedules_empty'));
+      let picked = null as null | (typeof routines)[number];
+      if (input.index) {
+        picked = routines[input.index - 1] ?? null;
+        if (!picked) {
+          return fail(t('act_deleteSchedule_badIndex', [input.index.toString(), routines.length.toString()]));
+        }
+      } else if (input.task?.trim()) {
+        const words = input.task.trim().toLowerCase();
+        const hits = routines.filter(routine => routine.task.toLowerCase().includes(words));
+        if (hits.length !== 1) {
+          return fail(t('act_deleteSchedule_ambiguous', [input.task.trim(), hits.length.toString()]));
+        }
+        picked = hits[0];
+      } else {
+        return fail(t('act_deleteSchedule_noTarget'));
+      }
+      await scheduleStore.remove(picked.id);
+      const msg = t('act_deleteSchedule_ok', [picked.task]);
+      this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.ACT_OK, msg);
+      logger.info(`Deleted schedule: ${picked.task}`);
+      return new ActionResult({ extractedContent: msg, includeInMemory: true });
+    }, deleteScheduleActionSchema);
+    actions.push(deleteSchedule);
 
     return actions;
   }

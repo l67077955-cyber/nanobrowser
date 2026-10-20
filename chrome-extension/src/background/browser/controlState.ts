@@ -13,6 +13,26 @@
 
 export const CONTROLS_KEY = '__nbControlStates';
 
+/** A control that shows that something is loading: the page is busy, the result is not there yet */
+const BUSY_INDICATOR = /\b(progressbar|progress|spinner|loading|busy)\b/i;
+
+/**
+ * What the controls that changed say about the click: the words for the model, and whether the request
+ * the click started is still on its way.
+ *
+ * A progress indicator on its own says that a request is running, not that the click did what was wanted:
+ * the page has not shown the result yet, and sending it again would send it twice.
+ */
+export function describeControlChanges(controls: string[]): { text: string; pending: boolean } {
+  if (controls.length > 0 && controls.every(change => BUSY_INDICATOR.test(change))) {
+    return {
+      text: 'The click started a request (a progress indicator appeared): the page has not shown the result yet, so wait for it to settle and check the result before acting on it again',
+      pending: true,
+    };
+  }
+  return { text: `The click took effect: it changed ${controls.join('; ')}`, pending: false };
+}
+
 /**
  * In the page. mode 'snapshot': keep the state of every control on window under `key`. 'diff': what changed since
  * the snapshot, each as a short phrase ("the radio "Male": unchecked → checked"), at most `max`; null when

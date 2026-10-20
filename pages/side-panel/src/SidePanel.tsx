@@ -20,6 +20,7 @@ import {
   FiTerminal,
   FiDownload,
   FiUpload,
+  FiX,
 } from 'react-icons/fi';
 import {
   type ActionMode,
@@ -92,6 +93,8 @@ const SidePanel = () => {
   const followRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  /** the cards above the input: the approval and the question the agent waits for */
+  const cardsRef = useRef<HTMLDivElement>(null);
   /** the chat the export dialog saves, while it is open */
   const [exportSessionId, setExportSessionId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -315,6 +318,10 @@ const SidePanel = () => {
               // one row per step, carrying who decided and what ran
               skip = !data?.meta;
               setActivity(prev => ({ phase: 'reading', view: prev?.view }));
+              // the step that waited for the user is over: what it waited for is answered, or given up
+              setAwaitingReply(false);
+              setAsk(null);
+              setPendingConfirmation(null);
               break;
             case ExecutionState.STEP_FAIL:
               skip = false;
@@ -876,6 +883,13 @@ const SidePanel = () => {
     setPendingConfirmation(null);
   };
 
+  /** the user puts the question away without answering it: the agent is told that no reply came */
+  const dismissAsk = useCallback(() => {
+    setAsk(null);
+    setAwaitingReply(false);
+    portRef.current?.postMessage({ type: 'dismiss_ask' });
+  }, []);
+
   const handleStopTask = async () => {
     // stopping one goal is not a go-ahead for the next
     setQueueHeld(true);
@@ -1195,6 +1209,19 @@ const SidePanel = () => {
     };
   }, [menuOpen]);
 
+  // Escape puts the approval away: the action it waits for is not taken
+  useEffect(() => {
+    if (pendingConfirmation === null) return;
+    const doc = cardsRef.current?.ownerDocument ?? document;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      handleConfirmAction(false);
+    };
+    doc.addEventListener('keydown', onKey);
+    return () => doc.removeEventListener('keydown', onKey);
+  }, [pendingConfirmation]);
+
   // the lists the `/` palette offers besides the actions, read again each time it opens
   const [paletteRoutines, setPaletteRoutines] = useState<ScheduledTask[]>([]);
   const [paletteMode, setPaletteMode] = useState<ActionMode | null>(null);
@@ -1319,7 +1346,7 @@ const SidePanel = () => {
         </button>
       )}
       {/* the cards scroll on their own once they grow tall, so the input below them stays in sight */}
-      <div className="nb-composer-cards">
+      <div className="nb-composer-cards" ref={cardsRef}>
         {(messages.length > 0 || showStopButton) && (
           <AgentDock
             messages={messages}
@@ -1330,11 +1357,20 @@ const SidePanel = () => {
             onUnqueue={index => setQueue(prev => prev.filter((_, i) => i !== index))}
             onResumeQueue={() => setQueueHeld(false)}
             onPick={task => void handleSendMessage(task)}
+            onStop={() => void handleStopTask()}
           />
         )}
         {pendingConfirmation !== null && (
           <div role="alertdialog" aria-label={pendingConfirmation} className="nb-confirm">
             <p title={pendingConfirmation}>{pendingConfirmation}</p>
+            <button
+              type="button"
+              onClick={() => handleConfirmAction(false)}
+              className="nb-ask-close"
+              aria-label={t('chat_confirm_decline')}
+              title={t('chat_confirm_decline')}>
+              <FiX aria-hidden />
+            </button>
             <button type="button" onClick={() => handleConfirmAction(false)} className="nb-button">
               {t('chat_confirm_decline')}
             </button>
@@ -1353,6 +1389,7 @@ const SidePanel = () => {
               portRef.current?.postMessage({ type: 'ask_captcha', field, refresh });
             }}
             onReply={(text, display) => void handleSendMessage(text, display)}
+            onDismiss={dismissAsk}
           />
         )}
       </div>

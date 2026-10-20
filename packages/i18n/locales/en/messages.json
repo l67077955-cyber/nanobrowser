@@ -1348,6 +1348,18 @@
   "chat_ask_captcha_refresh": {
     "message": "New picture"
   },
+  "chat_ask_other": {
+    "message": "Other"
+  },
+  "chat_ask_other_placeholder": {
+    "message": "Answer in your own words"
+  },
+  "chat_ask_close": {
+    "message": "Close"
+  },
+  "dock_stop": {
+    "message": "Stop the task"
+  },
   "chat_confirm_decline": {
     "message": "Skip"
   },
@@ -1898,6 +1910,77 @@
   },
   "chat_routines_delete": {
     "message": "Delete"
+  },
+  "act_listSchedules_start": {
+    "message": "List scheduled tasks"
+  },
+  "act_listSchedules_ok": {
+    "message": "Scheduled tasks ($COUNT$):",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "act_listSchedules_empty": {
+    "message": "There are no scheduled tasks."
+  },
+  "act_listSchedules_next": {
+    "message": "next $WHEN$",
+    "placeholders": {
+      "when": {
+        "content": "$1",
+        "example": "Today 09:00"
+      }
+    }
+  },
+  "act_listSchedules_paused": {
+    "message": "paused"
+  },
+  "act_listSchedules_done": {
+    "message": "done, will not run again"
+  },
+  "act_deleteSchedule_start": {
+    "message": "Delete scheduled task"
+  },
+  "act_deleteSchedule_ok": {
+    "message": "Deleted the scheduled task: $TASK$",
+    "placeholders": {
+      "task": {
+        "content": "$1",
+        "example": "Check prices every morning"
+      }
+    }
+  },
+  "act_deleteSchedule_badIndex": {
+    "message": "There is no schedule number $INDEX$: only $COUNT$ exist. List them again and use one of those numbers.",
+    "placeholders": {
+      "index": {
+        "content": "$1",
+        "example": "5"
+      },
+      "count": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "act_deleteSchedule_ambiguous": {
+    "message": "\"$TASK$\" matches $COUNT$ schedules, not one. List them and delete by number.",
+    "placeholders": {
+      "task": {
+        "content": "$1",
+        "example": "prices"
+      },
+      "count": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "act_deleteSchedule_noTarget": {
+    "message": "Say which schedule to delete: its number from list_schedules, or words matching exactly one of them."
   },
   "chat_memory_updated": {
     "message": "Memory updated: $ITEMS$",

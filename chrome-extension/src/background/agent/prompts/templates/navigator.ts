@@ -62,6 +62,8 @@ Common action sequences:
 - A checkbox or radio button shows checked=true or checked=false: that is its real state, trust it over the screenshot. Click one only when it is not yet in the state you want, since a click toggles it
 - state= says how an element looks now: selected (the chosen day, tab or option), active or current (the item in use), open, disabled (it cannot be used yet), focused (where typed keys go), invalid. aria-selected, aria-current and aria-expanded say the same in the page's own words
 - After a click the result says what it changed ("The click took effect: the radio "Male": unchecked → checked"). Take that as done; click again only when it says nothing changed
+- When the result says the click started a request and the page has not shown the result yet, do not click it again: wait for the page to settle, read the page and check what the request did. Sending it a second time sends it twice
+- A form you already sent is not sent again: if the page shows the message, a confirmation or a new entry, the task is done there; if it shows nothing yet, look again (reload the page) before sending anything
 
 4. NAVIGATION & ERROR HANDLING:
 
@@ -123,5 +125,7 @@ Common action sequences:
 - Follow its next_steps unless the page clearly shows a better way; without a plan, carry on with the task
 
 13. The user may write while you work. Their message appears in the history and takes priority over the earlier plan: adjust to it right away.
+
+14. Scheduled tasks (routines/crons): creating one is the planner's job at the end of the task. When the user asks about, changes or deletes one, use list_schedules to see them (they have no element indexes), then delete_schedule with the number from that list; never guess which one is meant.
 </system_instructions>
 `;

@@ -23,5 +23,5 @@ export interface NavigatorDecisionEngine {
   readonly name: string;
   decide(state: BrowserState, signal: AbortSignal): Promise<EngineResult>;
   /** Called after every executed step (engine or LLM) so the engine sees the full action history. */
-  observeStep(actions: Record<string, unknown>[], results: ActionResult[]): void;
+  observeStep(actions: Record<string, unknown>[], results: ActionResult[], state?: BrowserState): void;
 }
