@@ -30,17 +30,74 @@ export function getCurrentTimestampStr(): string {
  * Only called when initial JSON.parse fails
  */
 export function repairJsonString(actionString: string): string {
-  try {
-    // Use jsonrepair to fix malformed JSON
-    const repairedJson = jsonrepair(withActionKey(actionString.trim()));
-    logger.info('Successfully repaired JSON string', { original: actionString, repaired: repairedJson });
-    return repairedJson;
-  } catch (error) {
-    // If jsonrepair fails, log the error and return the original string
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.warning('jsonrepair failed to fix JSON string', { original: actionString, error: errorMessage });
-    return actionString.trim();
+  const trimmed = actionString.trim();
+  // a model that wrote a key and then attributes where the colon belongs: the value is there, the separator is not
+  const candidates = isParsableJson(trimmed) ? [trimmed] : [fixAttributeSeparators(trimmed), trimmed];
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      // Use jsonrepair to fix malformed JSON
+      const repairedJson = jsonrepair(withActionKey(candidate));
+      logger.info('Successfully repaired JSON string', { original: actionString, repaired: repairedJson });
+      return repairedJson;
+    } catch (error) {
+      lastError = error;
+    }
   }
+  // If jsonrepair fails, log the error and return the original string
+  const errorMessage = lastError instanceof Error ? lastError.message : String(lastError);
+  logger.warning('jsonrepair failed to fix JSON string', { original: actionString, error: errorMessage });
+  return trimmed;
+}
+
+function isParsableJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Put back the colon a model replaced with attributes: `"action" string="false">[{...}]` is the value of
+ * "action" with a separator the reader does not know. The attributes and the bracket that closes them are
+ * dropped, and the colon goes back where it belongs. Only the separator is touched: the value stays as it is.
+ */
+export function fixAttributeSeparators(json: string): string {
+  let out = '';
+  let i = 0;
+  while (i < json.length) {
+    if (json[i] !== '"') {
+      out += json[i];
+      i++;
+      continue;
+    }
+    // a string: copy it as it is, escapes and all
+    let end = i + 1;
+    while (end < json.length) {
+      if (json[end] === '\\') {
+        end += 2;
+        continue;
+      }
+      if (json[end] === '"') break;
+      end++;
+    }
+    out += json.slice(i, end + 1);
+    i = end + 1;
+    // what follows the string tells whether it was a key
+    let next = i;
+    while (next < json.length && /\s/.test(json[next])) next++;
+    const after = json[next];
+    if (after && !':,}][]'.includes(after)) {
+      const attributes = /^(?:\s+[A-Za-z_][\w.-]*="[^"]*")*\s*>/.exec(json.slice(i));
+      if (attributes) {
+        out += ':';
+        i += attributes[0].length;
+      }
+    }
+  }
+  return out;
 }
 
 /**

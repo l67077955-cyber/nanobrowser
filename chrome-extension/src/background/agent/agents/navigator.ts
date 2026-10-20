@@ -623,6 +623,7 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
       this.unofferedActions = this.unofferedPageActions(response?.raw);
       throw new ResponseParseError(
         `Could not parse navigator response (${this.getRawResponseDebugInfo(response?.raw)})`,
+        this.getUnreadableReason(response?.raw),
       );
     }
 
@@ -821,6 +822,11 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
         );
       }
       this.unofferedActions = [];
+      if (error instanceof ResponseParseError) {
+        // the answer could not be read: the model is told what was wrong with it, so that the next answer is
+        // a different one and not the same unreadable one again
+        this.reportUnreadableAnswer(unreadableReason(error));
+      }
       const errorString = `Navigation failed: ${errorMessage}`;
       logger.error(`Navigation failed: ${describeError(error)}`);
       this.context.emitEvent(Actors.NAVIGATOR, ExecutionState.STEP_FAIL, errorString);
@@ -858,6 +864,19 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
     this.repeats.reset();
     this.failedClicks.reset();
     this.pendingClicks.reset();
+  }
+
+  /**
+   * The last answer could not be read: the model is told what was wrong with it, so that the next answer is a
+   * different one and not the same unreadable one again. The note reaches it with the next page state.
+   */
+  reportUnreadableAnswer(reason: string): void {
+    this.context.actionResults.push(
+      new ActionResult({
+        error: `Your last answer could not be read: ${reason}. Answer again with the AgentOutput tool, as plain JSON.`,
+        includeInMemory: true,
+      }),
+    );
   }
 
   setDecisionEngine(engine: NavigatorDecisionEngine | null): void {
@@ -1394,4 +1413,13 @@ function skippedAfterFailure(index: number, total: number): ActionResult {
   const msg = `Action ${index + 1} / ${total} failed, so the remaining ${total - index - 1} were not run`;
   logger.info(msg);
   return new ActionResult({ extractedContent: msg, includeInMemory: true });
+}
+
+/** What the reader choked on, in its own words: the reason a parse error carries */
+function unreadableReason(error: ResponseParseError): string {
+  const cause = error.cause;
+  if (typeof cause === 'string' && cause.trim().length > 0) {
+    return cause.trim();
+  }
+  return error.message.slice(0, 200);
 }

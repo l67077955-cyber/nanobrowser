@@ -27,4 +27,19 @@ describe('repairJsonString', () => {
     expect(withActionKey(fine)).toBe(fine);
     expect(withActionKey('{"a": 1}')).toBe('{"a": 1}');
   });
+
+  it('puts back the colon a model replaced with attributes', () => {
+    // a model wrote "action" string="false"> instead of "action":
+    const broken =
+      '{"current_state": {"next_goal": "Reading the full README text"}, "action" string="false">[{"read_page": {"intent": "Read the README"}}]}';
+    expect(JSON.parse(repairJsonString(broken))).toEqual({
+      current_state: { next_goal: 'Reading the full README text' },
+      action: [{ read_page: { intent: 'Read the README' } }],
+    });
+  });
+
+  it('keeps well-formed output untouched when attributes are repaired', () => {
+    const fine = '{"current_state": {"memory": "a > b"}, "action": [{"done": {"text": "ok"}}]}';
+    expect(repairJsonString(fine)).toBe(fine);
+  });
 });

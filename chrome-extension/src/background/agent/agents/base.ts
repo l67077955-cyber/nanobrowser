@@ -379,6 +379,21 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
     }
     return parts.length > 0 ? parts.join(' | ') : 'empty response';
   }
+
+  /**
+   * Why the last answer could not be read, in the words of the reader: what choked on it. The model is told
+   * this, so that the next answer can be a different one instead of the same unreadable one.
+   */
+  protected getUnreadableReason(raw: BaseMessage | undefined): string {
+    const rawWithToolCalls = raw as BaseMessage & { invalid_tool_calls?: Array<{ error?: string }> };
+    const reasons = (rawWithToolCalls.invalid_tool_calls ?? [])
+      .map(call => call.error)
+      .filter((error): error is string => typeof error === 'string' && error.trim().length > 0);
+    if (reasons.length > 0) {
+      return reasons.join('; ').slice(0, 300);
+    }
+    return 'the answer was not the JSON the tool asks for';
+  }
 }
 
 // What the model sent at the place a schema issue points to, cut short: the args themselves are logged truncated
