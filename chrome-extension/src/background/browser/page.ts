@@ -1013,13 +1013,13 @@ export default class Page {
       if (!scrollableElement) {
         throw new Error(`No scrollable ancestor found for element: ${elementNode}`);
       }
-      await scrollableElement.evaluate(el => {
+      await scrollableElement.evaluate((el, dy) => {
         el.scrollBy({
-          top: y,
+          top: dy,
           left: 0,
           behavior: 'smooth',
         });
-      });
+      }, y);
     }
   }
 
