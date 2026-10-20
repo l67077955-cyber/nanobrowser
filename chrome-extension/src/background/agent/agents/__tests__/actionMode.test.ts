@@ -15,9 +15,11 @@ function element(tagName: string, attributes: Record<string, string>): DOMElemen
 
 const button = element('button', { 'aria-label': 'Sign in' });
 const field = element('input', { 'aria-label': 'Search' });
+const writeButton = element('button', { 'aria-label': 'Create a new issue' });
 const selectorMap = new Map([
   [3, button],
   [4, field],
+  [5, writeButton],
 ]);
 
 describe('describePageInput', () => {
@@ -100,5 +102,27 @@ describe('action modes', () => {
     const results = await run([{ click_element: { index: 3 } }]);
     expect(ran).toEqual([]);
     expect(results[0].error).toContain('act_confirm_manual_declined');
+  });
+
+  it('ask runs a click that writes nothing without asking', async () => {
+    const { ran, requestConfirmation, run } = setup('ask', false);
+    await run([{ scroll_to_top: {} }, { click_element: { index: 3 } }]);
+    expect(ran).toEqual(['scroll_to_top', 'click_element']);
+    expect(requestConfirmation).not.toHaveBeenCalled();
+  });
+
+  it('ask asks before a click that writes something, and runs it once approved', async () => {
+    const { ran, requestConfirmation, run } = setup('ask', true);
+    await run([{ click_element: { index: 5 } }]);
+    expect(requestConfirmation).toHaveBeenCalledTimes(1);
+    expect(requestConfirmation.mock.calls[0][1]).toContain('act_confirm_write Create a new issue');
+    expect(ran).toEqual(['click_element']);
+  });
+
+  it('ask skips a declined write and tells the model', async () => {
+    const { ran, run } = setup('ask', false);
+    const results = await run([{ click_element: { index: 5 } }]);
+    expect(ran).toEqual([]);
+    expect(results[0].error).toContain('act_confirm_write_declined');
   });
 });

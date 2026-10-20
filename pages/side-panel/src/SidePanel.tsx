@@ -11,6 +11,7 @@ import {
   FiAlignLeft,
   FiAlignJustify,
   FiEye,
+  FiShield,
   FiZap,
   FiUserCheck,
   FiSquare,
@@ -1239,6 +1240,7 @@ const SidePanel = () => {
 
   const actionModes: { mode: ActionMode; icon: PaletteCommand['icon']; label: string }[] = [
     { mode: 'readonly', icon: FiEye, label: t('chat_actionMode_readonly') },
+    { mode: 'ask', icon: FiShield, label: t('chat_actionMode_ask') },
     { mode: 'auto', icon: FiZap, label: t('chat_actionMode_auto') },
     { mode: 'manual', icon: FiUserCheck, label: t('chat_actionMode_manual') },
   ];

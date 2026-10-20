@@ -4,11 +4,12 @@ import type { BaseStorage } from '../base/types';
 
 /**
  * How far the agent may act on pages: readonly only reads them (navigating, scrolling, selecting text),
+ * ask acts on its own but asks before a click that writes something (creates, approves, deletes, pays),
  * auto takes every action without asking, manual asks before each click, keystroke or text it enters
  */
-export type ActionMode = 'readonly' | 'auto' | 'manual';
+export type ActionMode = 'readonly' | 'ask' | 'auto' | 'manual';
 
-export const ACTION_MODES: ActionMode[] = ['readonly', 'auto', 'manual'];
+export const ACTION_MODES: ActionMode[] = ['readonly', 'ask', 'auto', 'manual'];
 
 // Interface for general settings configuration
 export interface GeneralSettingsConfig {

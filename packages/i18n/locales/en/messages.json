@@ -1360,6 +1360,30 @@
   "dock_stop": {
     "message": "Stop the task"
   },
+  "chat_actionMode_ask": {
+    "message": "Ask"
+  },
+  "chat_actionMode_ask_desc": {
+    "message": "Works on its own, but asks you before a click that writes something: creates, approves, rejects, deletes or pays."
+  },
+  "act_confirm_write": {
+    "message": "Click \"$LABEL$\"? This writes to the page.",
+    "placeholders": {
+      "label": {
+        "content": "$1",
+        "example": "Create a new issue"
+      }
+    }
+  },
+  "act_confirm_write_declined": {
+    "message": "The user declined this write: $ACTION$. Do not retry it; ask the user or choose another way.",
+    "placeholders": {
+      "action": {
+        "content": "$1",
+        "example": "Click \"Create a new issue\"? This writes to the page."
+      }
+    }
+  },
   "chat_confirm_decline": {
     "message": "Skip"
   },

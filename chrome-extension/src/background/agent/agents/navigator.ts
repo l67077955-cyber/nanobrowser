@@ -27,6 +27,7 @@ import {
 import { calcBranchPathHashSet } from '@src/background/browser/dom/views';
 import { type BrowserState, BrowserStateHistory, URLNotAllowedError } from '@src/background/browser/views';
 import { PendingClickTracker } from '../elementIdentity';
+import { writeAction } from '@src/background/browser/dom/writeActions';
 import { convertZodToJsonSchema, repairJsonString } from '@src/background/utils';
 import { HistoryTreeProcessor } from '@src/background/browser/dom/history/service';
 import { AgentStepRecord } from '../history';
@@ -1098,6 +1099,23 @@ export class NavigatorAgent extends BaseAgent<z.ZodType, NavigatorResult> {
                 new ActionResult({ error: t('act_confirm_manual_declined', [description]), includeInMemory: true }),
               );
               break;
+            }
+          }
+          if (mode === 'ask' && actionName === 'click_element') {
+            // a click that writes something is the user's to approve: a ticket sent twice, an approval given
+            // unasked, a purchase made on a whim
+            const node = indexArg !== null ? browserState.selectorMap.get(indexArg) : undefined;
+            const label = node ? elementLabel(node) : '';
+            const write = writeAction(label);
+            if (write) {
+              const description = t('act_confirm_write', [label]);
+              const approved = await this.context.requestConfirmation(Actors.NAVIGATOR, description);
+              if (!approved) {
+                results.push(
+                  new ActionResult({ error: t('act_confirm_write_declined', [description]), includeInMemory: true }),
+                );
+                break;
+              }
             }
           }
         }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FiCheck, FiChevronUp, FiEye, FiUserCheck, FiZap } from 'react-icons/fi';
+import { FiCheck, FiChevronUp, FiEye, FiShield, FiUserCheck, FiZap } from 'react-icons/fi';
 import { type ActionMode, ACTION_MODES, generalSettingsStore } from '@extension/storage';
 import { t } from '@extension/i18n';
 
@@ -9,6 +9,12 @@ const MODES = {
     label: 'chat_actionMode_readonly',
     desc: 'chat_actionMode_readonly_desc',
     tone: 'text-nb-llm',
+  },
+  ask: {
+    icon: FiShield,
+    label: 'chat_actionMode_ask',
+    desc: 'chat_actionMode_ask_desc',
+    tone: 'text-nb-warning',
   },
   auto: { icon: FiZap, label: 'chat_actionMode_auto', desc: 'chat_actionMode_auto_desc', tone: 'text-nb-muted' },
   manual: {
