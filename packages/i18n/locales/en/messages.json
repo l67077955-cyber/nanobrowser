@@ -1384,6 +1384,15 @@
       }
     }
   },
+  "chat_fail_interrupted_title": {
+    "message": "The task was interrupted"
+  },
+  "chat_fail_interrupted_hint": {
+    "message": "The browser was closed while this task was running. What it had done is here; carry on from where it stopped."
+  },
+  "chat_fail_interrupted_notice": {
+    "message": "The task was interrupted: the browser was closed while it was running."
+  },
   "chat_confirm_decline": {
     "message": "Skip"
   },

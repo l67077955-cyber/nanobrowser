@@ -32,6 +32,7 @@ import { formatMemoryContext, memoryInstructions, rememberFromMessages, remember
 import { RemoteControl, type RemoteTaskEnd } from './services/remote';
 import { Scheduler, type ScheduledRunEnd } from './services/scheduler';
 import { saveUnattended, unattendedSaved } from './services/unattended';
+import { interruptedSessions } from './services/taskState';
 import { MAX_TRACED_SESSIONS, TraceRecorder } from './services/trace/recorder';
 import { exportChat, importChat, readChatFile } from './services/export';
 import type { ExportFormat } from './services/export/formats';
@@ -111,6 +112,29 @@ logger.info(`background loaded · build ${import.meta.env.VITE_BUILD_INFO || 'un
 setInterval(() => {
   if (runningInstances().length) void chrome.runtime.getPlatformInfo();
 }, 20_000);
+
+/**
+ * A chat whose task was running when the worker was stopped was left unfinished: the task itself died with the
+ * worker. Such a chat is marked as interrupted, and the panel offers to carry on with it.
+ */
+async function markInterruptedTasks(): Promise<void> {
+  try {
+    const sessions = await chatHistoryStore.getSessionsMetadata();
+    const interrupted = interruptedSessions(
+      sessions,
+      runningInstances().map(instance => instance.taskId),
+    );
+    if (interrupted.length === 0) return;
+    logger.info('The task of a chat was interrupted:', interrupted.map(session => session.id).join(', '));
+    for (const session of interrupted) {
+      await chatHistoryStore.setSessionTaskState(session.id, 'interrupted');
+    }
+  } catch (error) {
+    logger.error('Failed to mark the interrupted tasks:', error);
+  }
+}
+
+void markInterruptedTasks();
 
 // Initialize analytics
 analytics.init().catch(error => {
@@ -479,11 +503,17 @@ async function startForPanel(
   instance.active = true;
   showIn(port, instance);
   instance.waitingFor = null;
+  // the chat of this task is marked as running, so that a task lost with the browser is known to be unfinished
+  void chatHistoryStore.setSessionTaskState(instance.taskId, 'running').catch(error => {
+    logger.error('Failed to mark the task as running:', error);
+  });
   let executor: Executor;
   try {
     executor = await prepare();
   } catch (error) {
     instance.active = false;
+    // the task never ran: the chat is not left marked as running
+    void chatHistoryStore.setSessionTaskState(instance.taskId, undefined).catch(() => {});
     throw error;
   }
   instance.executor = executor;
@@ -494,6 +524,10 @@ async function startForPanel(
       instance.active = false;
       pruneInstances();
     }
+    // the task is over: the chat is no longer marked as running
+    void chatHistoryStore.setSessionTaskState(instance.taskId, undefined).catch(error => {
+      logger.error('Failed to mark the task as finished:', error);
+    });
   });
   instance.run = run;
   await run;

@@ -954,7 +954,8 @@ function Failure({
   const [showRaw, setShowRaw] = useState(false);
   const settingsFirst = SETTINGS_KINDS.includes(kind);
   // running out of steps is a pause in the work, not an error: the way on is to carry on
-  const paused = kind === 'maxSteps';
+  // a task the browser closed in the middle of is the same: the work it did is there to carry on from
+  const paused = kind === 'maxSteps' || kind === 'interrupted';
   const offerSettings = settingsFirst || kind === 'timeout';
 
   return (

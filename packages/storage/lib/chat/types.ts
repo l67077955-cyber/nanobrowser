@@ -117,7 +117,15 @@ export interface ChatSessionMetadata {
   createdAt: number; // Unix timestamp in milliseconds
   updatedAt: number; // Unix timestamp in milliseconds
   messageCount: number;
+  /**
+   * The state of the session's task: 'running' while it runs, 'interrupted' when the browser was closed while
+   * it ran and the work was left unfinished. The panel offers to carry on with an interrupted task.
+   */
+  taskState?: TaskState;
 }
+
+/** What became of the task of a session */
+export type TaskState = 'running' | 'interrupted';
 
 // ChatSession is the full conversation history displayed in the Sidepanel
 export interface ChatSession extends ChatSessionMetadata {
@@ -176,4 +184,7 @@ export interface ChatHistoryStorage {
 
   // Load what the agents knew at the end of the session's last task
   loadAgentContext: (sessionId: string) => Promise<string | null>;
+
+  // Note what became of the session's task: it runs, or the browser was closed while it ran
+  setSessionTaskState: (sessionId: string, state: TaskState | undefined) => Promise<void>;
 }

@@ -231,12 +231,14 @@ export type FailureKind =
   | 'maxSteps'
   | 'network'
   | 'blocked'
+  | 'interrupted'
   | 'unknown';
 
 /** What kind of trouble ended a task, read from the error's wording, and the error without its preamble */
 export function classifyFailure(content: string): { kind: FailureKind; raw: string } {
   const raw = content.replace(/^Task failed:\s*/i, '').trim();
   const tests: [FailureKind, RegExp][] = [
+    ['interrupted', /interrupted|was closed while/i],
     ['setup', /configure api keys|choose a model|not found in the settings/i],
     ['maxSteps', /max(imum)? steps/i],
     ['auth', /\b401\b|authenticat|unauthori[sz]ed|api key|invalid.{0,20}key/i],

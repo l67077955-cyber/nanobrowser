@@ -9,6 +9,7 @@ import type {
   ChatSessionMetadata,
   ChatAgentStepHistory,
   ChatAgentContext,
+  TaskState,
 } from './types';
 
 // Key for storing chat session metadata
@@ -285,6 +286,19 @@ export function createChatHistoryStorage(): ChatHistoryStorage {
     loadAgentContext: async (sessionId: string): Promise<string | null> => {
       const stored = await getSessionAgentContextStorage(sessionId).get();
       return stored?.context || null;
+    },
+
+    setSessionTaskState: async (sessionId: string, state: TaskState | undefined): Promise<void> => {
+      await chatSessionsMetaStorage.set(prevSessions =>
+        prevSessions.map(session => {
+          if (session.id !== sessionId) return session;
+          if (state === undefined) {
+            const { taskState: _dropped, ...rest } = session;
+            return rest;
+          }
+          return { ...session, taskState: state };
+        }),
+      );
     },
   };
 }

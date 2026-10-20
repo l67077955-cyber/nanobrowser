@@ -985,6 +985,19 @@ const SidePanel = () => {
         setCurrentSessionId(fullSession.id);
         setSessionTitle(fullSession.title);
         setMessages(fullSession.messages);
+        // a task that was running when the browser was closed was left unfinished: the chat says so, and the
+        // way on is to carry on with it
+        if (fullSession.taskState === 'interrupted') {
+          setMessages(prev => [
+            ...prev,
+            {
+              actor: Actors.SYSTEM,
+              content: t('chat_fail_interrupted_notice'),
+              timestamp: Date.now(),
+              failed: true,
+            },
+          ]);
+        }
         setActivity(null);
         setQueue([]);
         setQueueHeld(false);
@@ -1009,23 +1022,37 @@ const SidePanel = () => {
   // Closed and opened again, the side panel shows the chat it had open, unless a running task took its place
   // meanwhile. Kept for the browser session: a new chat stays new, and a restarted browser starts with one. A
   // window of its own is a new agent each time it opens, and starts with a new chat.
+  // A task that was running when the browser was closed was left unfinished: that chat is opened instead, with
+  // the offer to carry on with it.
   const restoredRef = useRef(false);
   const inWindowRef = useRef(false);
   useEffect(() => {
-    chrome.tabs
-      .getCurrent()
-      .then(tab => {
+    void (async () => {
+      try {
+        const tab = await chrome.tabs.getCurrent();
         inWindowRef.current = !!tab;
-        return tab ? ({} as Record<string, unknown>) : chrome.storage.session.get(LAST_SESSION_KEY);
-      })
-      .then(stored => {
-        const sessionId = stored[LAST_SESSION_KEY];
-        if (typeof sessionId === 'string' && !sessionIdRef.current) void showHandedOffRef.current(sessionId);
-      })
-      .catch(err => console.error('Failed to reopen the last chat:', err))
-      .finally(() => {
+        if (!tab) {
+          const stored = await chrome.storage.session.get(LAST_SESSION_KEY);
+          const sessionId = stored[LAST_SESSION_KEY];
+          if (typeof sessionId === 'string' && !sessionIdRef.current) await showHandedOffRef.current(sessionId);
+        }
+        if (!sessionIdRef.current) {
+          const sessions = await chatHistoryStore.getSessionsMetadata();
+          const interrupted = sessions
+            .filter(session => session.taskState === 'interrupted')
+            .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+          if (interrupted) {
+            await showHandedOffRef.current(interrupted.id);
+            // the interruption is shown once: the chat is open, and the way on is to carry on with it
+            await chatHistoryStore.setSessionTaskState(interrupted.id, undefined);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to reopen the last chat:', err);
+      } finally {
         restoredRef.current = true;
-      });
+      }
+    })();
   }, []);
   useEffect(() => {
     if (!restoredRef.current || inWindowRef.current) return;
