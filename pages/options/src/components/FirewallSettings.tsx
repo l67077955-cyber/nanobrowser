@@ -121,6 +121,7 @@ export const FirewallSettings = () => {
                 }
               }}
               placeholder={t('options_firewall_placeholders_domainUrl')}
+              aria-label={t('options_firewall_placeholders_domainUrl')}
               className={`flex-1 rounded-md border border-nb-line bg-nb-tile-2 px-3 py-2 text-sm text-nb-ink focus:border-nb-llm focus:outline-none`}
             />
             <Button onClick={handleAddUrl} className="px-4 py-2 text-sm">

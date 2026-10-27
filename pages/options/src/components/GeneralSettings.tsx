@@ -7,12 +7,26 @@ import {
   traceStore,
 } from '@extension/storage';
 import { t } from '@extension/i18n';
+import { Button } from '@extension/ui';
 import { SettingsGroup, SettingsRow, Toggle, NumberField, ConfidenceSlider } from './SettingsList';
 
 export const GeneralSettings = () => {
   const [settings, setSettings] = useState<GeneralSettingsConfig>(DEFAULT_GENERAL_SETTINGS);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [tracesCleared, setTracesCleared] = useState(false);
+  const [traceClearFailed, setTraceClearFailed] = useState(false);
+
+  const clearTraces = () => {
+    if (!window.confirm(t('options_general_debugTraceClear_confirm'))) return;
+    setTraceClearFailed(false);
+    traceStore
+      .clear()
+      .then(() => setTracesCleared(true))
+      .catch(error => {
+        console.error('Failed to delete the traces:', error);
+        setTraceClearFailed(true);
+      });
+  };
 
   useEffect(() => {
     // Load initial settings
@@ -156,18 +170,16 @@ export const GeneralSettings = () => {
           </SettingsRow>
         )}
         <SettingsRow title={t('options_general_debugTraceClear')} subtitle={t('options_general_debugTraceClear_desc')}>
-          <button
-            type="button"
-            disabled={tracesCleared}
-            onClick={() =>
-              traceStore
-                .clear()
-                .then(() => setTracesCleared(true))
-                .catch(error => console.error('Failed to delete the traces:', error))
-            }
-            className="rounded-md border border-nb-line bg-nb-tile-2 px-3 py-1.5 text-sm text-nb-ink hover:bg-nb-tile disabled:opacity-50">
-            {tracesCleared ? t('options_general_debugTraceCleared') : t('options_general_debugTraceClear')}
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <Button type="button" variant="danger" disabled={tracesCleared} onClick={clearTraces}>
+              {tracesCleared ? t('options_general_debugTraceCleared') : t('options_general_debugTraceClear')}
+            </Button>
+            {traceClearFailed && (
+              <p role="alert" className="text-xs text-nb-critical">
+                {t('options_general_debugTraceClear_failed')}
+              </p>
+            )}
+          </div>
         </SettingsRow>
       </SettingsGroup>
 

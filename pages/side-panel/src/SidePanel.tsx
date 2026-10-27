@@ -1614,7 +1614,7 @@ const SidePanel = () => {
                 <p>{t('welcome_instruction')}</p>
                 <button
                   type="button"
-                  onClick={() => chrome.runtime.openOptionsPage()}
+                  onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('options/index.html#models') })}
                   className="nb-button primary mt-4">
                   <FiSettings aria-hidden />
                   {t('welcome_openSettings')}

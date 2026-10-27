@@ -59,7 +59,7 @@
     "message": "歡迎使用 Nanobrowser！"
   },
   "welcome_instruction": {
-    "message": "開始使用前，請先完成 API 金鑰的設定。"
+    "message": "我需要一個模型來思考。請新增服務供應商與 API 金鑰，再為 Planner 和 Navigator 各選一個模型。"
   },
   "welcome_openSettings": {
     "message": "開啟設定"
@@ -2010,6 +2010,12 @@
   },
   "options_general_debugTraceClear_desc": {
     "message": "對話保留，只刪除代理逐步執行的紀錄。"
+  },
+  "options_general_debugTraceClear_confirm": {
+    "message": "要刪除所有追蹤記錄嗎？對話會保留。此動作無法復原。"
+  },
+  "options_general_debugTraceClear_failed": {
+    "message": "無法刪除追蹤記錄，請再試一次。"
   },
   "options_general_debugTraceCleared": {
     "message": "已刪除"

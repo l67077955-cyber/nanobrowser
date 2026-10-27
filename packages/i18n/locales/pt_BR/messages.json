@@ -59,7 +59,7 @@
     "message": "Bem-vindo ao Nanobrowser!"
   },
   "welcome_instruction": {
-    "message": "Para começar, por favor, configure suas chaves de API na página de configurações."
+    "message": "Preciso de um modelo para pensar. Adicione um provedor e sua chave de API e escolha um modelo para o Planner e o Navigator."
   },
   "welcome_openSettings": {
     "message": "Abrir Configurações"
@@ -2010,6 +2010,12 @@
   },
   "options_general_debugTraceClear_desc": {
     "message": "As conversas ficam; só some o que os agentes fizeram, passo a passo."
+  },
+  "options_general_debugTraceClear_confirm": {
+    "message": "Excluir todos os rastros? As conversas ficam. Isso não pode ser desfeito."
+  },
+  "options_general_debugTraceClear_failed": {
+    "message": "Não foi possível excluir os rastros. Tente de novo."
   },
   "options_general_debugTraceCleared": {
     "message": "Apagados"

@@ -59,7 +59,7 @@
     "message": "Let’s get you set up"
   },
   "welcome_instruction": {
-    "message": "I need a model to think with. Add an API key in the settings and I’m ready to work."
+    "message": "I need a model to think with. Add a provider and its API key, then pick a model for the Planner and the Navigator."
   },
   "welcome_openSettings": {
     "message": "Open Settings"
@@ -1425,6 +1425,12 @@
   },
   "options_general_debugTraceClear_desc": {
     "message": "The chats stay; only what their agents did, step by step, goes."
+  },
+  "options_general_debugTraceClear_confirm": {
+    "message": "Delete every trace? The chats stay. This cannot be undone."
+  },
+  "options_general_debugTraceClear_failed": {
+    "message": "The traces could not be deleted. Try again."
   },
   "options_general_debugTraceCleared": {
     "message": "Deleted"
